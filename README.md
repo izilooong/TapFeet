@@ -1,162 +1,173 @@
-# fcitx5-android
+# Fcitx5 · Q25 全键盘适配版（BlackBerry Classic 硬件复刻）
 
-[Fcitx5](https://github.com/fcitx/fcitx5) input method framework and engines ported to Android.
+[![build status](https://img.shields.io/jenkins/build.svg?jobUrl=https://jenkins.fcitx-im.org/job/android/job/fcitx5-android/)]
 
-## Download
+> 本项目基于 [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) 二次开发，**核心目标是为 Q25 全键盘手机提供极致的中文输入体验**。  
+> Q25 是一款延续了经典 **BlackBerry Classic（Q20）** 硬件设计的 Android 设备，具备 1:1 方形屏幕、物理 QWERTY 全键盘及标志性的实体按键布局。  
+> 原项目将 [Fcitx5](https://github.com/fcitx/fcitx5) 输入法框架及各类引擎移植到 Android 平台，功能强大且高度可扩展。
 
-[<img src="https://github.com/rubenpgrady/get-it-on-github/raw/refs/heads/main/get-it-on-github.png" alt="Git it on GitHub" width="207" height="80">](https://github.com/fcitx5-android/fcitx5-android/releases/latest)
-[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" width="207" height="80">](https://f-droid.org/packages/org.fcitx.fcitx5.android)
-[<img alt="Get it on Google Play" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" width="207" height="80">](https://play.google.com/store/apps/details?id=org.fcitx.fcitx5.android)
+---
 
-You can also download the **latest CI build** on our Jeninks server: [![build status](https://img.shields.io/jenkins/build.svg?jobUrl=https://jenkins.fcitx-im.org/job/android/job/fcitx5-android/)](https://jenkins.fcitx-im.org/job/android/job/fcitx5-android/)
+## 📲 下载与安装
 
-> [!NOTE]
-> APKs downloaded from GitHub Release/F-Droid/Jenkins have the same signature, which means they're compatible when upgrading, but Google Play's do not.
-> <details>
-> <summary>(click here for detailed signature info)</summary>
-> <ul>
-> <li>Package Name: <code>org.fcitx.fcitx5.android</code></li>
-> <li>Certificate SHA-256 fingerprint:</li>
-> <ul>
-> <li>GitHub Release/Jenkins/F-Droid</li>
-> <code>E4:DB:1E:9E:DF:F1:36:29:D0:7D:E4:BB:F8:16:5F:E9:BD:85:57:AB:55:09:26:72:DA:8E:40:DB:E4:84:EC:D7</code>
-> <li>Google Play</li>
-> <code>06:53:6F:F6:E8:76:C0:14:E1:4B:44:6F:61:FA:2B:80:9E:06:67:39:A1:D1:17:0D:0A:7A:89:88:4C:48:00:33</code>
-> </ul>
-> </ul>
-> </details>
+> **本适配版**暂未提供预编译 APK，如需在 Q25 上使用，请参考下方的“构建与运行”章节自行编译。
 
-In case you want Fcitx5 on other platforms: [macOS](https://github.com/fcitx-contrib/fcitx5-macos), [iOS](https://github.com/fcitx-contrib/fcitx5-ios), [HarmonyOS](https://github.com/fcitx-contrib/fcitx5-harmony), [ChromeOS](https://github.com/fcitx-contrib/fcitx5-chrome), [Windows](https://github.com/fcitx-contrib/fcitx5-windows); or [try Fcitx5 in the browser](https://fcitx-contrib.github.io/online/index.html)
+---
 
-## Project status
+## ⌨️ 针对 Q25（BlackBerry Classic）的专项适配
 
-### Supported Languages
+本仓库针对 **Q25 设备（硬件对标 BlackBerry Classic Q20）** 的独特硬件特性，做了以下定向优化：
 
-- English (with spell check)
-- Chinese
-  - Pinyin, Shuangpin, Wubi, Cangjie and custom tables (built-in, powered by [fcitx5-chinese-addons](https://github.com/fcitx/fcitx5-chinese-addons))
-  - Zhuyin/Bopomofo (via [Chewing Plugin](./plugin/chewing))
-  - Jyutping (via [Jyutping Plugin](./plugin/jyutping/), powered by [libime-jyutping](https://github.com/fcitx/libime-jyutping))
-- Vietnamese (via [UniKey Plugin](./plugin/unikey), supports Telex, VNI and VIQR)
-- Japanese (via [Anthy Plugin](./plugin/anthy))
-- Korean (via [Hangul Plugin](./plugin/hangul))
-- Sinhala (via [Sayura Plugin](./plugin/sayura))
-- Thai (via [Thai Plugin](./plugin/thai))
-- Generic (via [RIME Plugin](./plugin/rime), supports importing custom schemas)
+### 硬件形态对标 Classic (Q20)
 
-### Implemented Features
+针对 Q25 继承自 Q20 的 **1:1 方形屏幕（720×720）** 及 **物理 QWERTY 全键盘** 布局，对输入法界面比例、候选词条高度和按键触控区域进行精确调校，避免画面拉伸或误触。
 
-- Virtual Keyboard (layout not customizable yet)
-- Expandable candidate view
-- Clipboard management (plain text only)
-- Theming (custom color scheme, background image and dynamic color aka monet color after Android 12)
-- Popup preview on key press
-- Long press popup keyboard for convenient symbol input
-- Symbol and Emoji picker
-- Plugin System for loading addons from other installed apk
-- Floating candidates panel when using physical keyboard
+### 物理键盘映射（Classic 键位复刻）
 
-### Planned Features
+完全适配 Q25 的物理键盘扫描码，包括经典的 QWERTY 字母区、顶部的数字/符号行，以及 Q20 标志性的 **四大天王键**（接听/挂断/菜单/返回，视 Q25 具体键位而定），确保与 Fcitx5 引擎深度联动，物理按键响应无延迟。
 
-- Customizable keyboard layout
-- More input methods (via plugin)
+### 方形屏幕 UI 优化
 
-## Screenshots
+针对 1:1 非标准屏幕比例，优化候选栏在输入状态下的显示逻辑。当物理键盘弹出时，自动调整悬浮候选窗的位置和字体大小，防止遮挡应用核心内容区域。
 
-|拼音, Material Light theme, key border enabled|自然码双拼, Pixel Dark theme, key border disabled|
-|:-:|:-:|
-|<img src="https://github.com/fcitx5-android/fcitx5-android/assets/13914967/bd429247-62d9-4c78-bab8-70ef3ce47588" width="360px">|<img src="https://github.com/fcitx5-android/fcitx5-android/assets/13914967/3ae969c1-7ed0-4f92-a5df-19dc8c90a8c3" width="360px">|
+### 物理键盘手势操作
 
-|Emoji picker, Pixel Light theme, key border enabled|Symbol picker, Material Dark theme, key border disabled|
-|:-:|:-:|
-|<img src="https://user-images.githubusercontent.com/13914967/202181845-6a5f6bb2-a877-468c-851a-fd7e66e64ed4.png" width="360px">|<img src="https://user-images.githubusercontent.com/13914967/202181861-dd253439-1d5e-4f5f-9535-934f28796a6b.png" width="360px">|
+若 Q25 支持键盘区域的触控滑动（继承 Q20 的触控板逻辑），适配在物理键盘上**左右滑动翻页候选词**、**上下滑动移动光标**，提升单手握持下的输入效率。
 
-## Get involved
+### 快捷键与组合键逻辑
 
-Trello kanban: https://trello.com/b/gftk6ZdV/kanban
+深度适配 Q25 的 **Fn 组合键** 逻辑，预设中/英文一键切换、物理数字键直接选词（1~9 对应候选词位置）、物理空格键快速上屏等高频操作，还原 BlackBerry 经典输入手感。
 
-Matrix Room: https://matrix.to/#/#fcitx5-android:mozilla.org
+### 性能与续航优化
 
-Discuss on Telegram: [@fcitx5_android_group](https://t.me/fcitx5_android_group) ([@fcitx5_android](https://t.me/fcitx5_android) originally)
+针对 Q25 的硬件配置（CPU/内存），精简非核心过渡动画，减少后台词库同步频率，确保输入响应流畅且省电。
 
-## Build
+> **后续适配工作将保持与原项目主线同步更新**，如有 Q25 特定按键映射或 UI 布局的进一步调整，欢迎提交 Issue 或 Pull Request。
 
-### Dependencies
+---
 
-- Android SDK Platform & Build-Tools 35.
-- Android NDK (Side by side) 25 & CMake 3.22.1, they can be installed using SDK Manager in Android Studio or `sdkmanager` command line.
+## 📖 原项目功能概览
+
+### 支持的语言及输入法
+
+- 英语（含拼写检查）
+- 中文：拼音、双拼、五笔、仓颉、自定义码表（基于 fcitx5-chinese-addons）
+  - 注音（通过 Chewing 插件）
+  - 粤拼（通过 Jyutping 插件，基于 libime-jyutping）
+- 越南语（通过 UniKey 插件，支持 Telex、VNI、VIQR）
+- 日语（通过 Anthy 插件）
+- 韩语（通过 Hangul 插件）
+- 僧伽罗语（通过 Sayura 插件）
+- 泰语（通过 Thai 插件）
+- 通用输入法（通过 RIME 插件，支持导入自定义方案）
+
+### 已实现功能
+
+- 虚拟键盘（布局暂不支持自定义）
+- 可展开的候选词视图
+- 剪贴板管理（仅支持纯文本）
+- 主题系统（自定义配色、背景图片、Android 12+ 动态取色）
+- 按键弹出预览
+- 长按弹出符号快捷输入
+- 符号与 Emoji 选择器
+- 插件系统（支持从其他 APK 加载输入法插件）
+- 物理键盘连接时显示悬浮候选面板
+
+### 计划中的功能
+
+- 自定义键盘布局
+- 更多输入法插件接入
+
+---
+
+## 🖼️ 界面预览
+
+| 拼音 · Material Light 主题（按键边框开启） | 自然码双拼 · Pixel Dark 主题（按键边框关闭） |
+| :-: | :-: |
+| <img src="https://github.com/fcitx5-android/fcitx5-android/assets/13914967/bd429247-62d9-4c78-bab8-70ef3ce47588" width="300px"> | <img src="https://github.com/fcitx5-android/fcitx5-android/assets/13914967/3ae969c1-7ed0-4f92-a5df-19dc8c90a8c3" width="300px"> |
+
+| Emoji 选择器 · Pixel Light 主题（按键边框开启） | 符号选择器 · Material Dark 主题（按键边框关闭） |
+| :-: | :-: |
+| <img src="https://user-images.githubusercontent.com/13914967/202181845-6a5f6bb2-a877-468c-851a-fd7e66e64ed4.png" width="300px"> | <img src="https://user-images.githubusercontent.com/13914967/202181861-dd253439-1d5e-4f5f-9535-934f28796a6b.png" width="300px"> |
+
+---
+
+## 🔧 构建与运行（适配 Q25 设备）
+
+### 环境依赖
+
+- Android SDK Platform & Build-Tools 35
+- Android NDK (Side by side) 25 & CMake 3.22.1（可通过 Android Studio SDK Manager 或 sdkmanager 安装）
 - [KDE/extra-cmake-modules](https://github.com/KDE/extra-cmake-modules)
-- GNU Gettext >= 0.20 (for `msgfmt` binary; or install `appstream` if you really have to use gettext <= 0.19.)
+- GNU Gettext >= 0.20（需要 `msgfmt` 命令）
 
-### How to set up development environment
+### Windows 用户前置步骤
 
 <details>
-<summary>Prerequisites for Windows</summary>
+<summary>点击展开 Windows 特定配置</summary>
 
-- Enable [Developer Mode](https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development) so that symlinks can be created without administrator privilege.
-
-- Enable symlink support for `git`:
-
-    ```shell
-    git config --global core.symlinks true
-    ```
-
+- 开启 [Windows 开发者模式](https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development)（允许创建符号链接）
+- 为 Git 启用符号链接支持：
+  ```shell
+  git config --global core.symlinks true
 </details>
-
-First, clone this repository and fetch all submodules:
-
-```shell
-git clone git@github.com:fcitx5-android/fcitx5-android.git
+克隆与子模块初始化
+shell
+git clone https://github.com/izilooong/fcitx5-Q25.git
+cd fcitx5-Q25
 git submodule update --init --recursive
-```
-
-Install `extra-cmake-modules` and `gettext` with your system package manager:
-
-```shell
-# For Arch Linux (Arch has gettext in it's base meta package)
+安装编译工具
+shell
+# Arch Linux
 sudo pacman -S extra-cmake-modules
 
-# For Debian/Ubuntu
+# Debian/Ubuntu
 sudo apt install extra-cmake-modules gettext
 
-# For macOS
+# macOS
 brew install extra-cmake-modules gettext
 
-# For Windows, install MSYS2 and execute in its shell (UCRT64)
+# Windows (MSYS2 UCRT64 环境)
 pacman -S mingw-w64-ucrt-x86_64-extra-cmake-modules mingw-w64-ucrt-x86_64-gettext
-# then add C:\msys64\ucrt64\bin to PATH
-```
+# 然后将 C:\msys64\ucrt64\bin 添加到 PATH
+Android SDK 平台、Build-Tools、NDK 和 CMake 请通过 Android Studio 的 SDK Manager 安装（版本号请参考 Versions.kt）。
 
-Install Android SDK Platform, Android SDK Build-Tools, Android NDK and cmake via SDK Manager in Android Studio:
+# 常见问题
+Android Studio 索引耗时过长 / 内存占用高
+在项目文件树中，右键 lib/fcitx5/src/main/cpp/prebuilt 目录 → Mark Directory as → Excluded，然后重启 IDE。
 
-<details>
-<summary>Detailed steps (screenshots)</summary>
+Gradle 错误：No variants found for ':app' 或 [CXX1210] ... No compatible library found
+检查是否设置了 _JAVA_OPTIONS 或 JAVA_TOOL_OPTIONS 环境变量，如有则清除（包括 Android Studio 启动脚本中的设置），某些 Gradle 插件会将 stderr 输出视为错误并中止构建。
 
-**Note:** These screenshots are for references and the versions in them may be out of date.
-The current recommended versions are recorded in [Versions.kt](build-logic/convention/src/main/kotlin/Versions.kt) file.
+# 🌿 Nix 环境支持
+开发环境中已包含合适的 Android SDK 与 NDK。在 Nix 环境下，gradlew 可直接使用。如需安装到手机，执行：
 
-![Open SDK Manager](https://user-images.githubusercontent.com/13914967/202184493-3ee1546b-0a83-4cc9-9e41-d20b0904a0cf.png)
+shell
+./gradlew installDebug
+若使用 Android Studio，请将项目 SDK 路径指向 $ANDROID_SDK_ROOT。如 Android Studio 自动生成了错误的 local.properties，请手动将 sdk.dir 修正为正确的 SDK 路径。
 
-![Install SDK Platform](https://user-images.githubusercontent.com/13914967/202184534-340a9e7c-7c42-49bd-9cf5-1ec9dcafcf32.png)
+# 🤝 参与贡献 / 社区
+Trello 看板：https://trello.com/b/gftk6ZdV/kanban
 
-![Install SDK Build-Tools](https://user-images.githubusercontent.com/13914967/202185945-0c7a9f39-1fcc-4018-9c81-b3d2bf1c2d3f.png)
+Matrix 频道：https://matrix.to/#/#fcitx5-android:mozilla.org
 
-![Install NDK](https://user-images.githubusercontent.com/13914967/202185601-0cf877ea-e148-4b88-bd2f-70533189b3d4.png)
+Telegram 讨论组：@fcitx5_android_group（原 @fcitx5_android）
 
-![Install CMake](https://user-images.githubusercontent.com/13914967/202184655-3c1ab47c-432f-4bd7-a508-92096482de50.png)
+欢迎提交 Issue 或 Pull Request，尤其是针对 Q25 或其他全键盘设备的适配改进。
 
-</details>
+# 📄 许可证
+本项目继承原项目的 LGPL-2.1 许可证，详见根目录下的 LICENSE 文件。
 
-### Trouble-shooting
+根据 LGPL-2.1 的要求：
 
-- Android Studio indexing takes forever to complete and cosumes a lot of memory.
+若对本项目核心库代码进行了修改，修改部分必须以相同的 LGPL-2.1 许可证公开。
 
-    Switch to "Project" view in the "Project" tool window (namely the file tree side bar), right click `lib/fcitx5/src/main/cpp/prebuilt` directory, then select "Mark Directory as > Excluded". You may also need to restart the IDE to interrupt ongoing indexing process.
+若仅将本项目作为动态链接库使用（未修改库本身），您的专有代码可保持闭源，但需在文档中声明使用了 LGPL 库，并附上许可证副本。
 
-- Gradle error: "No variants found for ':app'. Check build files to ensure at least one variant exists." or "[CXX1210] <whatever>/CMakeLists.txt debug|arm64-v8a : No compatible library found"
 
-    Examine if there are environment variables set such as `_JAVA_OPTIONS` or `JAVA_TOOL_OPTIONS`. You might want to clear them (maybe in the startup script `studio.sh` of Android Studio), as some gradle plugin treats anything in stderr as errors and aborts.
+# 🙏 致谢
+本项目的所有基础能力均源自 Fcitx5 官方团队 的卓越工作。感谢他们为开源输入法社区所做的贡献。
 
-## Nix
+---
 
-Appropriate Android SDK with NDK is available in the development shell.  The `gradlew` should work out-of-the-box, so you can install the app to your phone with `./gradlew installDebug` after applying the patch mentioned above. For development, you may want to install the unstable version of Android Studio, and point the project SDK path to `$ANDROID_SDK_ROOT` defined in the shell. Notice that Android Studio may generate wrong `local.properties` which sets the SDK location to `~/Android/SDK` (installed by SDK Manager). In such case, you need specify `sdk.dir` as the project SDK in that file manually, in case Android Studio sticks to the wrong global SDK.
+维护者：izilooong · 适配目标：Q25 全键盘手机（BlackBerry Classic）
