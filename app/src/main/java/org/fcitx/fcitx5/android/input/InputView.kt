@@ -336,9 +336,11 @@ class InputView(
         val inputPanelData = fcitx.runImmediately { inputPanelCached }
         val inputMethodEntry = fcitx.runImmediately { inputMethodEntryCached }
         val statusAreaActions = fcitx.runImmediately { statusAreaActionsCached }
+        val candidateListData = service.lastCandidateListData
         arrayOf(
             FcitxEvent.InputPanelEvent(inputPanelData),
             FcitxEvent.IMChangeEvent(inputMethodEntry),
+            FcitxEvent.CandidateListEvent(candidateListData),
             FcitxEvent.StatusAreaEvent(
                 FcitxEvent.StatusAreaEvent.Data(statusAreaActions, inputMethodEntry)
             )

@@ -332,6 +332,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     }
                 }
             }
+            is FcitxEvent.CandidateListEvent -> {
+                lastCandidateListData = event.data
+            }
             else -> {}
         }
     }
@@ -533,8 +536,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private lateinit var lastKnownConfig: Configuration
 
+    var lastCandidateListData = FcitxEvent.CandidateListEvent.Data()
+
     override fun onConfigurationChanged(newConfig: Configuration) {
-        postFcitxJob { reset() }
         /**
          * skip keyboard|keyboardHidden changes, because we have [inputDeviceMgr]
          * skip uiMode (system light/dark mode) changes, because we have [onThemeChangeListener]
@@ -548,6 +552,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 ActivityInfo.CONFIG_UI_MODE
         val diff = lastKnownConfig.diff(newConfig)
         Timber.d("onConfigurationChanged diff=$diff")
+        /**
+         * Reset fcitx only when the change is NOT uiMode-only.
+         * uiMode changes (system dark/light mode) are handled by
+         * onThemeChangeListener which replaces InputViews. The fcitx
+         * state (candidates, preedit) should be preserved.
+         */
+        if (diff and ActivityInfo.CONFIG_UI_MODE != diff) {
+            postFcitxJob { reset() }
+        }
         /**
          * perform `super.onConfigurationChanged` only when `newConfig` diff fall outside "skipped" flags
          * we have to calculate the mask ourselves because nobody knows how `handledConfigChanges` works
