@@ -11,6 +11,7 @@ import android.graphics.drawable.shapes.RectShape
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
+import com.google.android.flexbox.JustifyContent
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -36,6 +37,7 @@ import org.fcitx.fcitx5.android.input.dependency.theme
 import org.mechdancer.dependency.manager.must
 import splitties.dimensions.dp
 import kotlin.math.max
+import kotlin.math.min
 
 class HorizontalCandidateComponent :
     UniqueViewComponent<HorizontalCandidateComponent, RecyclerView>(), InputBroadcastReceiver {
@@ -58,6 +60,14 @@ class HorizontalCandidateComponent :
 
     private var layoutMinWidth = 0
     private var layoutFlexGrow = 1f
+    private var pageCandidates: Array<org.fcitx.fcitx5.android.core.CandidateWord> = emptyArray()
+    private var sourceTotal = -1
+    private var remoteHasPrev = false
+    private var remoteHasNext = false
+    private var localPageStart = 0
+    private var localPageSize = Int.MAX_VALUE
+    private var pendingLocalPageSize = -1
+    private var pagingStateListener: ((Boolean, Boolean) -> Unit)? = null
 
     /**
      * (for [HorizontalCandidateMode.AutoFillWidth] only)
@@ -77,12 +87,116 @@ class HorizontalCandidateComponent :
 
     val expandedCandidateOffset = _expandedCandidateOffset.asSharedFlow()
 
+    fun setPagingStateListener(listener: (Boolean, Boolean) -> Unit) {
+        pagingStateListener = listener
+        listener(hasPrevPage(), hasNextPage())
+    }
+
+    fun page(delta: Int) {
+        if (delta < 0) {
+            if (hasLocalPrev()) {
+                localPageStart = max(0, localPageStart - effectiveLocalPageSize())
+                localPageSize = preferredLocalPageSize(localPageStart)
+                renderCurrentPage()
+            } else if (remoteHasPrev) {
+                fcitx.launchOnReady {
+                    it.setCandidatePagingMode(0)
+                    it.offsetCandidatePage(-1)
+                }
+            }
+        } else if (delta > 0) {
+            if (hasLocalNext()) {
+                localPageStart = min(localPageStart + effectiveLocalPageSize(), lastLocalPageStart())
+                localPageSize = preferredLocalPageSize(localPageStart)
+                renderCurrentPage()
+            } else if (remoteHasNext) {
+                fcitx.launchOnReady {
+                    it.setCandidatePagingMode(0)
+                    it.offsetCandidatePage(1)
+                }
+            }
+        }
+    }
+
+    fun selectionIndexForLocalNumber(number: Int): Int? {
+        val normalized = if (number == 0) 10 else number
+        if (normalized <= 0) return null
+        return adapter.selectionIndexAtDisplayPosition(normalized - 1)
+    }
+
+    fun candidateForLocalNumber(number: Int): org.fcitx.fcitx5.android.core.CandidateWord? {
+        val index = selectionIndexForLocalNumber(number) ?: return null
+        return pageCandidates.getOrNull(index)
+    }
+
+    fun isOnLocalSubPage(): Boolean = localPageStart > 0
+
+    private fun effectiveLocalPageSize(): Int {
+        return localPageSize.coerceAtLeast(1).coerceAtMost(pageCandidates.size.coerceAtLeast(1))
+    }
+
+    private fun preferredLocalPageSize(start: Int): Int {
+        val remaining = pageCandidates.size - start
+        if (remaining <= 0) return 0
+        return min(maxSpanCountPref.getValue().coerceAtLeast(1), remaining)
+    }
+
+    private fun lastLocalPageStart(): Int {
+        val pageSize = effectiveLocalPageSize()
+        val count = pageCandidates.size
+        if (count <= pageSize) return 0
+        return ((count - 1) / pageSize) * pageSize
+    }
+
+    private fun hasLocalPrev(): Boolean = localPageStart > 0
+
+    private fun hasLocalNext(): Boolean {
+        return pageCandidates.isNotEmpty() && localPageStart + effectiveLocalPageSize() < pageCandidates.size
+    }
+
+    private fun hasPrevPage(): Boolean = hasLocalPrev() || remoteHasPrev
+
+    private fun hasNextPage(): Boolean = hasLocalNext() || remoteHasNext
+
+    private fun updatePagingState() {
+        pagingStateListener?.invoke(hasPrevPage(), hasNextPage())
+    }
+
+    private fun renderCurrentPage() {
+        val pageSize = effectiveLocalPageSize()
+        localPageStart = localPageStart.coerceIn(0, lastLocalPageStart())
+        val end = min(localPageStart + pageSize, pageCandidates.size)
+        val slice = if (pageCandidates.isEmpty()) emptyArray() else pageCandidates.copyOfRange(localPageStart, end)
+        adapter.updateCandidates(slice, sourceTotal, localPageStart)
+        updatePagingState()
+        if (slice.isEmpty()) {
+            refreshExpanded(0)
+        }
+    }
+
     private fun refreshExpanded(childCount: Int) {
         _expandedCandidateOffset.tryEmit(childCount)
         bar.expandButtonStateMachine.push(
             ExpandedCandidatesUpdated,
             ExpandedCandidatesEmpty to (adapter.total == childCount)
         )
+        if (childCount in 2 until pageCandidates.size && childCount != localPageSize) {
+            scheduleLocalPageResize(childCount)
+            return
+        }
+        updatePagingState()
+    }
+
+    private fun scheduleLocalPageResize(childCount: Int) {
+        if (pendingLocalPageSize == childCount) return
+        pendingLocalPageSize = childCount
+        view.post {
+            if (pendingLocalPageSize != childCount) return@post
+            pendingLocalPageSize = -1
+            if (localPageSize == childCount) return@post
+            localPageSize = childCount
+            renderCurrentPage()
+        }
     }
 
     val adapter: HorizontalCandidateViewAdapter by lazy {
@@ -137,6 +251,8 @@ class HorizontalCandidateComponent :
             }
             // no need to override `generate{,Default}LayoutParams`, because HorizontalCandidateViewAdapter
             // guarantees ViewHolder's layoutParams to be `FlexboxLayoutManager.LayoutParams`
+        }.apply {
+            justifyContent = JustifyContent.CENTER
         }
     }
 
@@ -157,6 +273,11 @@ class HorizontalCandidateComponent :
                     val maxSpanCount = maxSpanCountPref.getValue()
                     layoutMinWidth = w / maxSpanCount - dividerDrawable.intrinsicWidth
                 }
+                if (w != oldw && oldw > 0) {
+                    pendingLocalPageSize = -1
+                    localPageSize = preferredLocalPageSize(localPageStart)
+                    renderCurrentPage()
+                }
             }
         }.apply {
             id = R.id.candidate_view
@@ -170,6 +291,13 @@ class HorizontalCandidateComponent :
     override fun onCandidateUpdate(data: FcitxEvent.CandidateListEvent.Data) {
         val candidates = data.candidates
         val total = data.total
+        pageCandidates = candidates
+        sourceTotal = total
+        remoteHasPrev = false
+        remoteHasNext = total > candidates.size
+        localPageStart = 0
+        pendingLocalPageSize = -1
+        localPageSize = preferredLocalPageSize(0)
         val maxSpanCount = maxSpanCountPref.getValue()
         when (fillStyle) {
             NeverFillWidth -> {
@@ -190,7 +318,7 @@ class HorizontalCandidateComponent :
                 secondLayoutPassNeeded = false
             }
         }
-        adapter.updateCandidates(candidates, total)
+        renderCurrentPage()
         // not sure why empty candidates won't trigger `FlexboxLayoutManager#onLayoutCompleted()`
         if (candidates.isEmpty()) {
             refreshExpanded(0)
@@ -198,8 +326,14 @@ class HorizontalCandidateComponent :
     }
 
     override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) {
-        val total = data.candidates.size + if (data.hasNext) 1 else 0
-        adapter.updateCandidates(data.candidates, total)
+        pageCandidates = data.candidates
+        sourceTotal = data.candidates.size + if (data.hasPrev || data.hasNext) 1 else 0
+        remoteHasPrev = data.hasPrev
+        remoteHasNext = data.hasNext
+        localPageStart = 0
+        pendingLocalPageSize = -1
+        localPageSize = preferredLocalPageSize(0)
+        renderCurrentPage()
         if (data.candidates.isEmpty()) {
             refreshExpanded(0)
         }

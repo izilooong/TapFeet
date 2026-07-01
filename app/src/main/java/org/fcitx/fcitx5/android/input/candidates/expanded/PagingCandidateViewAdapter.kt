@@ -42,6 +42,6 @@ open class PagingCandidateViewAdapter(val theme: Theme) :
 
     override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
         val candidate = getItem(position) ?: CandidateWord.Empty
-        holder.update(position + offset, candidate)
+        holder.update(position + offset, candidate, position + 1)
     }
 }

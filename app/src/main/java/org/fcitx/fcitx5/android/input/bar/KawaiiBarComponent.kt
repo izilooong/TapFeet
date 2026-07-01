@@ -112,6 +112,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
 
     private var clipboardTimeoutJob: Job? = null
+    private var expandButtonEnabledByState = false
 
     private var isClipboardFresh: Boolean = false
     private var isInlineSuggestionPresent: Boolean = false
@@ -218,6 +219,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             setIcon(icon)
             contentDescription = description
         }
+        updateExpandButtonVisibility()
     }
 
     private val hideKeyboardCallback = View.OnClickListener {
@@ -376,16 +378,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val candidateUi by lazy {
         CandidateUi(context, theme, horizontalCandidate.view).apply {
             prevPageButton.setOnClickListener {
-                fcitx.launchOnReady {
-                    it.setCandidatePagingMode(1)
-                    it.offsetCandidatePage(-1)
-                }
+                horizontalCandidate.page(-1)
             }
             nextPageButton.setOnClickListener {
-                fcitx.launchOnReady {
-                    it.setCandidatePagingMode(1)
-                    it.offsetCandidatePage(1)
-                }
+                horizontalCandidate.page(1)
             }
             keyboardToggleButton.setOnClickListener {
                 windowManager.setKeyboardWindowVisible(!windowManager.isKeyboardWindowVisible())
@@ -395,6 +391,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 swipeEnabled = true
                 swipeThresholdY = dp(HEIGHT.toFloat())
                 onGestureListener = swipeDownExpandCallback
+            }
+        }.also { ui ->
+            horizontalCandidate.setPagingStateListener { hasPrev, hasNext ->
+                updateCandidatePageButtons(ui, hasPrev, hasNext)
             }
         }
     }
@@ -448,7 +448,23 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     // should be used with setExpandButtonToAttach or setExpandButtonToDetach
     private fun setExpandButtonEnabled(enabled: Boolean) {
-        candidateUi.expandButton.visibility = if (enabled) View.VISIBLE else View.INVISIBLE
+        expandButtonEnabledByState = enabled
+        updateExpandButtonVisibility()
+    }
+
+    private fun updateExpandButtonVisibility() {
+        val visible = expandButtonEnabledByState && windowManager.isKeyboardWindowVisible()
+        candidateUi.expandButton.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    private fun updateCandidatePageButtons(ui: CandidateUi, hasPrev: Boolean, hasNext: Boolean) {
+        val multiPage = hasPrev || hasNext
+        ui.prevPageButton.visibility = if (multiPage) View.VISIBLE else View.INVISIBLE
+        ui.nextPageButton.visibility = if (multiPage) View.VISIBLE else View.INVISIBLE
+        ui.prevPageButton.isEnabled = hasPrev
+        ui.nextPageButton.isEnabled = hasNext
+        ui.prevPageButton.alpha = if (hasPrev) 1f else 0.35f
+        ui.nextPageButton.alpha = if (hasNext) 1f else 0.35f
     }
 
     private fun switchUiByState(state: KawaiiBarStateMachine.State) {
@@ -513,21 +529,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     }
 
     override fun onCandidateUpdate(data: CandidateListEvent.Data) {
-        val multiPage = data.total > data.candidates.size
-        candidateUi.prevPageButton.visibility = if (multiPage) View.VISIBLE else View.INVISIBLE
-        candidateUi.nextPageButton.visibility = if (multiPage) View.VISIBLE else View.INVISIBLE
         barStateMachine.push(CandidatesUpdated, CandidateEmpty to data.candidates.isEmpty())
     }
 
-    override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) {
-        val multiPage = data.hasPrev || data.hasNext
-        candidateUi.prevPageButton.visibility = if (multiPage) View.VISIBLE else View.INVISIBLE
-        candidateUi.nextPageButton.visibility = if (multiPage) View.VISIBLE else View.INVISIBLE
-        candidateUi.prevPageButton.isEnabled = data.hasPrev
-        candidateUi.nextPageButton.isEnabled = data.hasNext
-        candidateUi.prevPageButton.alpha = if (data.hasPrev) 1f else 0.35f
-        candidateUi.nextPageButton.alpha = if (data.hasNext) 1f else 0.35f
-    }
+    override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) = Unit
 
     override fun onWindowAttached(window: InputWindow) {
         when (window) {

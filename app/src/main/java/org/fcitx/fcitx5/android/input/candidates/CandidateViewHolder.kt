@@ -15,10 +15,10 @@ class CandidateViewHolder(val ui: CandidateItemUi) : RecyclerView.ViewHolder(ui.
     var candidate: CandidateWord = CandidateWord.Empty
         private set
 
-    fun update(newIndex: Int, newCandidate: CandidateWord) {
-        idx = newIndex
+    fun update(selectionIndex: Int, newCandidate: CandidateWord, displayNumber: Int) {
+        idx = selectionIndex
         candidate = newCandidate
-        ui.updateCandidate(newCandidate)
+        ui.updateCandidate(newCandidate, displayNumber.toString())
     }
 
     fun clear() {
