@@ -75,7 +75,8 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
     @CallSuper
     override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
         val originalIndex = displayOrder[position]
-        holder.update(selectionOrder[position], candidates[originalIndex], displayNumbers[position])
+        val isActive = originalIndex == 0
+        holder.update(selectionOrder[position], candidates[originalIndex], displayNumbers[position], isActive)
     }
 
     @CallSuper

@@ -6,6 +6,12 @@
 package org.fcitx.fcitx5.android.input.candidates
 
 import android.content.Context
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.LayerDrawable
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import androidx.core.graphics.ColorUtils
 import org.fcitx.fcitx5.android.core.CandidateWord
@@ -47,8 +53,22 @@ class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
         add(text, lParams(wrapContent, matchParent))
     }
 
+    private val pressHighlight = pressHighlightDrawable(theme.keyPressHighlightColor)
+
+    private val borderThickness: Int by lazy {
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 3f, ctx.resources.displayMetrics).toInt()
+    }
+
+    private val activeBackground by lazy {
+        val border = ColorDrawable(theme.genericActiveForegroundColor)
+        LayerDrawable(arrayOf(pressHighlight, border)).apply {
+            setLayerGravity(1, Gravity.BOTTOM)
+            setLayerHeight(1, borderThickness)
+        }
+    }
+
     override val root = view(::CustomGestureView) {
-        background = pressHighlightDrawable(theme.keyPressHighlightColor)
+        background = pressHighlight
 
         /**
          * candidate long press feedback is handled by [org.fcitx.fcitx5.android.input.BaseInputView.showCandidateActionMenu]
@@ -60,8 +80,15 @@ class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
         })
     }
 
-    fun updateCandidate(candidate: CandidateWord, indexLabel: String = "") {
+    fun updateCandidate(candidate: CandidateWord, indexLabel: String = "", isActive: Boolean = false) {
         index.text = if (indexLabel.isNotBlank()) "$indexLabel " else ""
         text.text = candidate.textWithComment()
+        if (isActive) {
+            text.setTypeface(Typeface.DEFAULT_BOLD)
+            root.background = activeBackground
+        } else {
+            text.setTypeface(Typeface.DEFAULT)
+            root.background = pressHighlight
+        }
     }
 }
