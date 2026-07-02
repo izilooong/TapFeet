@@ -66,57 +66,14 @@ class CommonKeyActionListener :
 
     private var backspaceSwipeState = Stopped
 
-    private fun localCandidateNumber(action: KeyAction): Int? {
-        return when (action) {
-            is FcitxKeyAction -> {
-                if (action.act.length != 1) return null
-                val char = action.act[0]
-                when {
-                    char == ' ' -> 1
-                    char.isDigit() -> char.digitToInt()
-                    else -> null
-                }
-            }
-            is SymAction -> when {
-                action.sym.sym == FcitxKeyMapping.FcitxKey_space ||
-                    action.sym.keyCode == KeyEvent.KEYCODE_SPACE -> 1
-                action.sym.sym == '0'.code || action.sym.sym == 0xffb0 -> 0
-                action.sym.sym == '1'.code || action.sym.sym == 0xffb1 -> 1
-                action.sym.sym == '2'.code || action.sym.sym == 0xffb2 -> 2
-                action.sym.sym == '3'.code || action.sym.sym == 0xffb3 -> 3
-                action.sym.sym == '4'.code || action.sym.sym == 0xffb4 -> 4
-                action.sym.sym == '5'.code || action.sym.sym == 0xffb5 -> 5
-                action.sym.sym == '6'.code || action.sym.sym == 0xffb6 -> 6
-                action.sym.sym == '7'.code || action.sym.sym == 0xffb7 -> 7
-                action.sym.sym == '8'.code || action.sym.sym == 0xffb8 -> 8
-                action.sym.sym == '9'.code || action.sym.sym == 0xffb9 -> 9
-                else -> null
-            }
-            else -> null
-        }
-    }
-
-    private fun handleLocalSubPageShortcut(action: KeyAction): Boolean {
-        if (!horizontalCandidate.isOnLocalSubPage()) return false
-        val number = localCandidateNumber(action) ?: return false
-        return commitLocalSubPageCandidate(number)
-    }
-
-    private fun commitLocalSubPageCandidate(number: Int): Boolean {
-        if (!horizontalCandidate.isOnLocalSubPage()) return false
+    private suspend fun FcitxAPI.selectCurrentLocalCandidate(number: Int): Boolean {
+        val index = horizontalCandidate.selectionIndexForLocalNumber(number) ?: return false
+        setCandidatePagingMode(horizontalCandidate.currentCandidatePagingMode())
+        if (select(index)) return true
         val candidate = horizontalCandidate.candidateForLocalNumber(number) ?: return false
         service.finishComposing()
         service.commitText(candidate.text)
         return true
-    }
-
-    private suspend fun FcitxAPI.selectCurrentLocalCandidate(number: Int): Boolean {
-        if (horizontalCandidate.isOnLocalSubPage()) {
-            return commitLocalSubPageCandidate(number)
-        }
-        val index = horizontalCandidate.selectionIndexForLocalNumber(number) ?: return false
-        setCandidatePagingMode(0)
-        return select(index)
     }
 
     private suspend fun FcitxAPI.handleLocalCandidateShortcut(action: FcitxKeyAction): Boolean {
@@ -182,9 +139,6 @@ class CommonKeyActionListener :
 
     val listener by lazy {
         KeyActionListener { action, _ ->
-            if (handleLocalSubPageShortcut(action)) {
-                return@KeyActionListener
-            }
             when (action) {
                 is FcitxKeyAction -> service.postFcitxJob {
                     if (!handleLocalCandidateShortcut(action)) {

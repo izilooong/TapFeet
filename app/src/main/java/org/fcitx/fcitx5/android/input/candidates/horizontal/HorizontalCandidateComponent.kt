@@ -62,6 +62,7 @@ class HorizontalCandidateComponent :
     private var layoutFlexGrow = 1f
     private var pageCandidates: Array<org.fcitx.fcitx5.android.core.CandidateWord> = emptyArray()
     private var sourceTotal = -1
+    private var candidatePagingMode = 0
     private var remoteHasPrev = false
     private var remoteHasNext = false
     private var localPageStart = 0
@@ -100,7 +101,7 @@ class HorizontalCandidateComponent :
                 renderCurrentPage()
             } else if (remoteHasPrev) {
                 fcitx.launchOnReady {
-                    it.setCandidatePagingMode(0)
+                    it.setCandidatePagingMode(candidatePagingMode)
                     it.offsetCandidatePage(-1)
                 }
             }
@@ -111,7 +112,7 @@ class HorizontalCandidateComponent :
                 renderCurrentPage()
             } else if (remoteHasNext) {
                 fcitx.launchOnReady {
-                    it.setCandidatePagingMode(0)
+                    it.setCandidatePagingMode(candidatePagingMode)
                     it.offsetCandidatePage(1)
                 }
             }
@@ -121,8 +122,10 @@ class HorizontalCandidateComponent :
     fun selectionIndexForLocalNumber(number: Int): Int? {
         val normalized = if (number == 0) 10 else number
         if (normalized <= 0) return null
-        return adapter.selectionIndexAtDisplayPosition(normalized - 1)
+        return adapter.selectionIndexForDisplayNumber(normalized)
     }
+
+    fun currentCandidatePagingMode(): Int = candidatePagingMode
 
     fun candidateForLocalNumber(number: Int): org.fcitx.fcitx5.android.core.CandidateWord? {
         val index = selectionIndexForLocalNumber(number) ?: return null
@@ -293,6 +296,7 @@ class HorizontalCandidateComponent :
         val total = data.total
         pageCandidates = candidates
         sourceTotal = total
+        candidatePagingMode = 0
         remoteHasPrev = false
         remoteHasNext = total > candidates.size
         localPageStart = 0
@@ -328,6 +332,7 @@ class HorizontalCandidateComponent :
     override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) {
         pageCandidates = data.candidates
         sourceTotal = data.candidates.size + if (data.hasPrev || data.hasNext) 1 else 0
+        candidatePagingMode = 1
         remoteHasPrev = data.hasPrev
         remoteHasNext = data.hasNext
         localPageStart = 0

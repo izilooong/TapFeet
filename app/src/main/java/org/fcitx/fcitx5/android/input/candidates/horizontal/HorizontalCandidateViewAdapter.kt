@@ -50,6 +50,12 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
 
     fun selectionIndexAtDisplayPosition(position: Int): Int? = selectionOrder.getOrNull(position)
 
+    fun selectionIndexForDisplayNumber(number: Int): Int? {
+        val idx = displayNumbers.indexOfFirst { it == number }
+        if (idx < 0) return null
+        return selectionOrder.getOrNull(idx)
+    }
+
     override fun getItemId(position: Int): Long {
         val originalIndex = displayOrder.getOrNull(position) ?: return RecyclerView.NO_ID
         return candidates.getOrNull(originalIndex).hashCode().toLong()

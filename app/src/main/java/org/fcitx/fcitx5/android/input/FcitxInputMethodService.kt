@@ -87,6 +87,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private val cachedKeyEvents = LruCache<Int, KeyEvent>(78)
     private var cachedKeyEventIndex = 0
+    private val consumedHardwareCandidateShortcutKeys = HashSet<Int>()
 
     /**
      * Saves MetaState produced by hardware keyboard with "sticky" modifier keys, to clear them in order.
@@ -665,10 +666,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             forceShowSelf()
         }
+        if (event.repeatCount == 0 && inputView?.handleHardwareCandidateShortcut(event) == true) {
+            consumedHardwareCandidateShortcutKeys.add(keyCode)
+            return true
+        }
         return forwardKeyEvent(event) || super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (consumedHardwareCandidateShortcutKeys.remove(keyCode)) {
+            return true
+        }
         return forwardKeyEvent(event) || super.onKeyUp(keyCode, event)
     }
 

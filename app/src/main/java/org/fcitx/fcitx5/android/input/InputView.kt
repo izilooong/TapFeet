@@ -8,6 +8,7 @@ package org.fcitx.fcitx5.android.input
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.os.Build
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
@@ -376,6 +377,44 @@ class InputView(
 
     fun updateSelection(start: Int, end: Int) {
         broadcaster.onSelectionUpdate(start, end)
+    }
+
+    private fun hardwareCandidateNumber(event: KeyEvent): Int? {
+        if (event.action != KeyEvent.ACTION_DOWN) return null
+        return when (event.keyCode) {
+            KeyEvent.KEYCODE_SPACE -> 1
+            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> 0
+            KeyEvent.KEYCODE_1, KeyEvent.KEYCODE_NUMPAD_1 -> 1
+            KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_NUMPAD_2 -> 2
+            KeyEvent.KEYCODE_3, KeyEvent.KEYCODE_NUMPAD_3 -> 3
+            KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_NUMPAD_4 -> 4
+            KeyEvent.KEYCODE_5, KeyEvent.KEYCODE_NUMPAD_5 -> 5
+            KeyEvent.KEYCODE_6, KeyEvent.KEYCODE_NUMPAD_6 -> 6
+            KeyEvent.KEYCODE_7, KeyEvent.KEYCODE_NUMPAD_7 -> 7
+            KeyEvent.KEYCODE_8, KeyEvent.KEYCODE_NUMPAD_8 -> 8
+            KeyEvent.KEYCODE_9, KeyEvent.KEYCODE_NUMPAD_9 -> 9
+            else -> {
+                val c = event.unicodeChar.takeIf { it > 0 }?.toChar() ?: return null
+                when {
+                    c == ' ' -> 1
+                    c.isDigit() -> c.digitToInt()
+                    else -> null
+                }
+            }
+        }
+    }
+
+    fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
+        val number = hardwareCandidateNumber(event) ?: return false
+        val index = horizontalCandidate.selectionIndexForLocalNumber(number) ?: return false
+        service.postFcitxJob {
+            setCandidatePagingMode(horizontalCandidate.currentCandidatePagingMode())
+            if (select(index)) return@postFcitxJob
+            val candidate = horizontalCandidate.candidateForLocalNumber(number) ?: return@postFcitxJob
+            service.finishComposing()
+            service.commitText(candidate.text)
+        }
+        return true
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
