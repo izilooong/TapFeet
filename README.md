@@ -19,22 +19,22 @@
 
 本仓库针对 **Q25 设备（硬件对标 BlackBerry Classic Q20）** 的独特硬件特性，做了以下定向优化：
 
-<img width="157" height="265" alt="blackberry-dark" src="https://github.com/user-attachments/assets/ba82d97a-733b-46a5-be4e-aba617ea7a60" />
-<img width="157" height="265" alt="blackberry-light" src="https://github.com/user-attachments/assets/34ba9746-a1bb-4cae-8e4f-d27056b0e91d" />
+<img width="300" height="500" alt="blackberry-dark" src="https://github.com/user-attachments/assets/ba82d97a-733b-46a5-be4e-aba617ea7a60" />
+<img width="300" height="500" alt="blackberry-light" src="https://github.com/user-attachments/assets/34ba9746-a1bb-4cae-8e4f-d27056b0e91d" />
 
 
 ### 物理键盘选字
 
 适配物理键盘5大金刚键(⬆️ 0️⃣ 🈳 sym ⬆️)选字，提升输入效率。
 
-<img width="1377" height="273" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
+<img width="935" height="191" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
 
 
 ### 组合键选字
 
 深度适配 Q25 的 **Alt + 数字 组合键** 逻辑，物理数字键直接选词（1~5 对应候选词位置）、物理空格键快速上屏等高频操作，还原 BlackBerry 经典输入手感。
 
-<img width="1278" height="243" alt="image" src="https://github.com/user-attachments/assets/666baa7e-f821-4529-9350-f10106256b1f" />
+<img width="935" height="191" alt="image" src="https://github.com/user-attachments/assets/666baa7e-f821-4529-9350-f10106256b1f" />
 
 
 ### 硬件形态对标 Classic (Q20)
