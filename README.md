@@ -1,3 +1,4 @@
+<img width="20" height="320" alt="圆角-ic_launcher" src="https://github.com/user-attachments/assets/0399b428-ec30-46f2-b05e-230fe4901076" />
 
 # TapFeet IME · 大脚输入法
 
