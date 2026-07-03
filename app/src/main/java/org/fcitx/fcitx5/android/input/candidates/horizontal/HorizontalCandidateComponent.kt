@@ -100,8 +100,11 @@ class HorizontalCandidateComponent :
                 localPageSize = preferredLocalPageSize(localPageStart)
                 renderCurrentPage()
             } else if (remoteHasPrev) {
+                // Remote paging in bulk mode would keep returning the same leading slice.
+                // Switch to paged mode first so the backend advances by page.
+                candidatePagingMode = 1
                 fcitx.launchOnReady {
-                    it.setCandidatePagingMode(candidatePagingMode)
+                    it.setCandidatePagingMode(1)
                     it.offsetCandidatePage(-1)
                 }
             }
@@ -111,10 +114,14 @@ class HorizontalCandidateComponent :
                 localPageSize = preferredLocalPageSize(localPageStart)
                 renderCurrentPage()
             } else if (remoteHasNext) {
+                // Remote paging in bulk mode would keep returning the same leading slice.
+                // Switch to paged mode first so the backend advances by page.
+                candidatePagingMode = 1
                 fcitx.launchOnReady {
-                    it.setCandidatePagingMode(candidatePagingMode)
+                    it.setCandidatePagingMode(1)
                     it.offsetCandidatePage(1)
                 }
+                updatePagingState()
             }
         }
     }
