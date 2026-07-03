@@ -12,7 +12,7 @@
 
 ## 📲 下载与安装
 
-> **本适配版**暂未提供预编译 APK，如需在 Q25 上使用，请参考下方的“构建与运行”章节自行编译。
+>   [下载](https://github.com/izilooong/fcitx5-Q25/releases/tag/pre-release)
 
 ---
 
