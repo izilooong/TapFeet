@@ -9,11 +9,13 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+import java.util.Properties
+
 android {
     namespace = "org.fcitx.fcitx5.android"
 
     defaultConfig {
-        applicationId = "fcitx5.q25"
+        applicationId = "tapfeet.ime"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         @Suppress("UnstableApiUsage")
@@ -38,16 +40,34 @@ android {
         resValues = true
     }
 
+     // 1. 读取 gradle.properties 中的签名属性
+    val keystoreProperties = Properties()
+    val keystorePropertiesFile = rootProject.file("gradle.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(keystorePropertiesFile.inputStream())
+    }
+
+    // 2. 配置签名
+    signingConfigs {
+        create("release") {
+            storeFile = file(keystoreProperties.getProperty("RELEASE_STORE_FILE"))
+            storePassword = keystoreProperties.getProperty("RELEASE_STORE_PASSWORD")
+            keyAlias = keystoreProperties.getProperty("RELEASE_KEY_ALIAS")
+            keyPassword = keystoreProperties.getProperty("RELEASE_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             resValue("mipmap", "app_icon", "@mipmap/ic_launcher")
             resValue("mipmap", "app_icon_round", "@mipmap/ic_launcher_round")
             resValue("string", "app_name", "@string/app_name_release")
             proguardFile("proguard-rules.pro")
         }
         debug {
-            resValue("mipmap", "app_icon", "@mipmap/ic_launcher_debug")
-            resValue("mipmap", "app_icon_round", "@mipmap/ic_launcher_round_debug")
+            resValue("mipmap", "app_icon", "@mipmap/ic_launcher")
+            resValue("mipmap", "app_icon_round", "@mipmap/ic_launcher_round")
             resValue("string", "app_name", "@string/app_name_debug")
         }
     }
