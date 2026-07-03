@@ -1,5 +1,5 @@
 
-# Fcitx5 · Q25 全键盘适配版（BlackBerry Classic 硬件复刻）
+# TapFeet IME · 大脚输入法
 
 [![build status](https://img.shields.io/jenkins/build.svg?jobUrl=https://jenkins.fcitx-im.org/job/android/job/fcitx5-android/)]
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name_debug">Fcitx5 (complemento Anthy | Depuración)</string>
-    <string name="app_name_release">Fcitx5 (complemento Anthy)</string>
+    <string name="app_name_debug">TapFeet IME (complemento Anthy | Depuración)</string>
+    <string name="app_name_release">TapFeet IME (complemento Anthy)</string>
     </resources>
