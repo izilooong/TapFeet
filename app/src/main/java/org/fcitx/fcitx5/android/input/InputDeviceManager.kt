@@ -118,7 +118,9 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
     fun evaluateOnViewClicked(service: FcitxInputMethodService) {
         if (!startedInputView) return
         isVirtualKeyboard = when (candidatesViewMode) {
-            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown()
+            // Some floating editor windows can report false here transiently,
+            // which would hide an already-shown virtual keyboard immediately.
+            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown() || isVirtualKeyboard
             else -> true
         }
     }
@@ -126,7 +128,9 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
     fun evaluateOnUpdateEditorToolType(toolType: Int, service: FcitxInputMethodService) {
         if (!startedInputView) return
         isVirtualKeyboard = when (candidatesViewMode) {
-            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown()
+            // Keep virtual keyboard visible if it is already visible,
+            // even if tool-type updates briefly report not shown.
+            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown() || isVirtualKeyboard
             FloatingCandidatesMode.InputDevice ->
                 // switch to virtual keyboard on touch screen events, otherwise preserve current mode
                 if (toolType == MotionEvent.TOOL_TYPE_FINGER || toolType == MotionEvent.TOOL_TYPE_STYLUS) true else isVirtualKeyboard

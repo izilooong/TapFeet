@@ -702,6 +702,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private var firstBindInput = true
+    private var lastNonNullStartInputViewUptime: Long = 0L
+    private var suppressTransientFinishInputView: Boolean = false
 
     override fun onBindInput() {
         val uid = currentInputBinding.uid
@@ -767,13 +769,22 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         inputDeviceMgr.notifyOnStartInput(attribute)
         Timber.d("onStartInput: initialSel=${selection.current}, restarting=$restarting")
         val isNullType = attribute.isTypeNull()
+        val isTransientNullRestart =
+            restarting && isNullType && currentInputStarted &&
+                    (SystemClock.uptimeMillis() - lastNonNullStartInputViewUptime) < 1500
         // wait until InputContext created/activated
         postFcitxJob {
-            if (restarting) {
+            if (isTransientNullRestart) {
+                Timber.d("onStartInput: ignore transient TYPE_NULL restarting input")
+                return@postFcitxJob
+            }
+            if (restarting && !isNullType) {
                 // when input restarts in the same editor, focus out to clear previous state
                 focus(false)
                 // try focus out before changing CapabilityFlags,
                 // to avoid confusing state of different text fields
+            } else if (restarting) {
+                Timber.d("onStartInput: skip focus(false) for TYPE_NULL restarting input")
             }
             // EditorInfo can be different in onStartInput and onStartInputView,
             // especially in browsers
@@ -786,7 +797,27 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
-        Timber.d("onStartInputView: restarting=$restarting")
+        val isNullType = info.isTypeNull()
+        val now = SystemClock.uptimeMillis()
+        Timber.d(
+            "onStartInputView: restarting=$restarting inputType=${info.inputType} imeOptions=${info.imeOptions} isNullType=$isNullType"
+        )
+        if (!isNullType) {
+            lastNonNullStartInputViewUptime = now
+            suppressTransientFinishInputView = false
+        }
+        if (restarting && isNullType && currentInputStarted &&
+            (now - lastNonNullStartInputViewUptime) < 1500
+        ) {
+            suppressTransientFinishInputView = true
+            Timber.d("onStartInputView: suppress transient TYPE_NULL restarting inputView")
+            decorView.post {
+                if (currentInputStarted) {
+                    forceShowSelf()
+                }
+            }
+            return
+        }
         postFcitxJob {
             focus(true)
         }
@@ -1061,7 +1092,19 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        Timber.d("onFinishInputView: finishingInput=$finishingInput")
+        Timber.d(
+            "onFinishInputView: finishingInput=$finishingInput currentInputStarted=${currentInputStarted} isInputViewShown=${isInputViewShown}"
+        )
+        if (suppressTransientFinishInputView && !finishingInput && currentInputStarted) {
+            suppressTransientFinishInputView = false
+            Timber.d("onFinishInputView: ignored transient finishInputView(false)")
+            decorView.post {
+                if (currentInputStarted) {
+                    forceShowSelf()
+                }
+            }
+            return
+        }
         decorLocationUpdated = false
         inputDeviceMgr.onFinishInputView()
         currentInputConnection?.apply {
@@ -1069,15 +1112,19 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             monitorCursorAnchor(false)
         }
         resetComposingState()
-        postFcitxJob {
-            focusOutIn()
+        // Avoid disrupting transient editor focus (e.g. floating search panels) when
+        // only the input view is being hidden but the input session is still alive.
+        if (finishingInput) {
+            postFcitxJob {
+                focusOutIn()
+            }
         }
         hideStatusIcon()
         showingDialog?.dismiss()
     }
 
     override fun onFinishInput() {
-        Timber.d("onFinishInput")
+        Timber.d("onFinishInput: currentInputStarted=$currentInputStarted isInputViewShown=$isInputViewShown")
         postFcitxJob {
             focus(false)
         }
