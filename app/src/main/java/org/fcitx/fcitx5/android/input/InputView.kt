@@ -389,23 +389,7 @@ class InputView(
         val count = horizontalCandidate.visibleCandidateCount()
         if (count <= 0) return false
 
-        val target = when (event.keyCode) {
-            KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
-            KeyEvent.KEYCODE_SHIFT_LEFT -> HardwareCandidateTarget.ByVisiblePosition(CandidateUi.BlackBerryLeftSlot)
-            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> {
-                if (count <= CandidateUi.BlackBerryInnerLeftSlot) return false
-                HardwareCandidateTarget.ByVisiblePosition(CandidateUi.BlackBerryInnerLeftSlot)
-            }
-            KeyEvent.KEYCODE_SYM,
-            KeyEvent.KEYCODE_PICTSYMBOLS,
-            KeyEvent.KEYCODE_ALT_RIGHT -> {
-                val position = count - 2
-                if (position < 0) return false
-                HardwareCandidateTarget.ByVisiblePosition(position)
-            }
-            KeyEvent.KEYCODE_SHIFT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(count - 1)
-            else -> return false
-        }
+        val target = shortcutTargetForKeyCode(event.keyCode, count) ?: return false
 
         val index = when (target) {
             is HardwareCandidateTarget.ByNumber -> horizontalCandidate.selectionIndexForLocalNumber(target.number)
@@ -423,6 +407,96 @@ class InputView(
             service.commitText(candidate.text)
         }
         return true
+    }
+
+    private fun shortcutTargetForKeyCode(keyCode: Int, candidateCount: Int): HardwareCandidateTarget? {
+        // Keep explicit mapping for small candidate counts to match BlackBerry-style slots.
+        when (candidateCount) {
+            1 -> {
+                return when (keyCode) {
+                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
+                    else -> null
+                }
+            }
+
+            // display numbers: [1, 2]
+            2 -> {
+                return when (keyCode) {
+                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
+                    KeyEvent.KEYCODE_SYM,
+                    KeyEvent.KEYCODE_PICTSYMBOLS,
+                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(1)
+                    else -> null
+                }
+            }
+
+            // display numbers: [2, 1, 3]
+            3 -> {
+                return when (keyCode) {
+                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
+                    KeyEvent.KEYCODE_0,
+                    KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
+                    KeyEvent.KEYCODE_SYM,
+                    KeyEvent.KEYCODE_PICTSYMBOLS,
+                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(2)
+                    else -> null
+                }
+            }
+
+            // display numbers: [2, 1, 3, 4]
+            4 -> {
+                return when (keyCode) {
+                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
+                    KeyEvent.KEYCODE_0,
+                    KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
+                    KeyEvent.KEYCODE_SYM,
+                    KeyEvent.KEYCODE_PICTSYMBOLS,
+                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(2)
+                    KeyEvent.KEYCODE_SHIFT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(3)
+                    else -> null
+                }
+            }
+
+            // display numbers: [4, 2, 1, 3, 5]
+            CandidateUi.BlackBerryBottomRowKeyCount -> {
+                return when (keyCode) {
+                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
+                    KeyEvent.KEYCODE_0,
+                    KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(1)
+                    KeyEvent.KEYCODE_SYM,
+                    KeyEvent.KEYCODE_PICTSYMBOLS,
+                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(3)
+                    KeyEvent.KEYCODE_SHIFT_LEFT -> HardwareCandidateTarget.ByVisiblePosition(0)
+                    KeyEvent.KEYCODE_SHIFT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(4)
+                    else -> null
+                }
+            }
+        }
+
+        if (keyCode == KeyEvent.KEYCODE_SPACE) {
+            return HardwareCandidateTarget.ByNumber(1)
+        }
+
+        val slot = shortcutSlotForKeyCode(keyCode) ?: return null
+        val position = shortcutVisiblePositionForSlot(candidateCount, slot) ?: return null
+        return HardwareCandidateTarget.ByVisiblePosition(position)
+    }
+
+    private fun shortcutSlotForKeyCode(keyCode: Int): Int? {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_SHIFT_LEFT -> CandidateUi.BlackBerryLeftSlot
+            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> CandidateUi.BlackBerryInnerLeftSlot
+            KeyEvent.KEYCODE_SYM,
+            KeyEvent.KEYCODE_PICTSYMBOLS,
+            KeyEvent.KEYCODE_ALT_RIGHT -> CandidateUi.BlackBerryInnerRightSlot
+            KeyEvent.KEYCODE_SHIFT_RIGHT -> CandidateUi.BlackBerryRightSlot
+            else -> null
+        }
+    }
+
+    private fun shortcutVisiblePositionForSlot(candidateCount: Int, slot: Int): Int? {
+        // For wide layouts (more than 5 visible candidates), keep fixed slot-to-position mapping.
+        return slot.takeIf { it in 0 until candidateCount }
     }
 
     private fun handleHardwareCandidatePaging(event: KeyEvent): Boolean {
