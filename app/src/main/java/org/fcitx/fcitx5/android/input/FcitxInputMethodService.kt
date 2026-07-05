@@ -647,6 +647,41 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onEvaluateFullscreenMode() = false
 
+    private var altLatched = false
+    private var lastAltTapEventTime = 0L
+    private val altDoubleTapTimeoutMs = 300L
+
+    private fun isAnyAltKeyCode(keyCode: Int): Boolean {
+        return keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT
+    }
+
+    private fun isAltLatchKeyCode(keyCode: Int): Boolean {
+        return keyCode == KeyEvent.KEYCODE_ALT_LEFT
+    }
+
+    private fun isAltUnlockKeyCode(keyCode: Int): Boolean {
+        return isAnyAltKeyCode(keyCode) ||
+                keyCode == KeyEvent.KEYCODE_SPACE ||
+                keyCode == KeyEvent.KEYCODE_ENTER
+    }
+
+    private fun withLatchedAlt(event: KeyEvent): KeyEvent {
+        if (!altLatched || isAnyAltKeyCode(event.keyCode)) return event
+        val meta = event.metaState or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
+        return KeyEvent(
+            event.downTime,
+            event.eventTime,
+            event.action,
+            event.keyCode,
+            event.repeatCount,
+            meta,
+            event.deviceId,
+            event.scanCode,
+            event.flags,
+            event.source
+        )
+    }
+
     private fun forwardKeyEvent(event: KeyEvent): Boolean {
         // reason to use a self increment index rather than timestamp:
         // KeyUp and KeyDown events actually can happen on the same time
@@ -666,25 +701,57 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (event.repeatCount == 0 && isAltLatchKeyCode(keyCode)) {
+            val now = event.eventTime
+            if (altLatched) {
+                altLatched = false
+                lastAltTapEventTime = 0L
+                Timber.d("Alt latch disabled")
+                return true
+            }
+            if (lastAltTapEventTime > 0L && now - lastAltTapEventTime <= altDoubleTapTimeoutMs) {
+                altLatched = true
+                lastAltTapEventTime = 0L
+                Timber.d("Alt latch enabled")
+            } else {
+                lastAltTapEventTime = now
+            }
+            return true
+        }
+
+        if (event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
+            altLatched = false
+            lastAltTapEventTime = 0L
+            Timber.d("Alt latch disabled by keyCode=$keyCode")
+            // Alt key itself acts as a pure unlock action.
+            if (isAnyAltKeyCode(keyCode)) return true
+        }
+
+        val effectiveEvent = withLatchedAlt(event)
+
         // request to show floating CandidatesView when pressing physical keyboard
-        if (inputDeviceMgr.evaluateOnKeyDown(event, this)) {
+        if (inputDeviceMgr.evaluateOnKeyDown(effectiveEvent, this)) {
             postFcitxJob {
                 focus(true)
             }
             forceShowSelf()
         }
-        if (event.repeatCount == 0 && inputView?.handleHardwareCandidateShortcut(event) == true) {
+        if (event.repeatCount == 0 && inputView?.handleHardwareCandidateShortcut(effectiveEvent) == true) {
             consumedHardwareCandidateShortcutKeys.add(keyCode)
             return true
         }
-        return forwardKeyEvent(event) || super.onKeyDown(keyCode, event)
+        return forwardKeyEvent(effectiveEvent) || super.onKeyDown(keyCode, effectiveEvent)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (isAltLatchKeyCode(keyCode)) {
+            return true
+        }
         if (consumedHardwareCandidateShortcutKeys.remove(keyCode)) {
             return true
         }
-        return forwardKeyEvent(event) || super.onKeyUp(keyCode, event)
+        val effectiveEvent = withLatchedAlt(event)
+        return forwardKeyEvent(effectiveEvent) || super.onKeyUp(keyCode, effectiveEvent)
     }
 
     // Added in API level 14, deprecated in 29
@@ -1125,6 +1192,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onFinishInput() {
         Timber.d("onFinishInput: currentInputStarted=$currentInputStarted isInputViewShown=$isInputViewShown")
+        altLatched = false
+        lastAltTapEventTime = 0L
         postFcitxJob {
             focus(false)
         }
