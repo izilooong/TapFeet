@@ -77,6 +77,8 @@ class IdleUi(
 
     val keyboardToggleButton = ToolButton(ctx, R.drawable.ic_baseline_keyboard_24, theme)
 
+    val altLockButton = ToolButton(ctx, R.drawable.ic_alt_key_24, theme)
+
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
 
     val emptyBar = Space(ctx)
@@ -129,9 +131,13 @@ class IdleUi(
             before(hideKeyboardButton)
             centerVertically()
         })
+        add(altLockButton, lParams(size, size) {
+            before(keyboardToggleButton)
+            centerVertically()
+        })
         add(animator, lParams(matchConstraints, matchParent) {
             after(menuButton)
-            before(keyboardToggleButton)
+            before(altLockButton)
             centerVertically()
         })
     }
@@ -185,6 +191,17 @@ class IdleUi(
             hideKeyboardButton.contentDescription = ctx.getString(R.string.hide_keyboard)
         }
         hideKeyboardButton.setOnClickListener(callback)
+    }
+
+    fun updateAltLockButton(locked: Boolean) {
+        if (locked) {
+            altLockButton.visibility = View.VISIBLE
+            altLockButton.setIcon(R.drawable.ic_alt_key_lock_24)
+            altLockButton.contentDescription = ctx.getString(R.string.alt_lock_enabled)
+        } else {
+            altLockButton.visibility = View.GONE
+            altLockButton.contentDescription = ctx.getString(R.string.alt_lock_disabled)
+        }
     }
 
     private fun clearAnimation() {

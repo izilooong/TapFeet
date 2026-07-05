@@ -381,6 +381,10 @@ class InputView(
         broadcaster.onSelectionUpdate(start, end)
     }
 
+    fun onAltLatchChanged(locked: Boolean) {
+        kawaiiBar.onAltLatchChanged(locked)
+    }
+
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
 

@@ -152,6 +152,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         setInputView(newInputView)
         inputDeviceMgr.setInputView(newInputView)
         inputView = newInputView
+        newInputView.onAltLatchChanged(altLatched)
         return newInputView
     }
 
@@ -651,6 +652,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var lastAltTapEventTime = 0L
     private val altDoubleTapTimeoutMs = 300L
 
+    fun isAltLatched(): Boolean = altLatched
+
+    fun toggleAltLatch() {
+        setAltLatched(!altLatched)
+    }
+
+    private fun setAltLatched(locked: Boolean) {
+        if (altLatched == locked) return
+        altLatched = locked
+        inputView?.onAltLatchChanged(locked)
+    }
+
     private fun isAnyAltKeyCode(keyCode: Int): Boolean {
         return keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT
     }
@@ -704,13 +717,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (event.repeatCount == 0 && isAltLatchKeyCode(keyCode)) {
             val now = event.eventTime
             if (altLatched) {
-                altLatched = false
+                setAltLatched(false)
                 lastAltTapEventTime = 0L
                 Timber.d("Alt latch disabled")
                 return true
             }
             if (lastAltTapEventTime > 0L && now - lastAltTapEventTime <= altDoubleTapTimeoutMs) {
-                altLatched = true
+                setAltLatched(true)
                 lastAltTapEventTime = 0L
                 Timber.d("Alt latch enabled")
             } else {
@@ -720,7 +733,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
 
         if (event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
-            altLatched = false
+            setAltLatched(false)
             lastAltTapEventTime = 0L
             Timber.d("Alt latch disabled by keyCode=$keyCode")
             // Alt key itself acts as a pure unlock action.
@@ -1192,7 +1205,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onFinishInput() {
         Timber.d("onFinishInput: currentInputStarted=$currentInputStarted isInputViewShown=$isInputViewShown")
-        altLatched = false
+        setAltLatched(false)
         lastAltTapEventTime = 0L
         postFcitxJob {
             focus(false)

@@ -318,4 +318,6 @@
     <string name="key_border_stroke">Enable stroke for key border</string>
     <string name="preferred_voice_input">Preferred voice input</string>
     <string name="edit_text_playground">EditText Playground</string>
+    <string name="alt_lock_enabled">Alt locked</string>
+    <string name="alt_lock_disabled">Alt unlocked</string>
 </resources>

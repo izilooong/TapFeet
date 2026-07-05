@@ -115,6 +115,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private var clipboardTimeoutJob: Job? = null
     private var expandButtonEnabledByState = false
     private var hideKeyboardOnNextKeyboardAttach = false
+    private var altLatched = false
 
     private var isClipboardFresh: Boolean = false
     private var isInlineSuggestionPresent: Boolean = false
@@ -222,6 +223,11 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             contentDescription = description
         }
         updateExpandButtonVisibility()
+    }
+
+    fun onAltLatchChanged(latched: Boolean) {
+        altLatched = latched
+        idleUi.updateAltLockButton(latched)
     }
 
     private val hideKeyboardCallback = View.OnClickListener {
@@ -333,6 +339,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             keyboardToggleButton.setOnClickListener {
                 windowManager.setKeyboardWindowVisible(!windowManager.isKeyboardWindowVisible())
                 updateKeyboardToggleButton()
+            }
+            altLockButton.setOnClickListener {
+                service.toggleAltLatch()
             }
             buttonsUi.apply {
                 undoButton.setOnClickListener {
@@ -528,6 +537,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             if (shouldShowVoiceInput) switchToVoiceInputCallback else hideKeyboardCallback
         )
         updateKeyboardToggleButton()
+        idleUi.updateAltLockButton(service.isAltLatched())
         evalIdleUiState()
     }
 
