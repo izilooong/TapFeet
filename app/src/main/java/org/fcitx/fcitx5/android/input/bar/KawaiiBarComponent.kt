@@ -114,6 +114,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     private var clipboardTimeoutJob: Job? = null
     private var expandButtonEnabledByState = false
+    private var hideKeyboardOnNextKeyboardAttach = false
 
     private var isClipboardFresh: Boolean = false
     private var isInlineSuggestionPresent: Boolean = false
@@ -341,12 +342,15 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                     service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl = true, shift = true)
                 }
                 cursorMoveButton.setOnClickListener {
+                    windowManager.setKeyboardWindowVisible(true)                
                     windowManager.attachWindow(TextEditingWindow())
                 }
                 clipboardButton.setOnClickListener {
+                    windowManager.setKeyboardWindowVisible(true) 
                     windowManager.attachWindow(ClipboardWindow())
                 }
                 moreButton.setOnClickListener {
+                    windowManager.setKeyboardWindowVisible(true) 
                     windowManager.attachWindow(StatusAreaWindow())
                 }
             }
@@ -538,6 +542,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) = Unit
 
     override fun onWindowAttached(window: InputWindow) {
+        if (hideKeyboardOnNextKeyboardAttach && window is KeyboardWindow) {
+            hideKeyboardOnNextKeyboardAttach = false
+            windowManager.setKeyboardWindowVisible(false)
+        }
         when (window) {
             is InputWindow.ExtendedInputWindow<*> -> {
                 titleUi.setTitle(window.title)
@@ -552,6 +560,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     }
 
     override fun onWindowDetached(window: InputWindow) {
+        if (window is ClipboardWindow || window is TextEditingWindow || window is StatusAreaWindow) {
+            hideKeyboardOnNextKeyboardAttach = true
+        }
         barStateMachine.push(WindowDetached)
     }
 
