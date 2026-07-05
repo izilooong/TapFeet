@@ -384,6 +384,13 @@ class InputView(
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
+        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isAltPressed) {
+            service.postFcitxJob {
+                toggleIme()
+            }
+            return true
+        }
+
         if (handleHardwareSymToggle(event)) return true
 
         if (!kawaiiBar.isCandidateUiShowing()) return false
