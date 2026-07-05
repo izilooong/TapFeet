@@ -35,6 +35,7 @@ import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateC
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.HiddenKeyboardWindow
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
+import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
 import org.fcitx.fcitx5.android.input.picker.symbolPicker
@@ -382,6 +383,9 @@ class InputView(
 
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
+
+        if (handleHardwareSymToggle(event)) return true
+
         if (!kawaiiBar.isCandidateUiShowing()) return false
 
         if (handleHardwareCandidatePaging(event)) return true
@@ -405,6 +409,30 @@ class InputView(
             } ?: return@postFcitxJob
             service.finishComposing()
             service.commitText(candidate.text)
+        }
+        return true
+    }
+
+    private fun handleHardwareSymToggle(event: KeyEvent): Boolean {
+        val isSymToggleKey = when (event.keyCode) {
+            KeyEvent.KEYCODE_SYM,
+            KeyEvent.KEYCODE_PICTSYMBOLS,
+            KeyEvent.KEYCODE_ALT_RIGHT -> true
+            else -> false
+        }
+        if (!isSymToggleKey) return false
+
+        // Candidate total can be stale from previous sessions. Use visible UI state instead.
+        val noActiveInput = preeditEmptyState.isEmpty &&
+                (!kawaiiBar.isCandidateUiShowing() || horizontalCandidate.visibleCandidateCount() <= 0)
+        if (!noActiveInput) return false
+
+        if (windowManager.isKeyboardWindowVisible() && windowManager.isAttached(symbolPicker)) {
+            windowManager.setKeyboardWindowVisible(false)
+            windowManager.attachWindow(KeyboardWindow)
+        } else {
+            windowManager.setKeyboardWindowVisible(true)
+            windowManager.attachWindow(PickerWindow.Key.Symbol)
         }
         return true
     }
