@@ -13,7 +13,7 @@
 
 ## 📲 下载与安装
 
->  [下载]](https://github.com/izilooong/TapFeet/releases/tag/v1.0.1)
+>  [下载](https://github.com/izilooong/TapFeet/releases/tag/v1.0.1)
 
 ---
 
