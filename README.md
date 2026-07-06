@@ -160,14 +160,6 @@ shell
 ./gradlew installDebug
 若使用 Android Studio，请将项目 SDK 路径指向 $ANDROID_SDK_ROOT。如 Android Studio 自动生成了错误的 local.properties，请手动将 sdk.dir 修正为正确的 SDK 路径。
 
-# 🤝 参与贡献 / 社区
-Trello 看板：https://trello.com/b/gftk6ZdV/kanban
-
-Matrix 频道：https://matrix.to/#/#fcitx5-android:mozilla.org
-
-Telegram 讨论组：@fcitx5_android_group（原 @fcitx5_android）
-
-欢迎提交 Issue 或 Pull Request，尤其是针对 Q25 或其他全键盘设备的适配改进。
 
 # 📄 许可证
 本项目继承原项目的 LGPL-2.1 许可证，详见根目录下的 LICENSE 文件。
