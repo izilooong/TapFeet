@@ -714,20 +714,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (event.repeatCount == 0 && isAltLatchKeyCode(keyCode)) {
-            val now = event.eventTime
-            if (altLatched) {
-                setAltLatched(false)
-                lastAltTapEventTime = 0L
-                Timber.d("Alt latch disabled")
-                return true
-            }
-            if (lastAltTapEventTime > 0L && now - lastAltTapEventTime <= altDoubleTapTimeoutMs) {
-                setAltLatched(true)
-                lastAltTapEventTime = 0L
-                Timber.d("Alt latch enabled")
-            } else {
-                lastAltTapEventTime = now
+        if (isAltLatchKeyCode(keyCode)) {
+            if (event.repeatCount == 0) {
+                val now = event.eventTime
+                if (altLatched) {
+                    setAltLatched(false)
+                    lastAltTapEventTime = 0L
+                    Timber.d("Alt latch disabled")
+                } else if (lastAltTapEventTime > 0L && now - lastAltTapEventTime <= altDoubleTapTimeoutMs) {
+                    setAltLatched(true)
+                    lastAltTapEventTime = 0L
+                    Timber.d("Alt latch enabled")
+                } else {
+                    lastAltTapEventTime = now
+                }
             }
             return true
         }
