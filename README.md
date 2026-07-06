@@ -1,4 +1,5 @@
-<img width="280" height="280" alt="圆角-ic_launcher" src="https://github.com/user-attachments/assets/0399b428-ec30-46f2-b05e-230fe4901076" />
+
+<img width="280" height="280" alt="快乐的大脚" src="https://github.com/user-attachments/assets/0af62fcc-6b11-4ec5-ae36-88fee7eb495b" />
 
 # TapFeet IME · 大脚输入法
 
@@ -12,7 +13,7 @@
 
 ## 📲 下载与安装
 
->   [下载](https://github.com/izilooong/fcitx5-Q25/releases/tag/pre-release)
+>  [下载]](https://github.com/izilooong/TapFeet/releases/tag/v1.0.1)
 
 ---
 
