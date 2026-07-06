@@ -9,6 +9,7 @@ import androidx.annotation.StringRes
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
+import androidx.preference.PreferenceCategory
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.ui.main.modified.MySwitchPreference
 import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
@@ -152,6 +153,17 @@ abstract class ManagedPreferenceUi<T : Preference>(
             max = this@SeekBarInt.max
             unit = this@SeekBarInt.unit
             step = this@SeekBarInt.step
+        }
+    }
+
+    class Category(
+        @StringRes
+        val title: Int
+    ) : ManagedPreferenceUi<PreferenceCategory>("category_$title", null) {
+        override fun createUi(context: Context) = PreferenceCategory(context).apply {
+            setTitle(this@Category.title)
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
         }
     }
 

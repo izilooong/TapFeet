@@ -26,6 +26,7 @@ import org.fcitx.fcitx5.android.ui.main.PluginFragment
 import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonListFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.AdvancedSettingsFragment
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidateBarSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidatesSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.ClipboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.KeyboardSettingsFragment
@@ -73,6 +74,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object CandidatesWindow : SettingsRoute()
+
+    @Serializable
+    data object CandidateBar : SettingsRoute()
 
     @Serializable
     data object Clipboard : SettingsRoute()
@@ -212,6 +216,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<CandidatesSettingsFragment, CandidatesWindow> {
                 label = ctx.getString(R.string.candidates_window)
+            }
+            fragment<CandidateBarSettingsFragment, CandidateBar> {
+                label = ctx.getString(R.string.candidate_bar_options)
             }
             fragment<ClipboardSettingsFragment, Clipboard> {
                 label = ctx.getString(R.string.clipboard)

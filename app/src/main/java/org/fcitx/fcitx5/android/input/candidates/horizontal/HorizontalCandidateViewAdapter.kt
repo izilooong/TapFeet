@@ -11,6 +11,7 @@ import androidx.annotation.CallSuper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
 import org.fcitx.fcitx5.android.core.CandidateWord
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.candidates.CandidateItemUi
 import org.fcitx.fcitx5.android.input.candidates.CandidateViewHolder
@@ -76,7 +77,11 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
     override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
         val originalIndex = displayOrder[position]
         val isActive = originalIndex == 0
-        holder.update(selectionOrder[position], candidates[originalIndex], displayNumbers[position], isActive)
+        val prefs = AppPrefs.getInstance().candidateBar
+        val showIndex = prefs.showCandidateIndex.getValue()
+        val indexFontSize = prefs.candidateIndexFontSize.getValue()
+        val textFontSize = prefs.candidateTextFontSize.getValue()
+        holder.update(selectionOrder[position], candidates[originalIndex], displayNumbers[position], isActive, showIndex, indexFontSize, textFontSize)
     }
 
     @CallSuper

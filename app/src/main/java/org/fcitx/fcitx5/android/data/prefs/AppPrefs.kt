@@ -323,6 +323,35 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             itemPaddingVertical = primary
             itemPaddingHorizontal = secondary
         }
+
+    }
+
+    inner class CandidateBar :
+        ManagedPreferenceCategory(R.string.candidate_bar_options, sharedPreferences) {
+
+        val showCandidateIndex = switch(
+            R.string.show_candidate_index,
+            "show_candidate_index",
+            true
+        )
+
+        val candidateIndexFontSize = int(
+            R.string.candidate_index_font_size,
+            "candidate_index_font_size",
+            10,
+            6,
+            16,
+            "sp"
+        ) { showCandidateIndex.getValue() }
+
+        val candidateTextFontSize = int(
+            R.string.candidate_text_font_size,
+            "candidate_text_font_size",
+            20,
+            10,
+            32,
+            "sp"
+        )
     }
 
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {
@@ -382,6 +411,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     val internal = Internal().register()
     val keyboard = Keyboard().register()
     val candidates = Candidates().register()
+    val candidateBar = CandidateBar().register()
     val clipboard = Clipboard().register()
     val symbols = Symbols().register()
     val advanced = Advanced().register()
@@ -412,6 +442,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             listOf(
                 keyboard,
                 candidates,
+                candidateBar,
                 clipboard
             ).forEach { category ->
                 category.managedPreferences.forEach {

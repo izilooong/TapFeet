@@ -76,6 +76,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     SettingsRoute.CandidatesWindow
                 )
                 addDestinationPreference(
+                    R.string.candidate_bar_options,
+                    R.drawable.ic_baseline_list_alt_24,
+                    SettingsRoute.CandidateBar
+                )
+                addDestinationPreference(
                     R.string.clipboard,
                     R.drawable.ic_clipboard,
                     SettingsRoute.Clipboard

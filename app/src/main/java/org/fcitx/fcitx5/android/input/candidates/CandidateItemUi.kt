@@ -80,9 +80,11 @@ class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
         })
     }
 
-    fun updateCandidate(candidate: CandidateWord, indexLabel: String = "", isActive: Boolean = false) {
-        index.text = if (indexLabel.isNotBlank()) "$indexLabel " else ""
+    fun updateCandidate(candidate: CandidateWord, indexLabel: String = "", isActive: Boolean = false, showIndex: Boolean = true, indexFontSize: Int = 10, textFontSize: Int = 20) {
+        index.text = if (showIndex && indexLabel.isNotBlank()) "$indexLabel " else ""
+        index.setTextSize(TypedValue.COMPLEX_UNIT_SP, indexFontSize.toFloat())
         text.text = candidate.textWithComment()
+        text.setTextSize(TypedValue.COMPLEX_UNIT_SP, textFontSize.toFloat())
         if (isActive) {
             text.setTypeface(Typeface.DEFAULT_BOLD)
             root.background = activeBackground
