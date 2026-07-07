@@ -27,6 +27,8 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
+import org.fcitx.fcitx5.android.input.keyboard.KeyAction
+import org.fcitx.fcitx5.android.input.keyboard.KeyActionListener
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcaster
 import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
 import org.fcitx.fcitx5.android.input.broadcast.PunctuationComponent
@@ -389,9 +391,7 @@ class InputView(
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
         if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isAltPressed) {
-            service.postFcitxJob {
-                toggleIme()
-            }
+            commonKeyActionListener.listener.onKeyAction(KeyAction.ShowInputMethodPickerAction, KeyActionListener.Source.Keyboard)
             return true
         }
 
