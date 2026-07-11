@@ -95,4 +95,8 @@ class InputBroadcaster : UniqueComponent<InputBroadcaster>(), Dependent, InputBr
         receivers.forEach { it.onReturnKeyDrawableUpdate(resourceId) }
     }
 
+    override fun onCommitText(text: String) {
+        receivers.forEach { it.onCommitText(text) }
+    }
+
 }

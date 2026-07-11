@@ -97,8 +97,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private lateinit var pkgNameCache: PackageNameCache
 
-    private lateinit var decorView: View
-    private lateinit var contentView: FrameLayout
+    lateinit var decorView: View
+        private set
+    lateinit var contentView: FrameLayout
+        private set
     private var inputView: InputView? = null
     private var candidatesView: CandidatesView? = null
 
@@ -426,7 +428,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     fun commitText(text: String, cursor: Int = -1) {
         val ic = currentInputConnection ?: return
-        // when composing text equals commit content, finish composing text as-is
+        inputView?.onCommitText(text)
         if (composing.isNotEmpty() && composingText.toString() == text) {
             val c = if (cursor == -1) text.length else cursor
             val target = composing.start + c
@@ -440,8 +442,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             return
         }
-        // committed text should replace composing (if any), replace selected range (if any),
-        // or simply prepend before cursor
         val start = if (composing.isEmpty()) selection.latest.start else composing.start
         resetComposingState()
         if (cursor == -1) {

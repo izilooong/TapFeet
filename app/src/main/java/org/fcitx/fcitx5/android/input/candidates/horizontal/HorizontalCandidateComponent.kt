@@ -5,9 +5,13 @@
 
 package org.fcitx.fcitx5.android.input.candidates.horizontal
 
+import android.animation.ObjectAnimator
 import android.content.res.Configuration
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
@@ -32,6 +36,8 @@ import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateM
 import org.fcitx.fcitx5.android.input.dependency.UniqueViewComponent
 import org.fcitx.fcitx5.android.input.dependency.context
 import org.fcitx.fcitx5.android.input.dependency.fcitx
+import org.fcitx.fcitx5.android.input.FcitxInputMethodService
+import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.inputView
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.mechdancer.dependency.manager.must
@@ -47,6 +53,26 @@ class HorizontalCandidateComponent :
     private val theme by manager.theme()
     private val inputView by manager.inputView()
     private val bar: KawaiiBarComponent by manager.must()
+    private val service: FcitxInputMethodService by manager.inputMethodService()
+
+    private var pendingFlyText: String? = null
+    private var pendingFlyX = 0f
+    private var pendingFlyY = 0f
+
+    fun prepareFlyAnimation(text: String, sourceView: View) {
+        pendingFlyText = text
+        val loc = intArrayOf(0, 0)
+        sourceView.getLocationOnScreen(loc)
+        pendingFlyX = loc[0].toFloat() + sourceView.width / 2f
+        pendingFlyY = loc[1].toFloat() + sourceView.height / 2f
+    }
+
+    fun prepareFlyAnimationForLocalNumber(number: Int) {
+        val candidate = candidateForLocalNumber(number) ?: return
+        val position = adapter.selectionIndexForDisplayNumber(number) ?: return
+        val viewHolder = view.findViewHolderForAdapterPosition(position) as? CandidateViewHolder ?: return
+        prepareFlyAnimation(candidate.text, viewHolder.ui.text)
+    }
 
     private val fillStyle by AppPrefs.getInstance().keyboard.horizontalCandidateStyle
     private val maxSpanCountPref by lazy {
@@ -230,6 +256,7 @@ class HorizontalCandidateComponent :
                     flexGrow = layoutFlexGrow
                 }
                 holder.itemView.setOnClickListener {
+                    prepareFlyAnimation(holder.candidate.text, holder.ui.text)
                     fcitx.launchOnReady { it.select(holder.idx) }
                 }
                 holder.itemView.setOnLongClickListener {
@@ -361,5 +388,56 @@ class HorizontalCandidateComponent :
         if (data.candidates.isEmpty()) {
             refreshExpanded(0)
         }
+    }
+
+    override fun onCommitText(text: String) {
+        val flyText = pendingFlyText ?: return
+        if (flyText != text) return
+        showCandidateFlyAnimation(pendingFlyX, pendingFlyY, text)
+        pendingFlyText = null
+    }
+
+    private fun showCandidateFlyAnimation(startX: Float, startY: Float, text: String) {
+        val flyView = TextView(context).apply {
+            this.text = text
+            textSize = 20f
+            setTextColor(theme.candidateTextColor)
+            isSingleLine = true
+            alpha = 0f
+            elevation = 1000f
+        }
+
+        val parentView = service.contentView as ViewGroup
+        parentView.addView(flyView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        flyView.post {
+            val parentLoc = intArrayOf(0, 0)
+            parentView.getLocationOnScreen(parentLoc)
+
+            val localStartX = startX - parentLoc[0]
+            val localStartY = startY - parentLoc[1]
+
+            flyView.x = localStartX - flyView.width / 2f
+            flyView.y = localStartY - flyView.height / 2f
+
+            flyView.alpha = 1f
+
+            val targetY = 300f - parentLoc[1]
+            val flyDistance = startY - 300f
+
+            ObjectAnimator.ofFloat(flyView, View.TRANSLATION_Y, flyView.translationY, flyView.translationY - flyDistance).apply {
+                duration = 600
+                start()
+            }
+
+            ObjectAnimator.ofFloat(flyView, View.ALPHA, 1f, 0f).apply {
+                duration = 600
+                start()
+            }
+        }
+
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            parentView.removeView(flyView)
+        }, 700)
     }
 }

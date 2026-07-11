@@ -37,7 +37,7 @@ class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
         gravity = gravityCenter
     }
 
-    private val text = view(::AutoScaleTextView) {
+    val text = view(::AutoScaleTextView) {
         scaleMode = AutoScaleTextView.Mode.Proportional
         textSize = 20f // sp
         isSingleLine = true

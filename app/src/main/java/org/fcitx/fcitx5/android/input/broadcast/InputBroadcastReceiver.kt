@@ -46,4 +46,6 @@ interface InputBroadcastReceiver {
 
     fun onReturnKeyDrawableUpdate(@DrawableRes resourceId: Int) {}
 
+    fun onCommitText(text: String) {}
+
 }

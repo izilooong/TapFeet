@@ -33,6 +33,7 @@ import org.fcitx.fcitx5.android.input.broadcast.InputBroadcaster
 import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
 import org.fcitx.fcitx5.android.input.broadcast.PunctuationComponent
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
+import org.fcitx.fcitx5.android.input.candidates.CandidateViewHolder
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateComponent
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.HiddenKeyboardWindow
@@ -383,6 +384,10 @@ class InputView(
         broadcaster.onSelectionUpdate(start, end)
     }
 
+    fun onCommitText(text: String) {
+        broadcaster.onCommitText(text)
+    }
+
     fun onAltLatchChanged(locked: Boolean) {
         kawaiiBar.onAltLatchChanged(locked)
     }
@@ -404,6 +409,24 @@ class InputView(
         val count = horizontalCandidate.visibleCandidateCount()
         if (count <= 0) return false
 
+        // Space key: handle like other diamond keys (capture position, select via postFcitxJob)
+        if (event.keyCode == KeyEvent.KEYCODE_SPACE && !event.isAltPressed) {
+            val targetPos = (count - 1) / 2  // active candidate position
+            val activeIndex = horizontalCandidate.selectionIndexAtVisiblePosition(targetPos) ?: return false
+            val vh = horizontalCandidate.view.findViewHolderForAdapterPosition(targetPos) as? CandidateViewHolder
+            vh?.let {
+                horizontalCandidate.prepareFlyAnimation(it.candidate.text, it.ui.text)
+            }
+            service.postFcitxJob {
+                setCandidatePagingMode(horizontalCandidate.currentCandidatePagingMode())
+                if (select(activeIndex)) return@postFcitxJob
+                val candidate = horizontalCandidate.candidateAtVisiblePosition(targetPos) ?: return@postFcitxJob
+                service.finishComposing()
+                service.commitText(candidate.text)
+            }
+            return true
+        }
+
         val target = shortcutTargetForKeyCode(event.keyCode, count) ?: return false
 
         val index = when (target) {
@@ -411,13 +434,26 @@ class InputView(
             is HardwareCandidateTarget.ByVisiblePosition -> horizontalCandidate.selectionIndexAtVisiblePosition(target.position)
         } ?: return false
 
+        // Capture position on UI thread before fcitx operation
+        val displayIndexForAnimation = when (target) {
+            is HardwareCandidateTarget.ByNumber -> horizontalCandidate.adapter.selectionIndexForDisplayNumber(target.number)
+            is HardwareCandidateTarget.ByVisiblePosition -> target.position
+        }
+        if (displayIndexForAnimation != null) {
+            val vh = horizontalCandidate.view.findViewHolderForAdapterPosition(displayIndexForAnimation) as? CandidateViewHolder
+            vh?.let {
+                horizontalCandidate.prepareFlyAnimation(it.candidate.text, it.ui.text)
+            }
+        }
+
         service.postFcitxJob {
             setCandidatePagingMode(horizontalCandidate.currentCandidatePagingMode())
-            if (select(index)) return@postFcitxJob
             val candidate = when (target) {
                 is HardwareCandidateTarget.ByNumber -> horizontalCandidate.candidateForLocalNumber(target.number)
                 is HardwareCandidateTarget.ByVisiblePosition -> horizontalCandidate.candidateAtVisiblePosition(target.position)
-            } ?: return@postFcitxJob
+            }
+            if (select(index)) return@postFcitxJob
+            if (candidate == null) return@postFcitxJob
             service.finishComposing()
             service.commitText(candidate.text)
         }
