@@ -31,12 +31,14 @@ import org.fcitx.fcitx5.android.core.CapabilityFlag
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent.CandidateListEvent
 import org.fcitx.fcitx5.android.core.FcitxEvent.PagedCandidateEvent
+import org.fcitx.fcitx5.android.core.InputMethodEntry
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.clipboard.ClipboardManager
 import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.input.StatusIconMapping
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.State.ClickToAttachWindow
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.State.ClickToDetachWindow
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.State.Hidden
@@ -71,6 +73,7 @@ import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
 import org.fcitx.fcitx5.android.utils.AppUtil
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
+
 import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.manager.must
 import splitties.bitflags.hasFlag
@@ -343,6 +346,11 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             altLockButton.setOnClickListener {
                 service.toggleAltLatch()
             }
+            inputMethodButton.setOnClickListener {
+                fcitx.launchOnReady {
+                    it.enumerateIme()
+                }
+            }
             buttonsUi.apply {
                 undoButton.setOnClickListener {
                     service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl = true)
@@ -538,7 +546,19 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         )
         updateKeyboardToggleButton()
         idleUi.updateAltLockButton(service.isAltLatched())
+        fcitx.launchOnReady {
+            updateInputMethodIcon(it.inputMethodEntryCached)
+        }
         evalIdleUiState()
+    }
+
+    override fun onImeUpdate(ime: InputMethodEntry) {
+        updateInputMethodIcon(ime)
+    }
+
+    private fun updateInputMethodIcon(ime: InputMethodEntry) {
+        idleUi.inputMethodButton.setIcon(StatusIconMapping.fromEntry(ime))
+        idleUi.inputMethodButton.contentDescription = ime.name
     }
 
     override fun onPreeditEmptyStateUpdate(empty: Boolean) {

@@ -77,6 +77,8 @@ class IdleUi(
 
     val keyboardToggleButton = ToolButton(ctx, R.drawable.ic_baseline_keyboard_24, theme)
 
+    val inputMethodButton = ToolButton(ctx, R.drawable.ic_status_pinyin, theme)
+
     val altLockButton = ToolButton(ctx, R.drawable.ic_alt_key_24, theme)
 
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
@@ -131,8 +133,12 @@ class IdleUi(
             before(hideKeyboardButton)
             centerVertically()
         })
-        add(altLockButton, lParams(size, size) {
+        add(inputMethodButton, lParams(size, size) {
             before(keyboardToggleButton)
+            centerVertically()
+        })
+        add(altLockButton, lParams(size, size) {
+            before(inputMethodButton)
             centerVertically()
         })
         add(animator, lParams(matchConstraints, matchParent) {
