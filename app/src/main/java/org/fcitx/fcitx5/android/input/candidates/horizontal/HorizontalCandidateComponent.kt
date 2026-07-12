@@ -16,6 +16,8 @@ import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
 import com.google.android.flexbox.JustifyContent
+import kotlin.math.max
+import kotlin.math.min
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -24,6 +26,7 @@ import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxEvent.PagedCandidateEvent
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.BooleanKey.ExpandedCandidatesEmpty
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.TransitionEvent.ExpandedCandidatesUpdated
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
@@ -36,17 +39,14 @@ import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateM
 import org.fcitx.fcitx5.android.input.dependency.UniqueViewComponent
 import org.fcitx.fcitx5.android.input.dependency.context
 import org.fcitx.fcitx5.android.input.dependency.fcitx
-import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.inputView
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.mechdancer.dependency.manager.must
 import splitties.dimensions.dp
-import kotlin.math.max
-import kotlin.math.min
 
 class HorizontalCandidateComponent :
-    UniqueViewComponent<HorizontalCandidateComponent, RecyclerView>(), InputBroadcastReceiver {
+        UniqueViewComponent<HorizontalCandidateComponent, RecyclerView>(), InputBroadcastReceiver {
 
     private val context by manager.context()
     private val fcitx by manager.fcitx()
@@ -70,7 +70,8 @@ class HorizontalCandidateComponent :
     fun prepareFlyAnimationForLocalNumber(number: Int) {
         val candidate = candidateForLocalNumber(number) ?: return
         val position = adapter.selectionIndexForDisplayNumber(number) ?: return
-        val viewHolder = view.findViewHolderForAdapterPosition(position) as? CandidateViewHolder ?: return
+        val viewHolder =
+                view.findViewHolderForAdapterPosition(position) as? CandidateViewHolder ?: return
         prepareFlyAnimation(candidate.text, viewHolder.ui.text)
     }
 
@@ -78,9 +79,8 @@ class HorizontalCandidateComponent :
     private val maxSpanCountPref by lazy {
         AppPrefs.getInstance().keyboard.run {
             if (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT)
-                expandedCandidateGridSpanCount
-            else
-                expandedCandidateGridSpanCountLandscape
+                    expandedCandidateGridSpanCount
+            else expandedCandidateGridSpanCountLandscape
         }
     }
 
@@ -97,20 +97,17 @@ class HorizontalCandidateComponent :
     private var pagingStateListener: ((Boolean, Boolean) -> Unit)? = null
 
     /**
-     * (for [HorizontalCandidateMode.AutoFillWidth] only)
-     * Second layout pass is needed when:
-     * [^1] total candidates count < maxSpanCount && [^2] RecyclerView cannot display all of them
-     * In that case, displayed candidates should be stretched evenly (by setting flexGrow to 1.0f).
+     * (for [HorizontalCandidateMode.AutoFillWidth] only) Second layout pass is needed when: [^1]
+     * total candidates count < maxSpanCount && [^2] RecyclerView cannot display all of them In that
+     * case, displayed candidates should be stretched evenly (by setting flexGrow to 1.0f).
      */
     private var secondLayoutPassNeeded = false
     private var secondLayoutPassDone = false
 
     // Since expanded candidate window is created once the expand button was clicked,
     // we need to replay the last offset
-    private val _expandedCandidateOffset = MutableSharedFlow<Int>(
-        replay = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    private val _expandedCandidateOffset =
+            MutableSharedFlow<Int>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     val expandedCandidateOffset = _expandedCandidateOffset.asSharedFlow()
 
@@ -136,7 +133,8 @@ class HorizontalCandidateComponent :
             }
         } else if (delta > 0) {
             if (hasLocalNext()) {
-                localPageStart = min(localPageStart + effectiveLocalPageSize(), lastLocalPageStart())
+                localPageStart =
+                        min(localPageStart + effectiveLocalPageSize(), lastLocalPageStart())
                 localPageSize = preferredLocalPageSize(localPageStart)
                 renderCurrentPage()
             } else if (remoteHasNext) {
@@ -199,7 +197,8 @@ class HorizontalCandidateComponent :
     private fun hasLocalPrev(): Boolean = localPageStart > 0
 
     private fun hasLocalNext(): Boolean {
-        return pageCandidates.isNotEmpty() && localPageStart + effectiveLocalPageSize() < pageCandidates.size
+        return pageCandidates.isNotEmpty() &&
+                localPageStart + effectiveLocalPageSize() < pageCandidates.size
     }
 
     private fun hasPrevPage(): Boolean = hasLocalPrev() || remoteHasPrev
@@ -214,7 +213,9 @@ class HorizontalCandidateComponent :
         val pageSize = effectiveLocalPageSize()
         localPageStart = localPageStart.coerceIn(0, lastLocalPageStart())
         val end = min(localPageStart + pageSize, pageCandidates.size)
-        val slice = if (pageCandidates.isEmpty()) emptyArray() else pageCandidates.copyOfRange(localPageStart, end)
+        val slice =
+                if (pageCandidates.isEmpty()) emptyArray()
+                else pageCandidates.copyOfRange(localPageStart, end)
         adapter.updateCandidates(slice, sourceTotal, localPageStart)
         updatePagingState()
         if (slice.isEmpty()) {
@@ -225,8 +226,8 @@ class HorizontalCandidateComponent :
     private fun refreshExpanded(childCount: Int) {
         _expandedCandidateOffset.tryEmit(childCount)
         bar.expandButtonStateMachine.push(
-            ExpandedCandidatesUpdated,
-            ExpandedCandidatesEmpty to (adapter.total == childCount)
+                ExpandedCandidatesUpdated,
+                ExpandedCandidatesEmpty to (adapter.total == childCount)
         )
         if (childCount in 2 until pageCandidates.size && childCount != localPageSize) {
             scheduleLocalPageResize(childCount)
@@ -260,7 +261,11 @@ class HorizontalCandidateComponent :
                     fcitx.launchOnReady { it.select(holder.idx) }
                 }
                 holder.itemView.setOnLongClickListener {
-                    inputView.showCandidateActionMenu(holder.idx, holder.candidate.text, holder.ui.root)
+                    inputView.showCandidateActionMenu(
+                            holder.idx,
+                            holder.candidate.text,
+                            holder.ui.root
+                    )
                     true
                 }
             }
@@ -275,34 +280,35 @@ class HorizontalCandidateComponent :
 
     val layoutManager: FlexboxLayoutManager by lazy {
         object : FlexboxLayoutManager(context) {
-            override fun canScrollVertically() = false
-            override fun canScrollHorizontally() = false
-            override fun onLayoutCompleted(state: RecyclerView.State) {
-                super.onLayoutCompleted(state)
-                val cnt = this.childCount
-                if (secondLayoutPassNeeded) {
-                    if (cnt < adapter.candidates.size) {
-                        // [^2] RecyclerView can't display all candidates
-                        // update LayoutParams in onLayoutCompleted would trigger another
-                        // onLayoutCompleted, skip the second one to avoid infinite loop
-                        if (secondLayoutPassDone) return
-                        secondLayoutPassDone = true
-                        for (i in 0 until cnt) {
-                            getChildAt(i)!!.updateLayoutParams<LayoutParams> {
-                                flexGrow = 1f
+                    override fun canScrollVertically() = false
+                    override fun canScrollHorizontally() = false
+                    override fun onLayoutCompleted(state: RecyclerView.State) {
+                        super.onLayoutCompleted(state)
+                        val cnt = this.childCount
+                        if (secondLayoutPassNeeded) {
+                            if (cnt < adapter.candidates.size) {
+                                // [^2] RecyclerView can't display all candidates
+                                // update LayoutParams in onLayoutCompleted would trigger another
+                                // onLayoutCompleted, skip the second one to avoid infinite loop
+                                if (secondLayoutPassDone) return
+                                secondLayoutPassDone = true
+                                for (i in 0 until cnt) {
+                                    getChildAt(i)!!.updateLayoutParams<LayoutParams> {
+                                        flexGrow = 1f
+                                    }
+                                }
+                            } else {
+                                secondLayoutPassNeeded = false
                             }
                         }
-                    } else {
-                        secondLayoutPassNeeded = false
+                        refreshExpanded(cnt)
                     }
+                    // no need to override `generate{,Default}LayoutParams`, because
+                    // HorizontalCandidateViewAdapter
+                    // guarantees ViewHolder's layoutParams to be
+                    // `FlexboxLayoutManager.LayoutParams`
                 }
-                refreshExpanded(cnt)
-            }
-            // no need to override `generate{,Default}LayoutParams`, because HorizontalCandidateViewAdapter
-            // guarantees ViewHolder's layoutParams to be `FlexboxLayoutManager.LayoutParams`
-        }.apply {
-            justifyContent = JustifyContent.CENTER
-        }
+                .apply { justifyContent = JustifyContent.CENTER }
     }
 
     private val dividerDrawable by lazy {
@@ -316,25 +322,26 @@ class HorizontalCandidateComponent :
 
     override val view by lazy {
         object : RecyclerView(context) {
-            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-                super.onSizeChanged(w, h, oldw, oldh)
-                if (fillStyle == AutoFillWidth) {
-                    val maxSpanCount = maxSpanCountPref.getValue()
-                    layoutMinWidth = w / maxSpanCount - dividerDrawable.intrinsicWidth
+                    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                        super.onSizeChanged(w, h, oldw, oldh)
+                        if (fillStyle == AutoFillWidth) {
+                            val maxSpanCount = maxSpanCountPref.getValue()
+                            layoutMinWidth = w / maxSpanCount - dividerDrawable.intrinsicWidth
+                        }
+                        if (w != oldw && oldw > 0) {
+                            pendingLocalPageSize = -1
+                            localPageSize = preferredLocalPageSize(localPageStart)
+                            renderCurrentPage()
+                        }
+                    }
                 }
-                if (w != oldw && oldw > 0) {
-                    pendingLocalPageSize = -1
-                    localPageSize = preferredLocalPageSize(localPageStart)
-                    renderCurrentPage()
+                .apply {
+                    id = R.id.candidate_view
+                    itemAnimator = null
+                    adapter = this@HorizontalCandidateComponent.adapter
+                    layoutManager = this@HorizontalCandidateComponent.layoutManager
+                    addItemDecoration(FlexboxVerticalDecoration(dividerDrawable))
                 }
-            }
-        }.apply {
-            id = R.id.candidate_view
-            itemAnimator = null
-            adapter = this@HorizontalCandidateComponent.adapter
-            layoutManager = this@HorizontalCandidateComponent.layoutManager
-            addItemDecoration(FlexboxVerticalDecoration(dividerDrawable))
-        }
     }
 
     override fun onCandidateUpdate(data: FcitxEvent.CandidateListEvent.Data) {
@@ -399,17 +406,24 @@ class HorizontalCandidateComponent :
     }
 
     private fun showCandidateFlyAnimation(startX: Float, startY: Float, text: String) {
-        val flyView = TextView(context).apply {
-            this.text = text
-            textSize = 20f
-            setTextColor(theme.candidateTextColor)
-            isSingleLine = true
-            alpha = 0f
-            elevation = 1000f
-        }
+        val flyView =
+                TextView(context).apply {
+                    this.text = text
+                    textSize = 20f
+                    setTextColor(theme.candidateTextColor)
+                    isSingleLine = true
+                    alpha = 0f
+                    elevation = 1000f
+                }
 
         val parentView = service.contentView as ViewGroup
-        parentView.addView(flyView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        parentView.addView(
+                flyView,
+                ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+        )
 
         flyView.post {
             val parentLoc = intArrayOf(0, 0)
@@ -426,19 +440,24 @@ class HorizontalCandidateComponent :
             val targetY = 300f - parentLoc[1]
             val flyDistance = startY - 300f
 
-            ObjectAnimator.ofFloat(flyView, View.TRANSLATION_Y, flyView.translationY, flyView.translationY - flyDistance).apply {
-                duration = 600
-                start()
-            }
+            ObjectAnimator.ofFloat(
+                            flyView,
+                            View.TRANSLATION_Y,
+                            flyView.translationY,
+                            flyView.translationY - flyDistance
+                    )
+                    .apply {
+                        duration = 600
+                        start()
+                    }
 
-            ObjectAnimator.ofFloat(flyView, View.ALPHA, 1f, 0f).apply {
+            ObjectAnimator.ofFloat(flyView, View.ALPHA, 1f, 1f, 1f, 1f, 0.8f, 0f).apply {
                 duration = 600
                 start()
             }
         }
 
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            parentView.removeView(flyView)
-        }, 700)
+        android.os.Handler(android.os.Looper.getMainLooper())
+                .postDelayed({ parentView.removeView(flyView) }, 700)
     }
 }
