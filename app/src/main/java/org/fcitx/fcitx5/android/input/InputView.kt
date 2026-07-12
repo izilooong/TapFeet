@@ -396,6 +396,12 @@ class InputView(
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
         if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isAltPressed) {
+            service.postFcitxJob {
+                toggleIme()
+            }
+             return true
+        }
+        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isShiftPressed) {
             commonKeyActionListener.listener.onKeyAction(KeyAction.ShowInputMethodPickerAction, KeyActionListener.Source.Keyboard)
             return true
         }
