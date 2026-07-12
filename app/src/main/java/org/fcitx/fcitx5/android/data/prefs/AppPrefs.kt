@@ -352,6 +352,13 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             32,
             "sp"
         )
+
+
+        val showCandidateFlyAnimation = switch(
+            R.string.show_candidate_fly_animation,
+            "show_candidate_fly_animation",
+            true
+        )
     }
 
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {

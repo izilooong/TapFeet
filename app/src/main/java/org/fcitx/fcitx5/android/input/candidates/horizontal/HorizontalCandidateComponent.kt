@@ -391,6 +391,7 @@ class HorizontalCandidateComponent :
     }
 
     override fun onCommitText(text: String) {
+        if (!AppPrefs.getInstance().candidateBar.showCandidateFlyAnimation.getValue()) return
         val flyText = pendingFlyText ?: return
         if (flyText != text) return
         showCandidateFlyAnimation(pendingFlyX, pendingFlyY, text)

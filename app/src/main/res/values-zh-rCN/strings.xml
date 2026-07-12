@@ -321,4 +321,5 @@
     <string name="hide_unsupported_emojis">隐藏不支持的表情</string>
     <string name="key_border_stroke">启用按键边框描边</string>
     <string name="preferred_voice_input">首选语音输入</string>
+    <string name="show_candidate_fly_animation">开启选字动画</string>
 </resources>

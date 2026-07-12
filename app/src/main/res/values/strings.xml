@@ -324,4 +324,5 @@
     <string name="edit_text_playground">EditText Playground</string>
     <string name="alt_lock_enabled">Alt locked</string>
     <string name="alt_lock_disabled">Alt unlocked</string>
+    <string name="show_candidate_fly_animation">Candidate selection animation</string>
 </resources>
