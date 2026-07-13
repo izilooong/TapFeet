@@ -27,6 +27,7 @@ import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonListFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.AdvancedSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidateBarSettingsFragment
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.InputMethodTestFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidatesSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.ClipboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.KeyboardSettingsFragment
@@ -89,6 +90,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object Advanced : SettingsRoute()
+
+    @Serializable
+    data object Lab : SettingsRoute()
 
     @Serializable
     data object Developer : SettingsRoute()
@@ -231,6 +235,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<AdvancedSettingsFragment, Advanced> {
                 label = ctx.getString(R.string.advanced)
+            }
+            fragment<InputMethodTestFragment, Lab> {
+                label = ctx.getString(R.string.lab)
             }
             fragment<DeveloperFragment, Developer> {
                 label = ctx.getString(R.string.developer)

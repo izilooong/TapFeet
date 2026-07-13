@@ -10,6 +10,17 @@
     <string name="global_options">Global Options</string>
     <string name="behavior">Behavior</string>
     <string name="advanced">Advanced</string>
+    <string name="lab">Lab</string>
+    <string name="test_input_hint">Press any key to test input method…</string>
+    <string name="key_code_format">KeyCode: %1$s = %2$d</string>
+    <string name="key_code_waiting">KeyCode: Waiting for input…</string>
+    <string name="modifiers_format">Modifiers: %1$s</string>
+    <string name="modifiers_none">Modifiers: None</string>
+    <string name="action_format">Action: %1$s</string>
+    <string name="action_waiting">Action: -</string>
+    <string name="char_format">Character: %1$s</string>
+    <string name="char_none">Character: -</string>
+    <string name="key_event_log">Key Event Log</string>
     <string name="ignore_sys_cursor">Ignore system cursor position</string>
     <string name="hide_key_config">Hide hotkey configurations</string>
     <string name="_not_available_">(Not Available)</string>

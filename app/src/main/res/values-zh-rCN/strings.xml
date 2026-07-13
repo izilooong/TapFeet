@@ -10,6 +10,17 @@
     <string name="global_options">全局选项</string>
     <string name="behavior">行为</string>
     <string name="advanced">高级</string>
+    <string name="lab">实验室</string>
+    <string name="test_input_hint">按下任意键测试输入法…</string>
+    <string name="key_code_format">按键码: %1$s = %2$d</string>
+    <string name="key_code_waiting">按键码: 等待输入…</string>
+    <string name="modifiers_format">修饰键: %1$s</string>
+    <string name="modifiers_none">修饰键: 无</string>
+    <string name="action_format">动作: %1$s</string>
+    <string name="action_waiting">动作: -</string>
+    <string name="char_format">字符: %1$s</string>
+    <string name="char_none">字符: -</string>
+    <string name="key_event_log">按键事件日志</string>
     <string name="ignore_sys_cursor">忽略系统光标位置</string>
     <string name="hide_key_config">隐藏快捷键配置</string>
     <string name="_not_available_">（不可用）</string>
