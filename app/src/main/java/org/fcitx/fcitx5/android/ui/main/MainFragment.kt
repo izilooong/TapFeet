@@ -101,6 +101,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     SettingsRoute.Advanced
                 )
                 addDestinationPreference(
+                    R.string.hardware_keyboard,
+                    R.drawable.ic_baseline_keyboard_24,
+                    SettingsRoute.HardwareKeyboard
+                )
+                addDestinationPreference(
                     R.string.lab,
                     R.drawable.ic_baseline_science_24,
                     SettingsRoute.Lab

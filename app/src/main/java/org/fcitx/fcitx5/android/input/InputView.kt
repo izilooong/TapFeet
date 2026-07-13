@@ -392,16 +392,47 @@ class InputView(
         kawaiiBar.onAltLatchChanged(locked)
     }
 
+    private fun decodeKey(combined: Int): Pair<Int, Int> {
+        val keyCode = combined and 0xFFFF
+        val metaState = (combined shr 16) and 0xFFFF
+        return Pair(keyCode, metaState)
+    }
+
+    private fun normalizeMetaState(metaState: Int): Int {
+        var normalized = 0
+        if (metaState and KeyEvent.META_ALT_ON != 0) normalized = normalized or KeyEvent.META_ALT_ON
+        if (metaState and KeyEvent.META_SHIFT_ON != 0) normalized = normalized or KeyEvent.META_SHIFT_ON
+        if (metaState and KeyEvent.META_CTRL_ON != 0) normalized = normalized or KeyEvent.META_CTRL_ON
+        if (metaState and KeyEvent.META_META_ON != 0) normalized = normalized or KeyEvent.META_META_ON
+        if (metaState and KeyEvent.META_SYM_ON != 0) normalized = normalized or KeyEvent.META_SYM_ON
+        if (metaState and KeyEvent.META_FUNCTION_ON != 0) normalized = normalized or KeyEvent.META_FUNCTION_ON
+        return normalized
+    }
+
+    private fun matchesKey(event: KeyEvent, combinedPref: Int): Boolean {
+        val (keyCode, metaState) = decodeKey(combinedPref)
+        if (event.keyCode != keyCode) return false
+        val eventMeta = normalizeMetaState(event.metaState)
+        val targetMeta = normalizeMetaState(metaState)
+        return eventMeta == targetMeta
+    }
+
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
-        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isAltPressed) {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val candidate1Combined = hw.candidate1Key.getValue()
+       
+
+        // Alt+Space to toggle IME (fixed shortcut, not affected by candidate1 key config)
+        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isAltPressed && !event.isShiftPressed && !event.isCtrlPressed) {
             service.postFcitxJob {
                 toggleIme()
             }
              return true
         }
-        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isShiftPressed) {
+        // Shift+Space to show input method picker (fixed shortcut)
+        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isShiftPressed && !event.isAltPressed && !event.isCtrlPressed) {
             commonKeyActionListener.listener.onKeyAction(KeyAction.ShowInputMethodPickerAction, KeyActionListener.Source.Keyboard)
             return true
         }
@@ -415,8 +446,7 @@ class InputView(
         val count = horizontalCandidate.visibleCandidateCount()
         if (count <= 0) return false
 
-        // Space key: handle like other diamond keys (capture position, select via postFcitxJob)
-        if (event.keyCode == KeyEvent.KEYCODE_SPACE && !event.isAltPressed) {
+        if (matchesKey(event, candidate1Combined)) {
             val targetPos = (count - 1) / 2  // active candidate position
             val activeIndex = horizontalCandidate.selectionIndexAtVisiblePosition(targetPos) ?: return false
             val vh = horizontalCandidate.view.findViewHolderForAdapterPosition(targetPos) as? CandidateViewHolder
@@ -433,7 +463,7 @@ class InputView(
             return true
         }
 
-        val target = shortcutTargetForKeyCode(event.keyCode, count) ?: return false
+        val target = shortcutTargetForKeyCode(event, count) ?: return false
 
         val index = when (target) {
             is HardwareCandidateTarget.ByNumber -> horizontalCandidate.selectionIndexForLocalNumber(target.number)
@@ -467,12 +497,10 @@ class InputView(
     }
 
     private fun handleHardwareSymToggle(event: KeyEvent): Boolean {
-        val isSymToggleKey = when (event.keyCode) {
-            KeyEvent.KEYCODE_SYM,
-            KeyEvent.KEYCODE_PICTSYMBOLS,
-            KeyEvent.KEYCODE_ALT_RIGHT -> true
-            else -> false
-        }
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val symKeyCombined = hw.symbolPickerKey.getValue()
+        val isSymToggleKey = matchesKey(event, symKeyCombined) ||
+                event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
         if (!isSymToggleKey) return false
 
         // Candidate total can be stale from previous sessions. Use visible UI state instead.
@@ -490,87 +518,88 @@ class InputView(
         return true
     }
 
-    private fun shortcutTargetForKeyCode(keyCode: Int, candidateCount: Int): HardwareCandidateTarget? {
-        // Keep explicit mapping for small candidate counts to match BlackBerry-style slots.
+    private fun shortcutTargetForKeyCode(event: KeyEvent, candidateCount: Int): HardwareCandidateTarget? {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val k1 = hw.candidate1Key.getValue()
+        val k2 = hw.candidate2Key.getValue()
+        val k3 = hw.candidate3Key.getValue()
+        val k4 = hw.candidate4Key.getValue()
+        val k5 = hw.candidate5Key.getValue()
+      
         when (candidateCount) {
             1 -> {
-                return when (keyCode) {
-                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
+                return when {
+                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
                     else -> null
                 }
             }
 
-            // display numbers: [1, 2]
             2 -> {
-                return when (keyCode) {
-                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
-                    KeyEvent.KEYCODE_SYM,
-                    KeyEvent.KEYCODE_PICTSYMBOLS,
-                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(1)
+                return when {
+                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
+                    matchesKey(event, k3) ||
+                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(1)
                     else -> null
                 }
             }
 
-            // display numbers: [2, 1, 3]
             3 -> {
-                return when (keyCode) {
-                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
-                    KeyEvent.KEYCODE_0,
-                    KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
-                    KeyEvent.KEYCODE_SYM,
-                    KeyEvent.KEYCODE_PICTSYMBOLS,
-                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(2)
+                return when {
+                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
+                    matchesKey(event, k2) ||
+                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
+                    matchesKey(event, k3) ||
+                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(2)
                     else -> null
                 }
             }
 
-            // display numbers: [2, 1, 3, 4]
             4 -> {
-                return when (keyCode) {
-                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
-                    KeyEvent.KEYCODE_0,
-                    KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
-                    KeyEvent.KEYCODE_SYM,
-                    KeyEvent.KEYCODE_PICTSYMBOLS,
-                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(2)
-                    KeyEvent.KEYCODE_SHIFT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(3)
+                return when {
+                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
+                    matchesKey(event, k2) ||
+                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
+                    matchesKey(event, k3) ||
+                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(2)
+                    matchesKey(event, k5) -> HardwareCandidateTarget.ByVisiblePosition(3)
                     else -> null
                 }
             }
 
-            // display numbers: [4, 2, 1, 3, 5]
             CandidateUi.BlackBerryBottomRowKeyCount -> {
-                return when (keyCode) {
-                    KeyEvent.KEYCODE_SPACE -> HardwareCandidateTarget.ByNumber(1)
-                    KeyEvent.KEYCODE_0,
-                    KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(1)
-                    KeyEvent.KEYCODE_SYM,
-                    KeyEvent.KEYCODE_PICTSYMBOLS,
-                    KeyEvent.KEYCODE_ALT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(3)
-                    KeyEvent.KEYCODE_SHIFT_LEFT -> HardwareCandidateTarget.ByVisiblePosition(0)
-                    KeyEvent.KEYCODE_SHIFT_RIGHT -> HardwareCandidateTarget.ByVisiblePosition(4)
+                return when {
+                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
+                    matchesKey(event, k2) ||
+                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(1)
+                    matchesKey(event, k3) ||
+                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(3)
+                    matchesKey(event, k4) -> HardwareCandidateTarget.ByVisiblePosition(0)
+                    matchesKey(event, k5) -> HardwareCandidateTarget.ByVisiblePosition(4)
                     else -> null
                 }
             }
         }
 
-        if (keyCode == KeyEvent.KEYCODE_SPACE) {
+        if (matchesKey(event, k1)) {
             return HardwareCandidateTarget.ByNumber(1)
         }
 
-        val slot = shortcutSlotForKeyCode(keyCode) ?: return null
+        val slot = shortcutSlotForKeyCode(event) ?: return null
         val position = shortcutVisiblePositionForSlot(candidateCount, slot) ?: return null
         return HardwareCandidateTarget.ByVisiblePosition(position)
     }
 
-    private fun shortcutSlotForKeyCode(keyCode: Int): Int? {
-        return when (keyCode) {
-            KeyEvent.KEYCODE_SHIFT_LEFT -> CandidateUi.BlackBerryLeftSlot
-            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> CandidateUi.BlackBerryInnerLeftSlot
-            KeyEvent.KEYCODE_SYM,
-            KeyEvent.KEYCODE_PICTSYMBOLS,
-            KeyEvent.KEYCODE_ALT_RIGHT -> CandidateUi.BlackBerryInnerRightSlot
-            KeyEvent.KEYCODE_SHIFT_RIGHT -> CandidateUi.BlackBerryRightSlot
+    private fun shortcutSlotForKeyCode(event: KeyEvent): Int? {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val slot2 = hw.candidate2Key.getValue()
+        val slot3 = hw.candidate3Key.getValue()
+        val slot4 = hw.candidate4Key.getValue()
+        val slot5 = hw.candidate5Key.getValue()
+        return when {
+            matchesKey(event, slot2) -> CandidateUi.BlackBerryLeftSlot
+            matchesKey(event, slot3) || event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> CandidateUi.BlackBerryInnerLeftSlot
+            matchesKey(event, slot4) || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> CandidateUi.BlackBerryInnerRightSlot
+            matchesKey(event, slot5) -> CandidateUi.BlackBerryRightSlot
             else -> null
         }
     }
@@ -581,15 +610,22 @@ class InputView(
     }
 
     private fun handleHardwareCandidatePaging(event: KeyEvent): Boolean {
-        val keyChar = event.unicodeChar.takeIf { it > 0 }?.toChar()
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val nextKeyCombined = hw.pageNextKey.getValue()
+        val prevKeyCombined = hw.pagePrevKey.getValue()
         val isPageKey = when {
-            event.keyCode == KeyEvent.KEYCODE_GRAVE -> true
-            keyChar == '$' -> true
-            keyChar == '`' -> true
+            matchesKey(event, nextKeyCombined)  -> true
+            matchesKey(event, prevKeyCombined) -> true          
             else -> false
         }
         if (!isPageKey) return false
-        horizontalCandidate.page(if (event.isAltPressed) -1 else 1)
+        val direction = when {
+            !event.isAltPressed && matchesKey(event, nextKeyCombined)  -> 1
+            event.isAltPressed && matchesKey(event, nextKeyCombined)  -> -1
+            matchesKey(event, prevKeyCombined) -> -1
+            else -> 1
+        }
+        horizontalCandidate.page(direction)
         return true
     }
 
