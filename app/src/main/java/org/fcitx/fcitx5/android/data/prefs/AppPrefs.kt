@@ -6,7 +6,6 @@ package org.fcitx.fcitx5.android.data.prefs
 
 import android.content.SharedPreferences
 import android.os.Build
-import android.view.KeyEvent
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
 import androidx.core.content.edit
@@ -404,31 +403,20 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class HardwareKeyboard :
         ManagedPreferenceCategory(R.string.hardware_keyboard, sharedPreferences) {
-        // KeyCode for each shortcut
-        val candidate1Key = int(
-            R.string.candidate_key_1, "hw_candidate_1_key", KeyEvent.KEYCODE_SPACE
-        )
-        val candidate2Key = int(
-            R.string.candidate_key_2, "hw_candidate_2_key", KeyEvent.KEYCODE_0
-        )
-        val candidate3Key = int(
-            R.string.candidate_key_3, "hw_candidate_3_key", KeyEvent.KEYCODE_SYM
-        )
-        val candidate4Key = int(
-            R.string.candidate_key_4, "hw_candidate_4_key", KeyEvent.KEYCODE_SHIFT_LEFT
-        )
-        val candidate5Key = int(
-            R.string.candidate_key_5, "hw_candidate_5_key", KeyEvent.KEYCODE_SHIFT_RIGHT
-        )
-        val pageNextKey = int(
-            R.string.candidate_page_next, "hw_candidate_page_next_key", KeyEvent.KEYCODE_GRAVE
-        )
-        val pagePrevKey = int(
-            R.string.candidate_page_prev, "hw_candidate_page_prev_key", KeyEvent.KEYCODE_GRAVE
-        )
-        val symbolPickerKey = int(
-            R.string.hw_symbol_picker, "hw_symbol_picker_key", KeyEvent.KEYCODE_ALT_RIGHT
-        )
+        // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
+        // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".
+        val candidate1Key = string("hw_candidate_1_key", "space")
+        val candidate2Key = string("hw_candidate_2_key", "0")
+        val candidate3Key = string("hw_candidate_3_key", "Sym")
+        val candidate4Key = string("hw_candidate_4_key", "Shift_L")
+        val candidate5Key = string("hw_candidate_5_key", "Shift_R")
+        val pageNextKey = string("hw_candidate_page_next_key", "grave")
+        val pagePrevKey = string("hw_candidate_page_prev_key", "grave")
+        val symbolPickerKey = string("hw_symbol_picker_key", "Alt_R")
+        // Global key actions (extracted from candidate1's Alt/Shift combos so they can be rebound).
+        // Empty string means "not bound".
+        val toggleImeKey = string("hw_toggle_ime_key", "Alt+space")
+        val pickerKey = string("hw_picker_key", "Shift+space")
     }
 
     private val providers = mutableListOf<ManagedPreferenceProvider>()
@@ -447,12 +435,13 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     val internal = Internal().register()
     val keyboard = Keyboard().register()
+    val hardwareKeyboard = HardwareKeyboard().register()
     val candidates = Candidates().register()
     val candidateBar = CandidateBar().register()
     val clipboard = Clipboard().register()
     val symbols = Symbols().register()
     val advanced = Advanced().register()
-    val hardwareKeyboard = HardwareKeyboard().register()
+   
 
     @Keep
     private val onSharedPreferenceChangeListener =

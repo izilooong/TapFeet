@@ -6,18 +6,19 @@ package org.fcitx.fcitx5.android.ui.main.settings
 
 import android.content.Context
 import android.util.AttributeSet
-import android.view.KeyEvent
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.Preference
 import org.fcitx.fcitx5.android.R
 
 /**
- * Preference that captures Android KeyEvent keyCode.
- * User taps the preference to open a capture dialog, presses a key, and the keyCode is saved.
+ * Preference that captures a hardware keyboard key binding using the fcitx5 Key system.
+ * Stores the key as a fcitx5 portableString (e.g. "Alt+space", "dollar", "Shift_L"),
+ * or the special string "Sym" for the BlackBerry SYM key.
+ * Uses [KeyCaptureUi] (same approach as the global [FcitxKeyPreference]).
  */
 class KeyCapturePreference : Preference {
 
-    private var defaultKeyCode: Int = 0
+    private var defaultKeyValue: String = ""
 
     constructor(context: Context) : this(context, null)
     constructor(context: Context, attrs: AttributeSet?) :
@@ -25,13 +26,13 @@ class KeyCapturePreference : Preference {
     constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr)
 
     override fun onGetDefaultValue(a: android.content.res.TypedArray, index: Int): Any? {
-        defaultKeyCode = a.getInt(index, 0)
-        return defaultKeyCode
+        defaultKeyValue = a.getString(index) ?: ""
+        return defaultKeyValue
     }
 
     override fun onSetInitialValue(defaultValue: Any?) {
-        if (defaultValue is Int) {
-            defaultKeyCode = defaultValue
+        if (defaultValue is String) {
+            defaultKeyValue = defaultValue
         }
     }
 
@@ -40,22 +41,22 @@ class KeyCapturePreference : Preference {
     }
 
     private fun showDialog() {
-        val currentValue = sharedPreferences?.getInt(key, defaultKeyCode) ?: defaultKeyCode
-        var dialog: AlertDialog? = null
-        val captureView = KeyCaptureView(context, currentValue) { confirmedValue ->
-            if (callChangeListener(confirmedValue)) {
-                persistInt(confirmedValue)
-                notifyChanged()
-            }
-            dialog?.dismiss()
-        }
-        dialog = AlertDialog.Builder(context)
+        val currentValue = sharedPreferences?.getString(key, defaultKeyValue) ?: defaultKeyValue
+        val ui = KeyCaptureUi(context, currentValue)
+        AlertDialog.Builder(context)
             .setTitle(title)
-            .setView(captureView)
+            .setView(ui.root)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val value = ui.getValue()
+                if (callChangeListener(value)) {
+                    persistString(value)
+                    notifyChanged()
+                }
+            }
             .setNegativeButton(android.R.string.cancel, null)
             .setNeutralButton(R.string.hw_reset) { _, _ ->
-                if (callChangeListener(defaultKeyCode)) {
-                    persistInt(defaultKeyCode)
+                if (callChangeListener(defaultKeyValue)) {
+                    persistString(defaultKeyValue)
                     notifyChanged()
                 }
             }
@@ -64,11 +65,9 @@ class KeyCapturePreference : Preference {
 
     object KeySummaryProvider : SummaryProvider<KeyCapturePreference> {
         override fun provideSummary(preference: KeyCapturePreference): CharSequence {
-            val v = preference.sharedPreferences?.getInt(preference.key, 0) ?: 0
-            if (v == 0) return "(none)"
-            val keyCode = KeyCaptureView.decodeKeyCode(v)
-            val metaState = KeyCaptureView.decodeMetaState(v)
-            return KeyCaptureView.formatKey(keyCode, metaState)
+            val v = preference.sharedPreferences?.getString(preference.key, "") ?: ""
+            if (v.isEmpty()) return "(none)"
+            return KeyCaptureUi.formatKey(v)
         }
     }
 }

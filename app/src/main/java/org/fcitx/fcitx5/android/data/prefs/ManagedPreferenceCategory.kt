@@ -79,6 +79,20 @@ abstract class ManagedPreferenceCategory(
         return pref
     }
 
+    /**
+     * String preference with no auto-generated UI. Used for prefs that provide their own
+     * custom [androidx.preference.Preference] (e.g. hardware keyboard key bindings captured by
+     * [org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference]).
+     */
+    protected fun string(
+        key: String,
+        defaultValue: String
+    ): ManagedPreference.PString {
+        val pref = ManagedPreference.PString(sharedPreferences, key, defaultValue)
+        pref.register()
+        return pref
+    }
+
     protected fun int(
         @StringRes
         title: Int,

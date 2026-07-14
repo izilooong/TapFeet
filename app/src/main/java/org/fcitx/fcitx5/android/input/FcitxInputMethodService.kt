@@ -714,6 +714,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // When the target editor requests key capture (e.g. KeyCaptureUi/KeyPreferenceUi),
+        // do not consume physical key events so they reach the EditText's OnKeyListener.
+        if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
+            return false
+        }
+
         if (isAltLatchKeyCode(keyCode)) {
             if (event.repeatCount == 0) {
                 val now = event.eventTime
@@ -757,6 +763,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
+            return false
+        }
         if (isAltLatchKeyCode(keyCode)) {
             return true
         }
@@ -1260,5 +1269,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     @Suppress("ConstPropertyName")
     companion object {
         const val DeleteSurroundingFlag = "org.fcitx.fcitx5.android.DELETE_SURROUNDING"
+        const val KeyCaptureFlag = "org.fcitx.fcitx5.android.KEY_CAPTURE"
     }
 }

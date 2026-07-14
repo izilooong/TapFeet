@@ -19,6 +19,11 @@ import androidx.annotation.RequiresApi
 import androidx.core.view.updateLayoutParams
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.FcitxKeyMapping
+import org.fcitx.fcitx5.android.core.Key
+import org.fcitx.fcitx5.android.core.KeyState
+import org.fcitx.fcitx5.android.core.KeyStates
+import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -392,115 +397,208 @@ class InputView(
         kawaiiBar.onAltLatchChanged(locked)
     }
 
-    private fun decodeKey(combined: Int): Pair<Int, Int> {
-        val keyCode = combined and 0xFFFF
-        val metaState = (combined shr 16) and 0xFFFF
-        return Pair(keyCode, metaState)
-    }
+    // fcitx5 modifier keysym range: Shift_L (0xffe1) through Hyper_R (0xffee).
+    // A modifier key sets its own state when pressed, so it must be matched by keysym only.
+    private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
 
-    private fun normalizeMetaState(metaState: Int): Int {
-        var normalized = 0
-        if (metaState and KeyEvent.META_ALT_ON != 0) normalized = normalized or KeyEvent.META_ALT_ON
-        if (metaState and KeyEvent.META_SHIFT_ON != 0) normalized = normalized or KeyEvent.META_SHIFT_ON
-        if (metaState and KeyEvent.META_CTRL_ON != 0) normalized = normalized or KeyEvent.META_CTRL_ON
-        if (metaState and KeyEvent.META_META_ON != 0) normalized = normalized or KeyEvent.META_META_ON
-        if (metaState and KeyEvent.META_SYM_ON != 0) normalized = normalized or KeyEvent.META_SYM_ON
-        if (metaState and KeyEvent.META_FUNCTION_ON != 0) normalized = normalized or KeyEvent.META_FUNCTION_ON
-        return normalized
-    }
-
-    private fun matchesKey(event: KeyEvent, combinedPref: Int): Boolean {
-        val (keyCode, metaState) = decodeKey(combinedPref)
-        if (event.keyCode != keyCode) return false
-        val eventMeta = normalizeMetaState(event.metaState)
-        val targetMeta = normalizeMetaState(metaState)
-        return eventMeta == targetMeta
-    }
-
-    fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) return false
-
-        val hw = AppPrefs.getInstance().hardwareKeyboard
-        val candidate1Combined = hw.candidate1Key.getValue()
-       
-
-        // Alt+Space to toggle IME (fixed shortcut, not affected by candidate1 key config)
-        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isAltPressed && !event.isShiftPressed && !event.isCtrlPressed) {
-            service.postFcitxJob {
-                toggleIme()
-            }
-             return true
+    /**
+     * Match a [KeyEvent] against a stored key string (fcitx5 portableString, e.g. "Alt+space",
+     * "dollar", "Shift_L", or the special "Sym" string for the BlackBerry SYM key).
+     *
+     * Uses [KeySym.fromKeyEvent] (character identity) so symbol keys like `$` are matched by the
+     * character they produce, not by an unreliable Android keyCode. Combos (keys with a modifier,
+     * e.g. "Alt+grave") match the modifier exactly via [rawModifierStates]; plain keys keep the
+     * tolerant stripping of [KeyStates.fromKeyEvent].
+     */
+    private fun matchesKeyString(event: KeyEvent, keyString: String): Boolean {
+        if (keyString.isEmpty()) return false
+        if (keyString == "Sym") {
+            return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
         }
-        // Shift+Space to show input method picker (fixed shortcut)
-        if (event.keyCode == KeyEvent.KEYCODE_SPACE && event.isShiftPressed && !event.isAltPressed && !event.isCtrlPressed) {
-            commonKeyActionListener.listener.onKeyAction(KeyAction.ShowInputMethodPickerAction, KeyActionListener.Source.Keyboard)
-            return true
+        return matchesKey(event, Key.parse(keyString))
+    }
+
+    /**
+     * Extract the modifier state directly from the event's pressed modifiers, WITHOUT the
+     * number/symbol-key stripping that [KeyStates.fromKeyEvent] applies. Needed so that combos like
+     * `Alt+grave` or `Alt+$` match exactly — [KeyStates.fromKeyEvent] would otherwise drop the Alt
+     * modifier for symbol keys and the combo could never fire. CapsLock/NumLock are masked out so
+     * they don't cause spurious mismatches.
+     */
+    private fun rawModifierStates(event: KeyEvent): KeyStates {
+        var s = KeyState.NoState.state
+        if (event.isAltPressed) s = s or KeyState.Alt.state
+        if (event.isCtrlPressed) s = s or KeyState.Ctrl.state
+        if (event.isShiftPressed) s = s or KeyState.Shift.state
+        if (event.isMetaPressed) s = s or KeyState.Meta.state
+        return KeyStates(s and KeyState.SimpleMask.state)
+    }
+
+    private fun matchesKey(event: KeyEvent, key: Key): Boolean {
+        if (key.sym == 0) return false
+        // Match by the physical key's keysym OR the character it produces. We must also accept the
+        // keyCode-derived keysym because holding a modifier (e.g. Alt) can change event.unicodeChar
+        // into a composed character, which would otherwise make the sym comparison fail for symbol
+        // keys like grave (`) and break combos such as "Alt+grave". Character keys whose keyCode is
+        // unreliable across layouts (e.g. `$`) still match via event.unicodeChar.
+        val symFromKeyCode = FcitxKeyMapping.keyCodeToSym(event.keyCode)
+        val symMatches = symFromKeyCode == key.sym ||
+                (event.unicodeChar != 0 && event.unicodeChar == key.sym)
+        if (!symMatches) return false
+        if (isModifierKeySym(key.sym)) return true
+        // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so use
+        // raw states (no stripping). A plain key (no modifier) keeps [KeyStates.fromKeyEvent]'s
+        // tolerant stripping, so an Alt-latched press of a number/symbol key still selects the
+        // candidate (the original fcitx5-android behaviour).
+        val states = if (key.states != 0) rawModifierStates(event) else KeyStates.fromKeyEvent(event)
+        return states.toInt() == key.states
+    }
+
+    /** Match by KeySym only (any modifiers) — used to detect a physical key regardless of modifiers. */
+    private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
+        if (keyString.isEmpty()) return false
+        if (keyString == "Sym") {
+            return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
         }
+        return isSameKeySym(event, Key.parse(keyString))
+    }
 
-        if (handleHardwareSymToggle(event)) return true
+    private fun isSameKeySym(event: KeyEvent, key: Key): Boolean {
+        if (key.sym == 0) return false
+        val sym = KeySym.fromKeyEvent(event) ?: return false
+        return sym.sym == key.sym
+    }
 
-        if (!kawaiiBar.isCandidateUiShowing()) return false
-
-        if (handleHardwareCandidatePaging(event)) return true
-
+    private fun selectCandidateAtVisiblePosition(position: Int): Boolean {
         val count = horizontalCandidate.visibleCandidateCount()
-        if (count <= 0) return false
-
-        if (matchesKey(event, candidate1Combined)) {
-            val targetPos = (count - 1) / 2  // active candidate position
-            val activeIndex = horizontalCandidate.selectionIndexAtVisiblePosition(targetPos) ?: return false
-            val vh = horizontalCandidate.view.findViewHolderForAdapterPosition(targetPos) as? CandidateViewHolder
-            vh?.let {
-                horizontalCandidate.prepareFlyAnimation(it.candidate.text, it.ui.text)
-            }
-            service.postFcitxJob {
-                setCandidatePagingMode(horizontalCandidate.currentCandidatePagingMode())
-                if (select(activeIndex)) return@postFcitxJob
-                val candidate = horizontalCandidate.candidateAtVisiblePosition(targetPos) ?: return@postFcitxJob
-                service.finishComposing()
-                service.commitText(candidate.text)
-            }
-            return true
+        if (count <= 0 || position !in 0 until count) return false
+        val activeIndex = horizontalCandidate.selectionIndexAtVisiblePosition(position) ?: return false
+        val vh = horizontalCandidate.view.findViewHolderForAdapterPosition(position) as? CandidateViewHolder
+        vh?.let {
+            horizontalCandidate.prepareFlyAnimation(it.candidate.text, it.ui.text)
         }
-
-        val target = shortcutTargetForKeyCode(event, count) ?: return false
-
-        val index = when (target) {
-            is HardwareCandidateTarget.ByNumber -> horizontalCandidate.selectionIndexForLocalNumber(target.number)
-            is HardwareCandidateTarget.ByVisiblePosition -> horizontalCandidate.selectionIndexAtVisiblePosition(target.position)
-        } ?: return false
-
-        // Capture position on UI thread before fcitx operation
-        val displayIndexForAnimation = when (target) {
-            is HardwareCandidateTarget.ByNumber -> horizontalCandidate.adapter.selectionIndexForDisplayNumber(target.number)
-            is HardwareCandidateTarget.ByVisiblePosition -> target.position
-        }
-        if (displayIndexForAnimation != null) {
-            val vh = horizontalCandidate.view.findViewHolderForAdapterPosition(displayIndexForAnimation) as? CandidateViewHolder
-            vh?.let {
-                horizontalCandidate.prepareFlyAnimation(it.candidate.text, it.ui.text)
-            }
-        }
-
         service.postFcitxJob {
             setCandidatePagingMode(horizontalCandidate.currentCandidatePagingMode())
-            val candidate = when (target) {
-                is HardwareCandidateTarget.ByNumber -> horizontalCandidate.candidateForLocalNumber(target.number)
-                is HardwareCandidateTarget.ByVisiblePosition -> horizontalCandidate.candidateAtVisiblePosition(target.position)
-            }
-            if (select(index)) return@postFcitxJob
-            if (candidate == null) return@postFcitxJob
+            if (select(activeIndex)) return@postFcitxJob
+            val candidate = horizontalCandidate.candidateAtVisiblePosition(position) ?: return@postFcitxJob
             service.finishComposing()
             service.commitText(candidate.text)
         }
         return true
     }
 
+    // 单条物理键 → 可见位置 的映射规则（键用 fcitx5 portableString 标识，见下方 preciseShortcuts()）。
+    private data class ShortcutRule(val keyString: String, val position: Int)
+
+    private fun matchesShortcutKey(event: KeyEvent, rule: ShortcutRule): Boolean =
+        matchesKeyString(event, rule.keyString)
+
+    // 1~5 候选的精细映射：以"居中候选"(Space) 为基准，左右物理键按相对偏移定位，
+    // 因此候选数为 2/3/4 时空格两侧按钮（0 / SYM）也能选到对应候选。
+    // candidate1(k1) 始终由 handleHardwareCandidateShortcut 处理为"居中选词"，不在此表内。
+    // 候选数 > 5 走 wideShortcuts()；candidate 数正好 5 时本函数结果与 BB 槽位布局等价。
+    private fun preciseShortcuts(count: Int): List<ShortcutRule>? {
+        if (count <= 0 || count > 5) return null
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val center = (count - 1) / 2
+        val rules = mutableListOf<ShortcutRule>()
+        // candidate2 (空格左侧 0 键)：居中左 1
+        (center - 1).takeIf { it in 0 until count }
+            ?.let { rules.add(ShortcutRule(hw.candidate2Key.getValue(), it)) }
+        // candidate3 (空格右侧 SYM 键)：居中右 1
+        (center + 1).takeIf { it in 0 until count }
+            ?.let { rules.add(ShortcutRule(hw.candidate3Key.getValue(), it)) }
+        // candidate4 (Shift_L)：居中左 2
+        (center - 2).takeIf { it in 0 until count }
+            ?.let { rules.add(ShortcutRule(hw.candidate4Key.getValue(), it)) }
+        // candidate5 (Shift_R)：居中右 2
+        (center + 2).takeIf { it in 0 until count }
+            ?.let { rules.add(ShortcutRule(hw.candidate5Key.getValue(), it)) }
+        return rules
+    }
+
+    // >5 候选（wide layout）：槽位号即可见位置，沿用原快捷键映射
+    private fun wideShortcuts(): List<ShortcutRule> {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        return listOf(
+            ShortcutRule(hw.candidate2Key.getValue(), CandidateUi.BlackBerryLeftSlot),
+            ShortcutRule(hw.candidate3Key.getValue(), CandidateUi.BlackBerryInnerLeftSlot),
+            ShortcutRule(hw.candidate4Key.getValue(), CandidateUi.BlackBerryInnerRightSlot),
+            ShortcutRule(hw.candidate5Key.getValue(), CandidateUi.BlackBerryRightSlot),
+        )
+    }
+
+    private fun resolveShortcutPosition(event: KeyEvent, count: Int): Int? {
+        preciseShortcuts(count)?.let { rules ->
+            for (r in rules) if (matchesShortcutKey(event, r)) return r.position
+        }
+        if (count > CandidateUi.BlackBerryBottomRowKeyCount) {
+            for (r in wideShortcuts()) {
+                if (matchesShortcutKey(event, r) && r.position < count) return r.position
+            }
+        }
+        return null
+    }
+
+    fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+
+        // 全局动作（可配置快捷键）：切换输入法 / 显示输入法选择器。
+        // 放在最前，确保无论候选窗是否显示都能触发。
+        if (handleHardwareGlobalAction(event)) return true
+
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val c1 = hw.candidate1Key.getValue()
+        val candidate1HasModifier = Key.parse(c1).states != 0
+
+        // candidate1 组合键（配置带 modifier）：精确匹配后直接选居中候选（优先于符号切换）
+        if (candidate1HasModifier && matchesKeyString(event, c1)) {
+            if (kawaiiBar.isCandidateUiShowing()) {
+                val count = horizontalCandidate.visibleCandidateCount()
+                if (count > 0) return selectCandidateAtVisiblePosition((count - 1) / 2)
+            }
+        }
+
+        if (handleHardwareSymToggle(event)) return true
+        if (!kawaiiBar.isCandidateUiShowing()) return false
+        if (handleHardwareCandidatePaging(event)) return true
+
+        val count = horizontalCandidate.visibleCandidateCount()
+        if (count <= 0) return false
+
+        // 普通 candidate1：直接选居中候选（Alt/Shift 组合动作已抽到独立快捷键）
+        if (!candidate1HasModifier && isSameKeySymString(event, c1)) {
+            return selectCandidateAtVisiblePosition((count - 1) / 2)
+        }
+
+        val position = resolveShortcutPosition(event, count) ?: return false
+        return selectCandidateAtVisiblePosition(position)
+    }
+
+    // 全局动作：可配置的快捷键（默认 Alt+space 切换输入法、Shift+space 显示输入法选择器）。
+    // 配置为空串表示未绑定。这两个动作原先硬绑在 candidate1Key 的 Alt/Shift 组合上，现独立出来。
+    private fun handleHardwareGlobalAction(event: KeyEvent): Boolean {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val toggleKey = hw.toggleImeKey.getValue()
+        val pickerKeyStr = hw.pickerKey.getValue()
+        if (toggleKey.isNotEmpty() && matchesKeyString(event, toggleKey)) {
+            service.postFcitxJob { toggleIme() }
+            return true
+        }
+        if (pickerKeyStr.isNotEmpty() && matchesKeyString(event, pickerKeyStr)) {
+            commonKeyActionListener.listener.onKeyAction(
+                KeyAction.ShowInputMethodPickerAction,
+                KeyActionListener.Source.Keyboard,
+            )
+            return true
+        }
+        return false
+    }
+
     private fun handleHardwareSymToggle(event: KeyEvent): Boolean {
         val hw = AppPrefs.getInstance().hardwareKeyboard
         val symKeyCombined = hw.symbolPickerKey.getValue()
-        val isSymToggleKey = matchesKey(event, symKeyCombined) ||
-                event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
+        val isSymToggleKey = matchesKeyString(event, symKeyCombined)
         if (!isSymToggleKey) return false
 
         // Candidate total can be stale from previous sessions. Use visible UI state instead.
@@ -518,120 +616,26 @@ class InputView(
         return true
     }
 
-    private fun shortcutTargetForKeyCode(event: KeyEvent, candidateCount: Int): HardwareCandidateTarget? {
-        val hw = AppPrefs.getInstance().hardwareKeyboard
-        val k1 = hw.candidate1Key.getValue()
-        val k2 = hw.candidate2Key.getValue()
-        val k3 = hw.candidate3Key.getValue()
-        val k4 = hw.candidate4Key.getValue()
-        val k5 = hw.candidate5Key.getValue()
-      
-        when (candidateCount) {
-            1 -> {
-                return when {
-                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
-                    else -> null
-                }
-            }
-
-            2 -> {
-                return when {
-                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
-                    matchesKey(event, k3) ||
-                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(1)
-                    else -> null
-                }
-            }
-
-            3 -> {
-                return when {
-                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
-                    matchesKey(event, k2) ||
-                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
-                    matchesKey(event, k3) ||
-                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(2)
-                    else -> null
-                }
-            }
-
-            4 -> {
-                return when {
-                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
-                    matchesKey(event, k2) ||
-                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(0)
-                    matchesKey(event, k3) ||
-                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(2)
-                    matchesKey(event, k5) -> HardwareCandidateTarget.ByVisiblePosition(3)
-                    else -> null
-                }
-            }
-
-            CandidateUi.BlackBerryBottomRowKeyCount -> {
-                return when {
-                    matchesKey(event, k1) -> HardwareCandidateTarget.ByNumber(1)
-                    matchesKey(event, k2) ||
-                    event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> HardwareCandidateTarget.ByVisiblePosition(1)
-                    matchesKey(event, k3) ||
-                    event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> HardwareCandidateTarget.ByVisiblePosition(3)
-                    matchesKey(event, k4) -> HardwareCandidateTarget.ByVisiblePosition(0)
-                    matchesKey(event, k5) -> HardwareCandidateTarget.ByVisiblePosition(4)
-                    else -> null
-                }
-            }
-        }
-
-        if (matchesKey(event, k1)) {
-            return HardwareCandidateTarget.ByNumber(1)
-        }
-
-        val slot = shortcutSlotForKeyCode(event) ?: return null
-        val position = shortcutVisiblePositionForSlot(candidateCount, slot) ?: return null
-        return HardwareCandidateTarget.ByVisiblePosition(position)
-    }
-
-    private fun shortcutSlotForKeyCode(event: KeyEvent): Int? {
-        val hw = AppPrefs.getInstance().hardwareKeyboard
-        val slot2 = hw.candidate2Key.getValue()
-        val slot3 = hw.candidate3Key.getValue()
-        val slot4 = hw.candidate4Key.getValue()
-        val slot5 = hw.candidate5Key.getValue()
-        return when {
-            matchesKey(event, slot2) -> CandidateUi.BlackBerryLeftSlot
-            matchesKey(event, slot3) || event.keyCode == KeyEvent.KEYCODE_NUMPAD_0 -> CandidateUi.BlackBerryInnerLeftSlot
-            matchesKey(event, slot4) || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS -> CandidateUi.BlackBerryInnerRightSlot
-            matchesKey(event, slot5) -> CandidateUi.BlackBerryRightSlot
-            else -> null
-        }
-    }
-
-    private fun shortcutVisiblePositionForSlot(candidateCount: Int, slot: Int): Int? {
-        // For wide layouts (more than 5 visible candidates), keep fixed slot-to-position mapping.
-        return slot.takeIf { it in 0 until candidateCount }
-    }
+    // 物理键 → 候选位置的映射已重构为数据驱动表，见上方 preciseShortcuts() / wideShortcuts() / resolveShortcutPosition()。
 
     private fun handleHardwareCandidatePaging(event: KeyEvent): Boolean {
         val hw = AppPrefs.getInstance().hardwareKeyboard
         val nextKeyCombined = hw.pageNextKey.getValue()
         val prevKeyCombined = hw.pagePrevKey.getValue()
         val isPageKey = when {
-            matchesKey(event, nextKeyCombined)  -> true
-            matchesKey(event, prevKeyCombined) -> true          
+            matchesKeyString(event, nextKeyCombined)  -> true
+            matchesKeyString(event, prevKeyCombined) -> true
             else -> false
         }
         if (!isPageKey) return false
         val direction = when {
-            !event.isAltPressed && matchesKey(event, nextKeyCombined)  -> 1
-            event.isAltPressed && matchesKey(event, nextKeyCombined)  -> -1
-            matchesKey(event, prevKeyCombined) -> -1
+            !event.isAltPressed && matchesKeyString(event, nextKeyCombined)  -> 1
+            event.isAltPressed && matchesKeyString(event, nextKeyCombined)  -> -1
+            matchesKeyString(event, prevKeyCombined) -> -1
             else -> 1
         }
         horizontalCandidate.page(direction)
         return true
-    }
-
-    private sealed interface HardwareCandidateTarget {
-        data class ByNumber(val number: Int) : HardwareCandidateTarget
-        data class ByVisiblePosition(val position: Int) : HardwareCandidateTarget
     }
 
     @RequiresApi(Build.VERSION_CODES.R)

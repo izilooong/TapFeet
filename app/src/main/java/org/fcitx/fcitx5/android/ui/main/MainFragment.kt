@@ -71,6 +71,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     SettingsRoute.VirtualKeyboard
                 )
                 addDestinationPreference(
+                    R.string.hardware_keyboard,
+                    R.drawable.ic_baseline_keyboard_24,
+                    SettingsRoute.HardwareKeyboard
+                )
+                addDestinationPreference(
                     R.string.candidates_window,
                     R.drawable.ic_baseline_list_alt_24,
                     SettingsRoute.CandidatesWindow
@@ -99,11 +104,6 @@ class MainFragment : PaddingPreferenceFragment() {
                     R.string.advanced,
                     R.drawable.ic_baseline_more_horiz_24,
                     SettingsRoute.Advanced
-                )
-                addDestinationPreference(
-                    R.string.hardware_keyboard,
-                    R.drawable.ic_baseline_keyboard_24,
-                    SettingsRoute.HardwareKeyboard
                 )
                 addDestinationPreference(
                     R.string.lab,

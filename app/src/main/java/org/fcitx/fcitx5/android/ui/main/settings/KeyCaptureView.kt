@@ -5,310 +5,263 @@
 package org.fcitx.fcitx5.android.ui.main.settings
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.util.TypedValue
-import android.view.Gravity
 import android.view.KeyEvent
-import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.view.inputmethod.EditorInfo
+import androidx.core.widget.addTextChangedListener
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.core.Key
+import org.fcitx.fcitx5.android.core.KeyState
+import org.fcitx.fcitx5.android.core.KeyStates
+import org.fcitx.fcitx5.android.core.KeySym
+import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import splitties.dimensions.dp
+import splitties.resources.drawable
+import splitties.resources.styledColor
+import splitties.resources.styledColorSL
+import splitties.resources.styledDrawable
+import splitties.views.dsl.constraintlayout.above
+import splitties.views.dsl.constraintlayout.after
+import splitties.views.dsl.constraintlayout.before
+import splitties.views.dsl.constraintlayout.below
+import splitties.views.dsl.constraintlayout.bottomOfParent
+import splitties.views.dsl.constraintlayout.constraintLayout
+import splitties.views.dsl.constraintlayout.endOfParent
+import splitties.views.dsl.constraintlayout.lParams
+import splitties.views.dsl.constraintlayout.matchConstraints
+import splitties.views.dsl.constraintlayout.startOfParent
+import splitties.views.dsl.constraintlayout.topOfParent
+import splitties.views.dsl.core.Ui
+import splitties.views.dsl.core.add
+import splitties.views.dsl.core.button
+import splitties.views.dsl.core.editText
+import splitties.views.dsl.core.imageButton
+import splitties.views.dsl.core.textView
+import splitties.views.dsl.core.wrapContent
+import splitties.views.gravityCenter
+import splitties.views.imageDrawable
 
 /**
- * View that captures hardware key press with virtual modifier buttons and a confirm button.
+ * Key capture Ui for hardware keyboard shortcuts.
+ *
+ * Uses the same fcitx5 Key/KeySym/KeyStates system as [KeyPreferenceUi] (the global
+ * key preference), so symbol keys like `$` are identified by their unicode character
+ * rather than an unreliable Android keyCode.
+ *
+ * Stored value is a fcitx5 [Key] portableString (e.g. "Alt+space", "dollar", "Shift_L").
+ * The BlackBerry SYM key (which has no fcitx5 KeySym) is stored as the special string "Sym".
  */
-class KeyCaptureView(
-    context: Context,
-    initialValue: Int,
-    private val onConfirmed: (Int) -> Unit
-) : LinearLayout(context) {
+class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
 
-    private val hintText: TextView
-    private val capturedText: TextView
-    private val modifierButtonsLayout: LinearLayout
-    private val confirmButton: TextView
+    private val textView = textView {
+        gravity = gravityCenter
+    }
 
-    private val modifierButtons = mutableMapOf<Int, TextView>()
-    private var virtualMetaState = 0
-    private var capturedKeyCode: Int? = null
-    private var currentValue: Int = initialValue
+    private inner class ModifierButton(label: String, val modifier: KeyState) : Ui {
+        override val ctx = this@KeyCaptureUi.ctx
 
-    private data class ModifierInfo(
-        val metaFlag: Int,
-        val keyCode: Int,
-        val label: String
+        override val root = button {
+            text = label
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setOnClickListener {
+                checked = !checked
+                updateKey()
+            }
+        }
+
+        var checked: Boolean = false
+            set(value) {
+                field = value
+                applyStyles()
+            }
+
+        fun applyStyles() = root.apply {
+            backgroundTintList = ctx.styledColorSL(
+                if (checked) android.R.attr.colorAccent else android.R.attr.colorBackgroundFloating
+            )
+            setTextColor(
+                ctx.styledColor(
+                    if (checked) android.R.attr.colorForegroundInverse else android.R.attr.colorForeground
+                )
+            )
+        }
+    }
+
+    private val modifierButtons = arrayOf(
+        ModifierButton("Ctrl", KeyState.Ctrl),
+        ModifierButton("Alt", KeyState.Alt),
+        ModifierButton("Shift", KeyState.Shift)
     )
 
-    private val modifierList = listOf(
-        ModifierInfo(KeyEvent.META_SHIFT_ON, KeyEvent.KEYCODE_SHIFT_LEFT, "Shift"),
-        ModifierInfo(KeyEvent.META_ALT_ON, KeyEvent.KEYCODE_ALT_LEFT, "Alt"),
-        ModifierInfo(KeyEvent.META_CTRL_ON, KeyEvent.KEYCODE_CTRL_LEFT, "Ctrl"),
-        ModifierInfo(KeyEvent.META_SYM_ON, KeyEvent.KEYCODE_SYM, "Sym"),
-        ModifierInfo(KeyEvent.META_FUNCTION_ON, KeyEvent.KEYCODE_FUNCTION, "Fn")
-    )
-
-    init {
-        orientation = VERTICAL
-        gravity = Gravity.CENTER
-        val pad = dp(12)
-        setPadding(pad, pad, pad, pad)
-
-        hintText = TextView(context).apply {
-            setText(R.string.key_capture_hint)
-            this.gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(Color.parseColor("#888888"))
+    private val input = editText {
+        textSize = 16f
+        inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        imeOptions = EditorInfo.IME_FLAG_FORCE_ASCII
+        privateImeOptions = FcitxInputMethodService.DeleteSurroundingFlag + "|" + FcitxInputMethodService.KeyCaptureFlag
+        requestFocus()
+        setOnKeyListener l@{ _, _, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@l false
+            // SYM key has no fcitx5 KeySym — store as special string
+            if (event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS) {
+                setKeyString("Sym")
+                return@l true
+            }
+            val sym = KeySym.fromKeyEvent(event) ?: return@l false
+            // For modifier keys (Shift_L, Alt_R, etc.), strip their own modifier state
+            // so that pressing Shift_L stores "Shift_L" rather than "Shift+Shift_L"
+            val states = if (isModifierKeySym(sym.sym)) KeyStates.Empty else rawModifierStates(event)
+            setKey(Key.create(sym, states))
+            return@l true
         }
-        addView(hintText, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(6) })
-
-        modifierButtonsLayout = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER
+        addTextChangedListener l@{
+            val text = it?.toString() ?: return@l
+            if (text.isEmpty()) return@l
+            val parsed = Key.parse(text)
+            if (parsed.sym != 0) {
+                setKey(Key.create(parsed.keySym, keyStates))
+            }
         }
-        addView(modifierButtonsLayout, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(8) })
+    }
 
-        modifierList.forEach { info ->
-            val button = createModifierButton(info.label, info.metaFlag)
-            modifierButtons[info.metaFlag] = button
-            modifierButtonsLayout.addView(button, LinearLayout.LayoutParams(
-                dp(42),
-                dp(28)
-            ).apply {
-                marginStart = dp(2)
-                marginEnd = dp(2)
+    private val clearButton = imageButton {
+        background = styledDrawable(android.R.attr.actionBarItemBackground)
+        imageDrawable = drawable(R.drawable.ic_baseline_delete_24)!!.apply {
+            setTint(styledColor(android.R.attr.colorControlNormal))
+        }
+        setOnClickListener {
+            setKey(Key.None)
+        }
+    }
+
+    override val root = constraintLayout {
+        val vMargin = dp(18)
+        val hMargin = dp(24)
+        add(textView, lParams(matchConstraints, wrapContent) {
+            topOfParent(vMargin)
+            startOfParent(hMargin)
+            before(clearButton)
+            above(modifierButtons.first().root)
+        })
+        val iconSize = dp(48)
+        add(clearButton, lParams(iconSize, iconSize) {
+            below(textView)
+            above(textView)
+            endOfParent(hMargin)
+        })
+        // modifier buttons row
+        modifierButtons.forEachIndexed { i, btn ->
+            add(btn.root, lParams(matchConstraints, wrapContent) {
+                below(textView, vMargin)
+                if (i == 0) startOfParent(hMargin) else after(modifierButtons[i - 1].root)
             })
         }
+        add(input, lParams(matchConstraints, wrapContent) {
+            below(textView, vMargin)
+            after(modifierButtons.last().root)
+            endOfParent(hMargin)
+            bottomOfParent(vMargin)
+        })
+    }
 
-        capturedText = TextView(context).apply {
-            text = formatCurrentValue()
-            this.gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setTextColor(Color.parseColor("#333333"))
-        }
-        addView(capturedText, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(8); topMargin = dp(2) })
+    private var keySym = KeySym(0)
 
-        confirmButton = TextView(context).apply {
-            text = "确认"
-            gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTextColor(Color.WHITE)
-            setPadding(dp(20), dp(6), dp(20), dp(6))
-            background = createConfirmButtonBackground()
-            setOnClickListener {
-                onConfirmed(currentValue)
+    private var currentValue: String = initialValue
+
+    var lastKey: Key = Key.None
+        private set
+
+    init {
+        // restore initial value
+        if (initialValue == "Sym") {
+            keySym = KeySym(0)
+            currentValue = "Sym"
+        } else if (initialValue.isNotEmpty()) {
+            val parsed = Key.parse(initialValue)
+            keySym = parsed.keySym
+            currentValue = initialValue
+            lastKey = parsed
+            modifierButtons.forEach { btn ->
+                btn.checked = parsed.keyStates.has(btn.modifier)
             }
         }
-        addView(confirmButton, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-
-        isFocusable = true
-        isFocusableInTouchMode = true
-        requestFocus()
-
-        updateModifierButtons()
+        updateDisplay()
     }
 
-    private fun formatCurrentValue(): String {
-        if (currentValue == 0) return "(未设置)"
-        val keyCode = decodeKeyCode(currentValue)
-        val metaState = decodeMetaState(currentValue)
-        return formatKey(keyCode, metaState)
+    private val keyStates
+        get() = KeyStates(
+            *modifierButtons
+                .mapNotNull { it.takeIf { it.checked }?.modifier }
+                .toTypedArray()
+        )
+
+    private fun setKey(key: Key) {
+        lastKey = key
+        keySym = key.keySym
+        currentValue = key.portableString
+        modifierButtons.forEach {
+            it.checked = key.keyStates.has(it.modifier)
+        }
+        updateDisplay()
     }
 
-    private fun createModifierButton(label: String, metaFlag: Int): TextView {
-        return TextView(context).apply {
-            text = label
-            gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(dp(2), dp(1), dp(2), dp(1))
-            background = createButtonBackground(false)
-            setOnClickListener {
-                toggleModifier(metaFlag)
+    /** Set a special key string (e.g. "Sym") that has no fcitx5 Key representation. */
+    private fun setKeyString(s: String) {
+        currentValue = s
+        keySym = KeySym(0)
+        lastKey = Key.None
+        modifierButtons.forEach { it.checked = false }
+        updateDisplay()
+    }
+
+    private fun updateKey() {
+        val states = keyStates
+        if (keySym.sym != 0) {
+            currentValue = Key.create(keySym, states).portableString
+            lastKey = Key.create(keySym, states)
+        }
+        // If keySym is 0 (e.g. "Sym" special key), modifier toggles are ignored
+        updateDisplay()
+    }
+
+    private fun updateDisplay() {
+        textView.text = when {
+            currentValue.isEmpty() -> ctx.getString(R.string.none)
+            currentValue == "Sym" -> "Sym"
+            else -> {
+                val key = Key.parse(currentValue)
+                key.localizedString.ifEmpty { ctx.getString(R.string.none) }
             }
         }
     }
 
-    private fun createButtonBackground(selected: Boolean): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(4).toFloat()
-            setColor(if (selected) Color.parseColor("#D0D0D0") else Color.parseColor("#F5F5F5"))
-            setStroke(1, if (selected) Color.parseColor("#888888") else Color.parseColor("#CCCCCC"))
-        }
-    }
-
-    private fun createConfirmButtonBackground(): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(6).toFloat()
-            setColor(Color.parseColor("#4A90D9"))
-        }
-    }
-
-    private fun toggleModifier(metaFlag: Int) {
-        virtualMetaState = if (virtualMetaState and metaFlag != 0) {
-            virtualMetaState and metaFlag.inv()
-        } else {
-            virtualMetaState or metaFlag
-        }
-        updateModifierButtons()
-        updateFromVirtualModifiers()
-        requestFocus()
-    }
-
-    private fun updateModifierButtons() {
-        modifierButtons.forEach { (metaFlag, button) ->
-            val selected = virtualMetaState and metaFlag != 0
-            button.background = createButtonBackground(selected)
-            button.setTextColor(if (selected) Color.parseColor("#333333") else Color.parseColor("#666666"))
-        }
-    }
-
-    private fun updateFromVirtualModifiers() {
-        if (capturedKeyCode != null) {
-            val combined = encodeKey(capturedKeyCode!!, virtualMetaState)
-            currentValue = combined
-            capturedText.text = formatKey(capturedKeyCode!!, virtualMetaState)
-        } else if (virtualMetaState != 0) {
-            val firstModifier = modifierList.first { virtualMetaState and it.metaFlag != 0 }
-            currentValue = encodeKey(firstModifier.keyCode, virtualMetaState)
-            capturedText.text = formatKey(firstModifier.keyCode, virtualMetaState)
-        } else {
-            capturedText.text = formatCurrentValue()
-        }
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (isModifierKey(keyCode)) {
-            return true
-        }
-        val physicalMeta = normalizeMetaState(event.metaState)
-        val combinedMeta = virtualMetaState or physicalMeta
-        capturedKeyCode = keyCode
-        currentValue = encodeKey(keyCode, combinedMeta)
-        capturedText.text = formatKey(keyCode, combinedMeta)
-        return true
-    }
-
-    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (isModifierKey(keyCode) && capturedKeyCode == null && virtualMetaState == 0) {
-            val keyMeta = modifierKeyToMeta(keyCode)
-            capturedKeyCode = keyCode
-            currentValue = encodeKey(keyCode, keyMeta)
-            virtualMetaState = keyMeta
-            updateModifierButtons()
-            capturedText.text = formatKey(keyCode, keyMeta)
-        }
-        return true
-    }
+    fun getValue(): String = currentValue
 
     companion object {
-        fun normalizeMetaState(metaState: Int): Int {
-            var normalized = 0
-            if (metaState and KeyEvent.META_ALT_ON != 0) normalized = normalized or KeyEvent.META_ALT_ON
-            if (metaState and KeyEvent.META_SHIFT_ON != 0) normalized = normalized or KeyEvent.META_SHIFT_ON
-            if (metaState and KeyEvent.META_CTRL_ON != 0) normalized = normalized or KeyEvent.META_CTRL_ON
-            if (metaState and KeyEvent.META_META_ON != 0) normalized = normalized or KeyEvent.META_META_ON
-            if (metaState and KeyEvent.META_SYM_ON != 0) normalized = normalized or KeyEvent.META_SYM_ON
-            if (metaState and KeyEvent.META_FUNCTION_ON != 0) normalized = normalized or KeyEvent.META_FUNCTION_ON
-            return normalized
+        /** fcitx5 modifier keysym range: Shift_L (0xffe1) through Hyper_R (0xffee). */
+        private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
+
+        /**
+         * Extract the modifier state directly from the event's pressed modifiers, WITHOUT the
+         * number/symbol-key stripping that [KeyStates.fromKeyEvent] applies. Used when capturing a
+         * combo (e.g. `Alt+grave` / `Alt+$`) so the held modifier is preserved in the stored string
+         * and can be matched exactly later.
+         */
+        private fun rawModifierStates(event: KeyEvent): KeyStates {
+            var s = KeyState.NoState.state
+            if (event.isAltPressed) s = s or KeyState.Alt.state
+            if (event.isCtrlPressed) s = s or KeyState.Ctrl.state
+            if (event.isShiftPressed) s = s or KeyState.Shift.state
+            if (event.isMetaPressed) s = s or KeyState.Meta.state
+            return KeyStates(s and KeyState.SimpleMask.state)
         }
 
-        fun isModifierKey(keyCode: Int): Boolean {
-            return when (keyCode) {
-                KeyEvent.KEYCODE_SHIFT_LEFT,
-                KeyEvent.KEYCODE_SHIFT_RIGHT,
-                KeyEvent.KEYCODE_ALT_LEFT,
-                KeyEvent.KEYCODE_ALT_RIGHT,
-                KeyEvent.KEYCODE_CTRL_LEFT,
-                KeyEvent.KEYCODE_CTRL_RIGHT,
-                KeyEvent.KEYCODE_META_LEFT,
-                KeyEvent.KEYCODE_META_RIGHT,
-                KeyEvent.KEYCODE_SYM,
-                KeyEvent.KEYCODE_FUNCTION -> true
-                else -> false
-            }
-        }
-
-        fun modifierKeyToMeta(keyCode: Int): Int {
-            return when (keyCode) {
-                KeyEvent.KEYCODE_SHIFT_LEFT,
-                KeyEvent.KEYCODE_SHIFT_RIGHT -> KeyEvent.META_SHIFT_ON
-                KeyEvent.KEYCODE_ALT_LEFT,
-                KeyEvent.KEYCODE_ALT_RIGHT -> KeyEvent.META_ALT_ON
-                KeyEvent.KEYCODE_CTRL_LEFT,
-                KeyEvent.KEYCODE_CTRL_RIGHT -> KeyEvent.META_CTRL_ON
-                KeyEvent.KEYCODE_META_LEFT,
-                KeyEvent.KEYCODE_META_RIGHT -> KeyEvent.META_META_ON
-                KeyEvent.KEYCODE_SYM -> KeyEvent.META_SYM_ON
-                KeyEvent.KEYCODE_FUNCTION -> KeyEvent.META_FUNCTION_ON
-                else -> 0
-            }
-        }
-
-        fun encodeKey(keyCode: Int, metaState: Int): Int {
-            return (metaState shl 16) or (keyCode and 0xFFFF)
-        }
-
-        fun decodeKeyCode(combined: Int): Int {
-            return combined and 0xFFFF
-        }
-
-        fun decodeMetaState(combined: Int): Int {
-            return (combined shr 16) and 0xFFFF
-        }
-
-        fun metaStateToString(metaState: Int): String {
-            val sb = StringBuilder()
-            if (metaState and KeyEvent.META_SHIFT_ON != 0) sb.append("Shift")
-            if (metaState and KeyEvent.META_ALT_ON != 0) {
-                if (sb.isNotEmpty()) sb.append('+')
-                sb.append("Alt")
-            }
-            if (metaState and KeyEvent.META_CTRL_ON != 0) {
-                if (sb.isNotEmpty()) sb.append('+')
-                sb.append("Ctrl")
-            }
-            if (metaState and KeyEvent.META_META_ON != 0) {
-                if (sb.isNotEmpty()) sb.append('+')
-                sb.append("Meta")
-            }
-            if (metaState and KeyEvent.META_SYM_ON != 0) {
-                if (sb.isNotEmpty()) sb.append('+')
-                sb.append("Sym")
-            }
-            if (metaState and KeyEvent.META_FUNCTION_ON != 0) {
-                if (sb.isNotEmpty()) sb.append('+')
-                sb.append("Fn")
-            }
-            return sb.toString()
-        }
-
-        fun formatKey(keyCode: Int, metaState: Int): String {
-            return buildString {
-                if (metaState != 0) {
-                    append(metaStateToString(metaState))
-                    append("+")
-                }
-                append(KeyEvent.keyCodeToString(keyCode))
-                append(" (")
-                append(keyCode)
-                append(")")
-            }
+        /** Format a stored key string for display in preference summary. */
+        fun formatKey(keyString: String): String {
+            if (keyString.isEmpty()) return "(none)"
+            if (keyString == "Sym") return "Sym"
+            val key = Key.parse(keyString)
+            return key.localizedString.ifEmpty { "(none)" }
         }
     }
 }

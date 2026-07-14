@@ -27,6 +27,8 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             hw.pageNextKey to R.string.candidate_page_next,
             hw.pagePrevKey to R.string.candidate_page_prev,
             hw.symbolPickerKey to R.string.hw_symbol_picker,
+            hw.toggleImeKey to R.string.hw_toggle_ime,
+            hw.pickerKey to R.string.hw_show_picker,
         ).forEach { (pref, titleRes) ->
             val capture = KeyCapturePreference(context).apply {
                 key = pref.key
