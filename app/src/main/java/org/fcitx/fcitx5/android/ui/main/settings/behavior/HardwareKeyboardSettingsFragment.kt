@@ -56,6 +56,26 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         screen.addPreference(altLatchSwitch)
 
+        // Which key double-tap latches Alt (only relevant while the master toggle is on).
+        // NOTE: we cannot use Preference.dependency here — when the screen is built dynamically
+        // in onCreatePreferences, the dependency lookup runs before the manager's screen tree is
+        // wired up and throws IllegalStateException. Drive enable/disable manually instead.
+        val altLatchKeyPref = KeyCapturePreference(context).apply {
+            key = hw.altLatchKey.key
+            title = getString(R.string.hw_alt_latch_key)
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+            setDefaultValue(hw.altLatchKey.getValue())
+            summaryProvider = KeyCapturePreference.KeySummaryProvider
+        }
+        altLatchKeyPref.isEnabled = altLatchSwitch.isChecked
+        altLatchSwitch.setOnPreferenceChangeListener { _, newValue ->
+            altLatchKeyPref.isEnabled = newValue as Boolean
+            true
+        }
+        screen.addPreference(altLatchKeyPref)
+        keyPrefs.add(altLatchKeyPref)
+
         listOf(
             hw.candidate1Key to R.string.candidate_key_1,
             hw.candidate2Key to R.string.candidate_key_2,

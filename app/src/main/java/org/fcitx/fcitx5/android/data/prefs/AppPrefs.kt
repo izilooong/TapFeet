@@ -407,8 +407,11 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // screen overrides all individual key bindings with that preset's values.
         val keyProfile = string("hw_key_profile", "blackberry")
 
-        // Double-tap left Alt to latch (lock) the Alt modifier. Default ON.
+        // Double-tap the latch key to lock the Alt modifier. Default ON.
         val altLatchEnabled = bool("hw_alt_latch_enabled", true)
+        // Which physical key, when double-tapped, latches (locks) the Alt modifier.
+        // fcitx5 portableString (default the left Alt key, "Alt_L").
+        val altLatchKey = string("hw_alt_latch_key", "Alt_L")
 
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
         // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".

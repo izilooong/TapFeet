@@ -51,6 +51,7 @@ import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.FormattedText
+import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.core.ScancodeMapping
@@ -672,8 +673,25 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         return keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT
     }
 
-    private fun isAltLatchKeyCode(keyCode: Int): Boolean {
-        return keyCode == KeyEvent.KEYCODE_ALT_LEFT
+    /**
+     * Whether [event] is the configured Alt-latch trigger key
+     * (setting: hardwareKeyboard.altLatchKey, default "Alt_L").
+     *
+     * The latch key is a bare physical key press (typically a modifier like Alt_L), so it is matched
+     * by the keysym derived from the event's keyCode. The special "Sym" string maps to the
+     * BlackBerry SYM key. An empty configured value disables latching entirely.
+     */
+    private fun isAltLatchKey(event: KeyEvent): Boolean {
+        val keyString = AppPrefs.getInstance().hardwareKeyboard.altLatchKey.getValue()
+        if (keyString.isEmpty()) return false
+        if (keyString == "Sym") {
+            return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
+        }
+        val key = Key.parse(keyString)
+        if (key.sym == 0) return false
+        val symFromKeyCode = FcitxKeyMapping.keyCodeToSym(event.keyCode)
+        return symFromKeyCode == key.sym ||
+                (event.unicodeChar != 0 && event.unicodeChar == key.sym)
     }
 
     private fun isAltUnlockKeyCode(keyCode: Int): Boolean {
@@ -729,7 +747,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             setAltLatched(false)
         }
 
-        if (altLatchEnabled() && isAltLatchKeyCode(keyCode)) {
+        if (altLatchEnabled() && isAltLatchKey(event)) {
             if (event.repeatCount == 0) {
                 val now = event.eventTime
                 if (altLatched) {
@@ -775,7 +793,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
             return false
         }
-        if (altLatchEnabled() && isAltLatchKeyCode(keyCode)) {
+        if (altLatchEnabled() && isAltLatchKey(event)) {
             return true
         }
         if (consumedHardwareCandidateShortcutKeys.remove(keyCode)) {

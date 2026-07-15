@@ -40,18 +40,20 @@ object HardwareKeyProfiles {
         hw.symbolPickerKey.key to "Alt_R",
         hw.toggleImeKey.key to "Alt+space",
         hw.pickerKey.key to "Shift+space",
+        hw.altLatchKey.key to "Alt_L",
     )
 
     private fun tt2(hw: AppPrefs.HardwareKeyboard) = mapOf(
         hw.candidate1Key.key to "space",
-        hw.candidate2Key.key to "Ctrl_L",
+        hw.candidate2Key.key to "Control_L",
         hw.candidate3Key.key to "Tab",
         hw.candidate4Key.key to "Shift_L",
         hw.candidate5Key.key to "Alt_R",
         hw.pageNextKey.key to "",
         hw.pagePrevKey.key to "",
         hw.symbolPickerKey.key to "",
-        hw.toggleImeKey.key to "Alt_R+space",
-        hw.pickerKey.key to "Shift_L+space",
+        hw.toggleImeKey.key to "Alt+space",
+        hw.pickerKey.key to "Shift+space",
+        hw.altLatchKey.key to "Alt_R",
     )
 }
