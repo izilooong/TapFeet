@@ -93,6 +93,20 @@ abstract class ManagedPreferenceCategory(
         return pref
     }
 
+    /**
+     * Boolean preference with no auto-generated UI. Wire it to a custom
+     * [androidx.preference.SwitchPreference] in the settings screen (e.g. the hardware keyboard
+     * "Alt lock (double-tap)" toggle).
+     */
+    protected fun bool(
+        key: String,
+        defaultValue: Boolean
+    ): ManagedPreference.PBool {
+        val pref = ManagedPreference.PBool(sharedPreferences, key, defaultValue)
+        pref.register()
+        return pref
+    }
+
     protected fun int(
         @StringRes
         title: Int,

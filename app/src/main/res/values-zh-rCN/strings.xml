@@ -31,6 +31,8 @@
     <string name="candidate_page_next">下一页</string>
     <string name="candidate_page_prev">上一页</string>
     <string name="hw_symbol_picker">符号窗口</string>
+    <string name="hw_alt_latch">Alt 锁定（双击）</string>
+    <string name="hw_alt_latch_summary">双击左侧 Alt 键锁定 Alt 修饰符。</string>
     <string name="hw_toggle_ime">切换输入法</string>
     <string name="hw_show_picker">显示输入法选择器</string>
     <string name="key_capture_hint">按任意键以绑定…</string>

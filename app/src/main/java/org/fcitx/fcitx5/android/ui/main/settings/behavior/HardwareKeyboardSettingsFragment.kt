@@ -6,6 +6,7 @@ package org.fcitx.fcitx5.android.ui.main.settings.behavior
 
 import android.os.Bundle
 import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreference
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
@@ -18,6 +19,18 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         val screen = preferenceManager.createPreferenceScreen(context)
 
         val hw = AppPrefs.getInstance().hardwareKeyboard
+
+        // Master toggle: double-tap left Alt to latch the Alt modifier.
+        val altLatchSwitch = SwitchPreference(context).apply {
+            key = hw.altLatchEnabled.key
+            title = getString(R.string.hw_alt_latch)
+            summary = getString(R.string.hw_alt_latch_summary)
+            setDefaultValue(hw.altLatchEnabled.getValue())
+            isChecked = hw.altLatchEnabled.getValue()
+            isIconSpaceReserved = false
+        }
+        screen.addPreference(altLatchSwitch)
+
         listOf(
             hw.candidate1Key to R.string.candidate_key_1,
             hw.candidate2Key to R.string.candidate_key_2,

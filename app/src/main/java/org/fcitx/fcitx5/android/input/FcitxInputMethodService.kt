@@ -654,6 +654,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     fun isAltLatched(): Boolean = altLatched
 
+    /** Whether double-tap-left-Alt latching is enabled (setting: hardwareKeyboard.altLatchEnabled). */
+    private fun altLatchEnabled(): Boolean =
+        AppPrefs.getInstance().hardwareKeyboard.altLatchEnabled.getValue()
+
     fun toggleAltLatch() {
         setAltLatched(!altLatched)
     }
@@ -720,7 +724,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             return false
         }
 
-        if (isAltLatchKeyCode(keyCode)) {
+        // When Alt latch is disabled, clear any latched state and let Alt behave as a normal modifier.
+        if (!altLatchEnabled() && altLatched) {
+            setAltLatched(false)
+        }
+
+        if (altLatchEnabled() && isAltLatchKeyCode(keyCode)) {
             if (event.repeatCount == 0) {
                 val now = event.eventTime
                 if (altLatched) {
@@ -738,7 +747,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             return true
         }
 
-        if (event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
+        if (altLatchEnabled() && event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
             setAltLatched(false)
             lastAltTapEventTime = 0L
             Timber.d("Alt latch disabled by keyCode=$keyCode")
@@ -766,7 +775,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
             return false
         }
-        if (isAltLatchKeyCode(keyCode)) {
+        if (altLatchEnabled() && isAltLatchKeyCode(keyCode)) {
             return true
         }
         if (consumedHardwareCandidateShortcutKeys.remove(keyCode)) {

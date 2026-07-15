@@ -403,11 +403,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class HardwareKeyboard :
         ManagedPreferenceCategory(R.string.hardware_keyboard, sharedPreferences) {
+        // Double-tap left Alt to latch (lock) the Alt modifier. Default ON.
+        val altLatchEnabled = bool("hw_alt_latch_enabled", true)
+
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
         // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".
         val candidate1Key = string("hw_candidate_1_key", "space")
         val candidate2Key = string("hw_candidate_2_key", "0")
-        val candidate3Key = string("hw_candidate_3_key", "Sym")
+        val candidate3Key = string("hw_candidate_3_key", "Alt_R")
         val candidate4Key = string("hw_candidate_4_key", "Shift_L")
         val candidate5Key = string("hw_candidate_5_key", "Shift_R")
         val pageNextKey = string("hw_candidate_page_next_key", "grave")

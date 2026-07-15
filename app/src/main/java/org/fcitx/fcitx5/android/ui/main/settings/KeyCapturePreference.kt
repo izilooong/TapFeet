@@ -20,6 +20,9 @@ class KeyCapturePreference : Preference {
 
     private var defaultKeyValue: String = ""
 
+    /** The configured default value, used as the SharedPreferences fallback in the summary. */
+    internal val defaultValue: String get() = defaultKeyValue
+
     constructor(context: Context) : this(context, null)
     constructor(context: Context, attrs: AttributeSet?) :
             this(context, attrs, androidx.preference.R.attr.preferenceStyle)
@@ -65,8 +68,9 @@ class KeyCapturePreference : Preference {
 
     object KeySummaryProvider : SummaryProvider<KeyCapturePreference> {
         override fun provideSummary(preference: KeyCapturePreference): CharSequence {
-            val v = preference.sharedPreferences?.getString(preference.key, "") ?: ""
-            if (v.isEmpty()) return "(none)"
+            val v = preference.sharedPreferences?.getString(preference.key, preference.defaultValue)
+                ?: preference.defaultValue
+            if (v.isEmpty()) return preference.context.getString(R.string.none)
             return KeyCaptureUi.formatKey(v)
         }
     }
