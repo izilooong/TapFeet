@@ -5,20 +5,45 @@
 package org.fcitx.fcitx5.android.ui.main.settings.behavior
 
 import android.os.Bundle
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
 
 class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
+    private lateinit var hw: AppPrefs.HardwareKeyboard
+    private val keyPrefs = mutableListOf<KeyCapturePreference>()
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
         val screen = preferenceManager.createPreferenceScreen(context)
 
-        val hw = AppPrefs.getInstance().hardwareKeyboard
+        hw = AppPrefs.getInstance().hardwareKeyboard
+
+        // Preset profile dropdown: choosing a profile overrides every individual key binding.
+        val profileList = ListPreference(context).apply {
+            key = hw.keyProfile.key
+            title = getString(R.string.hw_key_profile)
+            entries = arrayOf(
+                getString(R.string.hw_profile_blackberry),
+                getString(R.string.hw_profile_tt2)
+            )
+            entryValues = arrayOf(HardwareKeyProfiles.BLACKBERRY, HardwareKeyProfiles.TT2)
+            setDefaultValue(hw.keyProfile.getValue())
+            value = hw.keyProfile.getValue()
+            summary = "%s"
+            isIconSpaceReserved = false
+        }
+        profileList.setOnPreferenceChangeListener { _, newValue ->
+            applyProfile(newValue as String)
+            true
+        }
+        screen.addPreference(profileList)
 
         // Master toggle: double-tap left Alt to latch the Alt modifier.
         val altLatchSwitch = SwitchPreference(context).apply {
@@ -52,8 +77,19 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 summaryProvider = KeyCapturePreference.KeySummaryProvider
             }
             screen.addPreference(capture)
+            keyPrefs.add(capture)
         }
 
         preferenceScreen = screen
+    }
+
+    /** Override all individual key bindings with the selected preset, then refresh the summaries. */
+    private fun applyProfile(name: String) {
+        val mapping = HardwareKeyProfiles.get(name, hw)
+        preferenceManager.sharedPreferences?.edit()?.apply {
+            mapping.forEach { (key, value) -> putString(key, value) }
+            apply()
+        }
+        keyPrefs.forEach { it.refresh() }
     }
 }

@@ -74,4 +74,7 @@ class KeyCapturePreference : Preference {
             return KeyCaptureUi.formatKey(v)
         }
     }
+
+    /** Refresh the summary after the underlying value was changed externally (e.g. by a preset). */
+    fun refresh() = notifyChanged()
 }

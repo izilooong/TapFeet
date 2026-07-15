@@ -403,6 +403,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class HardwareKeyboard :
         ManagedPreferenceCategory(R.string.hardware_keyboard, sharedPreferences) {
+        // Selected key-layout preset: "blackberry" or "tt2". Choosing a preset in the settings
+        // screen overrides all individual key bindings with that preset's values.
+        val keyProfile = string("hw_key_profile", "blackberry")
+
         // Double-tap left Alt to latch (lock) the Alt modifier. Default ON.
         val altLatchEnabled = bool("hw_alt_latch_enabled", true)
 

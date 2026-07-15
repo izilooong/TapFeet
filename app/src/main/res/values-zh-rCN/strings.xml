@@ -35,6 +35,9 @@
     <string name="hw_alt_latch_summary">双击左侧 Alt 键锁定 Alt 修饰符。</string>
     <string name="hw_toggle_ime">切换输入法</string>
     <string name="hw_show_picker">显示输入法选择器</string>
+    <string name="hw_key_profile">键盘布局预设</string>
+    <string name="hw_profile_blackberry">BlackBerry</string>
+    <string name="hw_profile_tt2">Titan2</string>
     <string name="key_capture_hint">按任意键以绑定…</string>
     <string name="key_captured_format">已捕获: %1$s (%2$d)</string>
     <string name="hw_reset">恢复默认</string>
