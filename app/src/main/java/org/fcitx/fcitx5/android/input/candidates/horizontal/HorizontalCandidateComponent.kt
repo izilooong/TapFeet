@@ -133,8 +133,34 @@ class HorizontalCandidateComponent :
             }
         } else if (delta > 0) {
             if (hasLocalNext()) {
-                localPageStart =
+                val nextStart =
                         min(localPageStart + effectiveLocalPageSize(), lastLocalPageStart())
+                if (isOrphanPage(nextStart)) {
+                    if (remoteHasNext) {
+                        // Sparse tail (e.g. only 1 candidate left): load the subsequent batch
+                        // from the backend to fill a proper page instead of showing a lonely
+                        // 1-item page.
+                        candidatePagingMode = 1
+                        fcitx.launchOnReady {
+                            it.setCandidatePagingMode(1)
+                            it.offsetCandidatePage(1)
+                        }
+                        updatePagingState()
+                        return
+                    }
+                    // No more data behind: borrow candidates from the current page so the
+                    // trailing page is no longer an orphan (e.g. [4,1] -> [3,2]).
+                    val orphanThreshold = (effectiveLocalPageSize().coerceAtLeast(1) + 1) / 2
+                    while (localPageSize > 1 &&
+                            (pageCandidates.size - (localPageStart + localPageSize)) < orphanThreshold) {
+                        localPageSize -= 1
+                    }
+                    localPageStart = min(localPageStart + localPageSize, lastLocalPageStart())
+                    localPageSize = preferredLocalPageSize(localPageStart)
+                    renderCurrentPage()
+                    return
+                }
+                localPageStart = nextStart
                 localPageSize = preferredLocalPageSize(localPageStart)
                 renderCurrentPage()
             } else if (remoteHasNext) {
@@ -192,6 +218,18 @@ class HorizontalCandidateComponent :
         val count = pageCandidates.size
         if (count <= pageSize) return 0
         return ((count - 1) / pageSize) * pageSize
+    }
+
+    /**
+     * Whether a page starting at [start] would display fewer than half of the per-page capacity
+     * (an "orphan" tail, e.g. the lonely 1-item last page when words are wide).
+     */
+    private fun isOrphanPage(start: Int): Boolean {
+        val remaining = pageCandidates.size - start
+        if (remaining <= 0) return false
+        val capacity = effectiveLocalPageSize().coerceAtLeast(1)
+        val size = min(maxSpanCountPref.getValue().coerceAtLeast(1), remaining)
+        return size < (capacity + 1) / 2
     }
 
     private fun hasLocalPrev(): Boolean = localPageStart > 0
