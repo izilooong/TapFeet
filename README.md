@@ -55,6 +55,9 @@
 1. 进入 **选项 → 物理键盘**
 2. 选择 **键盘布局预设**，切换为对应的实体键盘布局
 
+   <img width="717" height="711" alt="image" src="https://github.com/user-attachments/assets/59bfdde9-cb5a-4b23-b4e4-023fc34349c3" />
+
+
 
 ### 物理键盘精确映射
 
