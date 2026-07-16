@@ -4,9 +4,9 @@
 # TapFeet IME · 大脚输入法
 
 
-> 本项目基于 [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) 二次开发，**专为 Android 物理全键盘手机打造的中文输入法**。  
- 
+> 本项目基于 [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) 二次开发，**专为 Android 物理全键盘手机打造的中文输入法**。   
 > 原项目将 [Fcitx5](https://github.com/fcitx/fcitx5) 输入法框架及各类引擎移植到 Android 平台，本仓库在此基础上针对实体键盘输入场景做了深度优化。
+> 
 > 诞生于 Q25（BlackBerry Classic Q20 复刻机）的适配需求，现已扩展支持 **Unihertz Titan 2**、**BlackBerry KEY 系列** 等主流物理键盘 Android 设备。 
 
 ---
@@ -41,14 +41,11 @@
 - **Q25 / BlackBerry KEY **：5 大金刚键（⬆️ 0️⃣ 🈳 sym ⬆️）对应候选词 1~5
 - **Unihertz Titan 2 **：顶部导航键 + 空格键快捷选词
 
-<img width="935" height="191" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
-
-
 ### Alt + 数字组合键选词
 
 还原 BlackBerry 经典操作逻辑 —— 按住 Alt 或双击锁定 Alt，物理数字键（1~5）直接选词，空格键快速上屏。
 
-<img width="935" height="191" alt="image" src="https://github.com/user-attachments/assets/666baa7e-f821-4529-9350-f10106256b1f" />
+<img width="935" height="191" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
 
 
 ### 物理键盘布局切换
