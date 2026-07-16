@@ -36,7 +36,7 @@ object HardwareKeyProfiles {
         hw.candidate4Key.key to "Shift_L",
         hw.candidate5Key.key to "Shift_R",
         hw.pageNextKey.key to "grave",
-        hw.pagePrevKey.key to "grave",
+        hw.pagePrevKey.key to "Alt+grave",
         hw.symbolPickerKey.key to "Alt_R",
         hw.toggleImeKey.key to "Alt+space",
         hw.pickerKey.key to "Shift+space",

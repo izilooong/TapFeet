@@ -72,6 +72,7 @@ import org.fcitx.fcitx5.android.utils.forceShowSelf
 import org.fcitx.fcitx5.android.utils.inputMethodManager
 import org.fcitx.fcitx5.android.utils.isTypeNull
 import org.fcitx.fcitx5.android.utils.monitorCursorAnchor
+import org.fcitx.fcitx5.android.utils.normalizeKeyString
 import org.fcitx.fcitx5.android.utils.styledFloat
 import org.fcitx.fcitx5.android.utils.withBatchEdit
 import splitties.bitflags.hasFlag
@@ -653,6 +654,32 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var lastAltTapEventTime = 0L
     private val altDoubleTapTimeoutMs = 300L
 
+    /**
+     * Physical modifier state tracked from the raw key-down/key-up stream.
+     *
+     * Why this is needed: when the Alt-latch logic consumes the Alt key's key-down (it returns
+     * `true` for the latch key so a lone Alt never leaks into fcitx5), some Android builds stop
+     * attaching `META_ALT_ON` to the *following* key event. As a result a combo like `Alt+grave`
+     * arrives with no Alt meta and can never match. We therefore derive the authoritative modifier
+     * state from the physical keys we actually see go down/up, and inject it into the effective
+     * event used for matching/forwarding. `physicalAltDown` also covers the latched case.
+     */
+    private var physicalAltDown = false
+    private var physicalCtrlDown = false
+    private var physicalShiftDown = false
+
+    private fun updatePhysicalModifiers(keyCode: Int, isDown: Boolean) {
+        when (keyCode) {
+            KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.KEYCODE_ALT_RIGHT -> physicalAltDown = isDown
+            KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.KEYCODE_CTRL_RIGHT -> physicalCtrlDown = isDown
+            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> physicalShiftDown = isDown
+        }
+    }
+    // True when THIS key gesture was consumed by latching (pure latch key, double-tap latch, or
+    // unlock). Used so onKeyUp only swallows the key-up for gestures latching actually handled,
+    // letting a colliding selection key's own key-up handling run.
+    private var altLatchConsumedThisGesture = false
+
     fun isAltLatched(): Boolean = altLatched
 
     /** Whether double-tap-left-Alt latching is enabled (setting: hardwareKeyboard.altLatchEnabled). */
@@ -687,7 +714,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (keyString == "Sym") {
             return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
         }
-        val key = Key.parse(keyString)
+        val key = Key.parse(normalizeKeyString(keyString))
         if (key.sym == 0) return false
         val symFromKeyCode = FcitxKeyMapping.keyCodeToSym(event.keyCode)
         return symFromKeyCode == key.sym ||
@@ -700,9 +727,24 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 keyCode == KeyEvent.KEYCODE_ENTER
     }
 
-    private fun withLatchedAlt(event: KeyEvent): KeyEvent {
-        if (!altLatched || isAnyAltKeyCode(event.keyCode)) return event
-        val meta = event.metaState or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
+    /**
+     * Rebuild [event] with the authoritative modifier meta-state: our tracked physical modifier
+     * state (see [physicalAltDown] etc.) plus any Alt added by latching. This guarantees combos
+     * such as `Alt+grave` carry the Alt meta even when the OS failed to attach it after the latch
+     * key's key-down was consumed.
+     */
+    private fun withInjectedModifiers(event: KeyEvent): KeyEvent {
+        var meta = event.metaState
+        if (physicalAltDown || altLatched) {
+            meta = meta or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
+        }
+        if (physicalCtrlDown) {
+            meta = meta or KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        }
+        if (physicalShiftDown) {
+            meta = meta or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+        }
+        if (meta == event.metaState) return event
         return KeyEvent(
             event.downTime,
             event.eventTime,
@@ -742,6 +784,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             return false
         }
 
+        // Track physical modifier state from the raw stream (authoritative for combo matching).
+        updatePhysicalModifiers(keyCode, true)
+
         // When Alt latch is disabled, clear any latched state and let Alt behave as a normal modifier.
         if (!altLatchEnabled() && altLatched) {
             setAltLatched(false)
@@ -751,18 +796,35 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (event.repeatCount == 0) {
                 val now = event.eventTime
                 if (altLatched) {
+                    // Already latched: pressing the latch key again unlocks it (pure unlock, consume).
                     setAltLatched(false)
                     lastAltTapEventTime = 0L
                     Timber.d("Alt latch disabled")
+                    altLatchConsumedThisGesture = true
+                    return true
                 } else if (lastAltTapEventTime > 0L && now - lastAltTapEventTime <= altDoubleTapTimeoutMs) {
+                    // Second tap within the window: latch on. Consume so it does not also select.
                     setAltLatched(true)
                     lastAltTapEventTime = 0L
                     Timber.d("Alt latch enabled")
+                    altLatchConsumedThisGesture = true
+                    return true
                 } else {
+                    // First tap: start the double-tap timer.
                     lastAltTapEventTime = now
+                    // If this physical key is ALSO a configured selection / symbol / paging shortcut,
+                    // let the single press fall through to selection instead of being swallowed by
+                    // latching (otherwise the selection key stops working). A pure latch key (e.g. the
+                    // default Alt_L) is consumed here so a lone Alt press never leaks the Alt modifier
+                    // into fcitx5.
+                    if (inputView?.isHardwareShortcutKey(event) != true) {
+                        altLatchConsumedThisGesture = true
+                        return true
+                    }
+                    // Otherwise fall through; downstream selection logic handles this press.
                 }
             }
-            return true
+            // Long-press repeats (repeatCount > 0) and colliding selection keys: let them through.
         }
 
         if (altLatchEnabled() && event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
@@ -773,7 +835,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (isAnyAltKeyCode(keyCode)) return true
         }
 
-        val effectiveEvent = withLatchedAlt(event)
+        val effectiveEvent = withInjectedModifiers(event)
 
         // request to show floating CandidatesView when pressing physical keyboard
         if (inputDeviceMgr.evaluateOnKeyDown(effectiveEvent, this)) {
@@ -793,13 +855,24 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
             return false
         }
+
+        // Track physical modifier state from the raw stream (authoritative for combo matching).
+        updatePhysicalModifiers(keyCode, false)
+
         if (altLatchEnabled() && isAltLatchKey(event)) {
-            return true
+            // Only swallow the key-up when THIS gesture was consumed by latching (pure latch key,
+            // double-tap latch, or unlock). Otherwise let it through so the selection key's own
+            // key-up handling (consumedHardwareCandidateShortcutKeys) applies.
+            if (altLatchConsumedThisGesture) {
+                altLatchConsumedThisGesture = false
+                return true
+            }
+            return false
         }
         if (consumedHardwareCandidateShortcutKeys.remove(keyCode)) {
             return true
         }
-        val effectiveEvent = withLatchedAlt(event)
+        val effectiveEvent = withInjectedModifiers(event)
         return forwardKeyEvent(effectiveEvent) || super.onKeyUp(keyCode, effectiveEvent)
     }
 

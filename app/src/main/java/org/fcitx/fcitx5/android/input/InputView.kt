@@ -50,6 +50,7 @@ import org.fcitx.fcitx5.android.input.picker.symbolPicker
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.preedit.PreeditComponent
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
+import org.fcitx.fcitx5.android.utils.normalizeKeyString
 import org.fcitx.fcitx5.android.utils.unset
 import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.manager.wrapToUniqueComponent
@@ -415,7 +416,7 @@ class InputView(
         if (keyString == "Sym") {
             return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
         }
-        return matchesKey(event, Key.parse(keyString))
+        return matchesKey(event, Key.parse(normalizeKeyString(keyString)))
     }
 
     /**
@@ -460,7 +461,7 @@ class InputView(
         if (keyString == "Sym") {
             return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
         }
-        return isSameKeySym(event, Key.parse(keyString))
+        return isSameKeySym(event, Key.parse(normalizeKeyString(keyString)))
     }
 
     private fun isSameKeySym(event: KeyEvent, key: Key): Boolean {
@@ -540,6 +541,29 @@ class InputView(
         return null
     }
 
+    /**
+     * Side-effect-free check: does [event] match any configured hardware shortcut key
+     * (candidate / symbol / paging / global action)?
+     *
+     * Used by the Alt-latch logic in [FcitxInputMethodService] to detect when the latch trigger
+     * key collides with a selection key — so a single press can still select instead of being
+     * swallowed by latching. Does NOT perform any selection; it only reads the current config and
+     * compares key syms, so it is safe to call from the key-down dispatch path.
+     */
+    fun isHardwareShortcutKey(event: KeyEvent): Boolean {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        return matchesKeyString(event, hw.candidate1Key.getValue()) ||
+            matchesKeyString(event, hw.candidate2Key.getValue()) ||
+            matchesKeyString(event, hw.candidate3Key.getValue()) ||
+            matchesKeyString(event, hw.candidate4Key.getValue()) ||
+            matchesKeyString(event, hw.candidate5Key.getValue()) ||
+            matchesKeyString(event, hw.symbolPickerKey.getValue()) ||
+            matchesKeyString(event, hw.pageNextKey.getValue()) ||
+            matchesKeyString(event, hw.pagePrevKey.getValue()) ||
+            matchesKeyString(event, hw.toggleImeKey.getValue()) ||
+            matchesKeyString(event, hw.pickerKey.getValue())
+    }
+
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
@@ -549,7 +573,7 @@ class InputView(
 
         val hw = AppPrefs.getInstance().hardwareKeyboard
         val c1 = hw.candidate1Key.getValue()
-        val candidate1HasModifier = Key.parse(c1).states != 0
+        val candidate1HasModifier = Key.parse(normalizeKeyString(c1)).states != 0
 
         // candidate1 组合键（配置带 modifier）：精确匹配后直接选居中候选（优先于符号切换）
         if (candidate1HasModifier && matchesKeyString(event, c1)) {
@@ -622,16 +646,15 @@ class InputView(
         val hw = AppPrefs.getInstance().hardwareKeyboard
         val nextKeyCombined = hw.pageNextKey.getValue()
         val prevKeyCombined = hw.pagePrevKey.getValue()
-        val isPageKey = when {
-            matchesKeyString(event, nextKeyCombined)  -> true
-            matchesKeyString(event, prevKeyCombined) -> true
-            else -> false
-        }
-        if (!isPageKey) return false
+        val nextMatches = matchesKeyString(event, nextKeyCombined)
+        val prevMatches = matchesKeyString(event, prevKeyCombined)
+        if (!nextMatches && !prevMatches) return false
+        // A combo (modifier) binding takes precedence over a plain binding on the same physical key,
+        // so e.g. "Alt+grave" (prev) is not stolen by a plain "grave" (next) binding.
         val direction = when {
-            !event.isAltPressed && matchesKeyString(event, nextKeyCombined)  -> 1
-            event.isAltPressed && matchesKeyString(event, nextKeyCombined)  -> -1
-            matchesKeyString(event, prevKeyCombined) -> -1
+            prevMatches && Key.parse(normalizeKeyString(prevKeyCombined)).states != 0 -> -1
+            nextMatches && Key.parse(normalizeKeyString(nextKeyCombined)).states != 0 -> 1
+            prevMatches -> -1
             else -> 1
         }
         horizontalCandidate.page(direction)

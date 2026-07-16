@@ -14,6 +14,7 @@ import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
+import org.fcitx.fcitx5.android.utils.normalizeKeyString
 import splitties.dimensions.dp
 import splitties.resources.drawable
 import splitties.resources.styledColor
@@ -117,7 +118,7 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
         addTextChangedListener l@{
             val text = it?.toString() ?: return@l
             if (text.isEmpty()) return@l
-            val parsed = Key.parse(text)
+            val parsed = Key.parse(normalizeKeyString(text))
             if (parsed.sym != 0) {
                 setKey(Key.create(parsed.keySym, keyStates))
             }
@@ -260,7 +261,7 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
         fun formatKey(keyString: String): String {
             if (keyString.isEmpty()) return "(none)"
             if (keyString == "Sym") return "Sym"
-            val key = Key.parse(keyString)
+            val key = Key.parse(normalizeKeyString(keyString))
             return key.localizedString.ifEmpty { "(none)" }
         }
     }
