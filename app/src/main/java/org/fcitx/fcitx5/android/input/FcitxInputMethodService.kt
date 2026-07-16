@@ -188,7 +188,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     @Keep
+    // Cache the inline suggestion request per theme: building the full InlineSuggestionUi
+    // style (several Builders + Icon.setTint) on every system request is wasteful when
+    // the theme hasn't changed.
+    private var cachedInlineSuggestionTheme: Theme? = null
+    private var cachedInlineSuggestionRequest: InlineSuggestionsRequest? = null
+
     private val onThemeChangeListener = ThemeManager.OnThemeChangeListener {
+        cachedInlineSuggestionTheme = null
+        cachedInlineSuggestionRequest = null
         replaceInputViews(it)
     }
 
@@ -614,25 +622,26 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         win.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
-    private var inputViewLocation = intArrayOf(0, 0)
+    private var cachedNavBarBg: View? = null
 
     override fun onComputeInsets(outInsets: Insets) {
         if (inputDeviceMgr.isVirtualKeyboard) {
-            inputView?.keyboardView?.getLocationInWindow(inputViewLocation)
-           
-                inputView?.keyboardView?.let { kv ->
-                    if (kv.height > 0) {
-                        inputViewLocation[1] = decorView.height - kv.height
-                    }
-                }
-            
+            // Keyboard is pinned to the bottom; its top is just window height minus its
+            // height. The previous getLocationInWindow call was redundant (its result was
+            // overwritten) and an extra IPC we can skip on this hot insets path.
+            val top = inputView?.keyboardView?.let { kv ->
+                decorView.height - kv.height.coerceAtLeast(0)
+            } ?: 0
             outInsets.apply {
-                contentTopInsets = inputViewLocation[1]
-                visibleTopInsets = inputViewLocation[1]
+                contentTopInsets = top
+                visibleTopInsets = top
                 touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
             }
         } else {
-            val n = decorView.findViewById<View>(android.R.id.navigationBarBackground)?.height ?: 0
+            val navBar = cachedNavBarBg
+                ?: decorView.findViewById<View>(android.R.id.navigationBarBackground)
+                    .also { cachedNavBarBg = it }
+            val n = navBar?.height ?: 0
             val h = decorView.height - n
             outInsets.apply {
                 contentTopInsets = h
@@ -708,13 +717,22 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * by the keysym derived from the event's keyCode. The special "Sym" string maps to the
      * BlackBerry SYM key. An empty configured value disables latching entirely.
      */
+    // Self-invalidating memo of the parsed alt-latch key. Reparsing only happens when the
+    // configured string actually changes (rare), instead of on every physical key press.
+    private var cachedAltLatchString: String? = null
+    private var cachedAltLatchKey: Key? = null
+
     private fun isAltLatchKey(event: KeyEvent): Boolean {
         val keyString = AppPrefs.getInstance().hardwareKeyboard.altLatchKey.getValue()
         if (keyString.isEmpty()) return false
         if (keyString == "Sym") {
             return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
         }
-        val key = Key.parse(normalizeKeyString(keyString))
+        if (keyString != cachedAltLatchString) {
+            cachedAltLatchString = keyString
+            cachedAltLatchKey = Key.parse(normalizeKeyString(keyString))
+        }
+        val key = cachedAltLatchKey ?: return false
         if (key.sym == 0) return false
         val symFromKeyCode = FcitxKeyMapping.keyCodeToSym(event.keyCode)
         return symFromKeyCode == key.sym ||
@@ -1188,13 +1206,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 // skip cursor reposition when:
                 // - preedit cursor is at the end
                 // - cursor position is invalid
+                val spanned = text.toSpannedString(highlightColor)
                 if (text.cursor == text.length || text.cursor < 0) {
                     selection.predict(composing.end)
-                    ic.setComposingText(text.toSpannedString(highlightColor), 1)
+                    ic.setComposingText(spanned, 1)
                 } else {
                     val p = text.cursor + composing.start
                     selection.predict(p)
-                    ic.setComposingText(text.toSpannedString(highlightColor), 1)
+                    ic.setComposingText(spanned, 1)
                     ic.setSelection(p, p)
                 }
             }
@@ -1222,6 +1241,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // ignore inline suggestion when disabled by user || using physical keyboard with floating candidates view
         if (!inlineSuggestions || !inputDeviceMgr.isVirtualKeyboard) return null
         val theme = ThemeManager.activeTheme
+        if (theme === cachedInlineSuggestionTheme && cachedInlineSuggestionRequest != null) {
+            return cachedInlineSuggestionRequest
+        }
         val chipDrawable =
             if (theme.isDark) R.drawable.bkg_inline_suggestion_dark else R.drawable.bkg_inline_suggestion_light
         val chipBg = Icon.createWithResource(this, chipDrawable).setTint(theme.keyTextColor)
@@ -1269,9 +1291,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             .Builder(Size(0, 0), Size(Int.MAX_VALUE, Int.MAX_VALUE))
             .setStyle(styleBundle)
             .build()
-        return InlineSuggestionsRequest.Builder(listOf(spec))
+        val request = InlineSuggestionsRequest.Builder(listOf(spec))
             .setMaxSuggestionCount(InlineSuggestionsRequest.SUGGESTION_COUNT_UNLIMITED)
             .build()
+        cachedInlineSuggestionTheme = theme
+        cachedInlineSuggestionRequest = request
+        return request
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
