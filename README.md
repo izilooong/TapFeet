@@ -159,6 +159,17 @@ Android SDK 平台、Build-Tools、NDK 和 CMake 请通过 Android Studio 的 SD
 
 检查是否设置了 `_JAVA_OPTIONS` 或 `JAVA_TOOL_OPTIONS` 环境变量，如有则清除（包括 Android Studio 启动脚本中的设置），某些 Gradle 插件会将 stderr 输出视为错误并中止构建。
 
+### Q25 长按 Alt 触发系统级 Alt 锁定
+
+在 **Q25**（BlackBerry 复刻机）上，**长按物理 Alt 键**会触发设备固件 / 系统层的 Alt“粘滞锁定”（sticky lock）。锁定后，后续按键会被持续附加 Alt 修饰符，导致按字母键输入的是符号而非字母。
+
+该锁定发生在 **Android 系统 / 键盘固件层**，位于输入法（IME）的事件上游，因此：
+
+- TapFeet **无法检测**，也无法在应用层直接清除该锁定状态；
+- 它与 TapFeet 自身的「双击左 Alt 锁定 Alt」功能（见上方 *Alt + 数字组合键选词*）是**两套互不相关的机制**，互不影响。
+
+**解除方式**：在 Q25 上再次按下 **空格键（Space）** 即可释放系统的 Alt 锁定。
+
 ---
 
 ## 🌿 Nix 环境支持
