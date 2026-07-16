@@ -45,7 +45,7 @@
 
 还原 BlackBerry 经典操作逻辑 —— 按住 Alt 或双击锁定 Alt，物理数字键（1~5）直接选词，空格键快速上屏。
 
-<img width="800" height="170" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
+<img width="680" height="150" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
 
 
 ### 物理键盘布局切换
@@ -55,7 +55,7 @@
 1. 进入 **选项 → 物理键盘**
 2. 选择 **键盘布局预设**，切换为对应的实体键盘布局
 
-   <img width="717" height="711" alt="image" src="https://github.com/user-attachments/assets/59bfdde9-cb5a-4b23-b4e4-023fc34349c3" />
+<img width="480" height="480" alt="image" src="https://github.com/user-attachments/assets/59bfdde9-cb5a-4b23-b4e4-023fc34349c3" />
 
 
 
