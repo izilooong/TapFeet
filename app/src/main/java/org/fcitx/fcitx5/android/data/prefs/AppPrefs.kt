@@ -421,12 +421,33 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val candidate4Key = string("hw_candidate_4_key", "Shift_L")
         val candidate5Key = string("hw_candidate_5_key", "Shift_R")
         val pageNextKey = string("hw_candidate_page_next_key", "grave")
-        val pagePrevKey = string("hw_candidate_page_prev_key", "grave")
+        val pagePrevKey = string("hw_candidate_page_prev_key", "Alt+grave")
         val symbolPickerKey = string("hw_symbol_picker_key", "Alt_R")
         // Global key actions (extracted from candidate1's Alt/Shift combos so they can be rebound).
         // Empty string means "not bound".
         val toggleImeKey = string("hw_toggle_ime_key", "Alt+space")
         val pickerKey = string("hw_picker_key", "Shift+space")
+
+        /**
+         * On a fresh install the individual string keys are never persisted, so they would fall
+         * back to their factory defaults — which must be kept in sync with the preset by hand and
+         * have drifted before (e.g. pagePrev defaulting to "grave" instead of "Alt+grave", deadening
+         * the next-page key until a preset was re-selected). Writing the default preset once makes
+         * "fresh install" and "preset selected" share one code path.
+         *
+         * Guard: only seed when NONE of the hardware-keyboard bindings have ever been persisted.
+         * If any key already exists, the user has configured them (or upgraded from an older build
+         * that already stored them), so we leave their values untouched — never overwrite.
+         */
+        private val seededKeys = listOf(
+            keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,
+            pageNextKey, pagePrevKey, symbolPickerKey, toggleImeKey, pickerKey, altLatchKey
+        )
+
+        fun ensureInitialized() {
+            if (seededKeys.any { sharedPreferences.contains(it.key) }) return
+            HardwareKeyProfiles.applyProfile(keyProfile.getValue(), this)
+        }
     }
 
     private val providers = mutableListOf<ManagedPreferenceProvider>()
@@ -499,6 +520,9 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             if (instance != null)
                 return
             instance = AppPrefs(sharedPreferences)
+            // Seed the default hardware-keyboard preset on a fresh install so the per-key bindings
+            // match what selecting that preset would produce (avoids a dead next-page key on first run).
+            getInstance().hardwareKeyboard.ensureInitialized()
             sharedPreferences.registerOnSharedPreferenceChangeListener(getInstance().onSharedPreferenceChangeListener)
         }
 

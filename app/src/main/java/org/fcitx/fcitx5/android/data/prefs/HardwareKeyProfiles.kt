@@ -56,4 +56,30 @@ object HardwareKeyProfiles {
         hw.pickerKey.key to "Shift+space",
         hw.altLatchKey.key to "Alt_R",
     )
+
+    /**
+     * Overwrite every individual key-binding preference with the values of the given profile.
+     *
+     * Centralised here so the settings screen (UI refresh) and the first-run initialiser share one
+     * code path — the profile is the single source of truth, eliminating the class of bug where a
+     * key's [AppPrefs.HardwareKeyboard] factory default drifts out of sync with the preset (which
+     * left the next-page key dead on a fresh install until a preset was (re)selected).
+     */
+    fun applyProfile(name: String, hw: AppPrefs.HardwareKeyboard) {
+        val mapping = get(name, hw)
+        val prefByKey = mapOf(
+            hw.candidate1Key.key to hw.candidate1Key,
+            hw.candidate2Key.key to hw.candidate2Key,
+            hw.candidate3Key.key to hw.candidate3Key,
+            hw.candidate4Key.key to hw.candidate4Key,
+            hw.candidate5Key.key to hw.candidate5Key,
+            hw.pageNextKey.key to hw.pageNextKey,
+            hw.pagePrevKey.key to hw.pagePrevKey,
+            hw.symbolPickerKey.key to hw.symbolPickerKey,
+            hw.toggleImeKey.key to hw.toggleImeKey,
+            hw.pickerKey.key to hw.pickerKey,
+            hw.altLatchKey.key to hw.altLatchKey,
+        )
+        mapping.forEach { (key, value) -> prefByKey[key]?.setValue(value) }
+    }
 }

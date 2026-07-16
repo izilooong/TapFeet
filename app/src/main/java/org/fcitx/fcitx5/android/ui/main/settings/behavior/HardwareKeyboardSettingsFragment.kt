@@ -25,6 +25,10 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
         hw = AppPrefs.getInstance().hardwareKeyboard
 
+        // On a fresh install, persist the default (BlackBerry) profile so the individual key
+        // bindings match what selecting that preset would produce. No-op once already initialised.
+        hw.ensureInitialized()
+
         // Preset profile dropdown: choosing a profile overrides every individual key binding.
         val profileList = ListPreference(context).apply {
             key = hw.keyProfile.key
@@ -105,11 +109,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
     /** Override all individual key bindings with the selected preset, then refresh the summaries. */
     private fun applyProfile(name: String) {
-        val mapping = HardwareKeyProfiles.get(name, hw)
-        preferenceManager.sharedPreferences?.edit()?.apply {
-            mapping.forEach { (key, value) -> putString(key, value) }
-            apply()
-        }
+        HardwareKeyProfiles.applyProfile(name, hw)
         keyPrefs.forEach { it.refresh() }
     }
 }
