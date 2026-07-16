@@ -38,14 +38,14 @@
 
 物理键盘底排功能键直接映射候选词位置，无需触摸屏幕即可完成选词。
 
-- **Q25 / BlackBerry KEY **：5 大金刚键（⬆️ 0️⃣ 🈳 sym ⬆️）对应候选词 1~5
-- **Unihertz Titan 2 **：顶部导航键 + 空格键快捷选词
+- **Q25 / BlackBerry KEY**：5 大金刚键（⬆️ 0️⃣ 🈳 sym ⬆️）对应候选词 1~5
+- **Unihertz Titan 2**：顶部导航键 + 空格键快捷选词
 
 ### Alt + 数字组合键选词
 
 还原 BlackBerry 经典操作逻辑 —— 按住 Alt 或双击锁定 Alt，物理数字键（1~5）直接选词，空格键快速上屏。
 
-<img width="935" height="191" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
+<img width="800" height="170" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
 
 
 ### 物理键盘布局切换
