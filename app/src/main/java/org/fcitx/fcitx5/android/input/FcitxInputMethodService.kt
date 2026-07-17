@@ -892,15 +892,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
         // ========== Earliest metaState probe ==========
         // 在任何处理（包括 updatePhysicalModifiers）之前检查 keyEvent 自带的 metaState。
-        // 此时 physicalAltDown 仍反映"本次按键之前"的状态：
-        //   - 非 Alt 键事件：physicalAltDown 是上一帧物理 Alt 状态
-        //   - Alt 键事件：physicalAltDown 还是 false（本次按下还没记录）
+        // 此时 physicalAltDown 仍反映"本次按键之前"的状态。
         // 如果 metaState 已经有 META_ALT_ON 但 physicalAltDown 是 false，说明 Alt
         // 不是用户刚按的，是系统层早就 active（sticky/latched/locked）。
         //
-        // 适用于任意按键（数字、字母、符号、Alt 自己），不依赖特定的 ROM 行为。
-        // 副作用：logcat 里能看到每次按键的 metaState，方便调试 ROM 行为。
-        if (event.repeatCount == 0) {
+        // 关键限制：只检测**非 Alt 键**。BlackBerry SYM 键在 Android 里走
+        // KEYCODE_ALT_RIGHT，按下时 metaState 自带 META_ALT_ON（系统把它当 Alt），
+        // 但 SYM 不是真 Alt，不应该触发 sticky 判定。同理物理按 ALT_L/ALT_R
+        // 也会让 metaState 带 META_ALT_ON，但不是"系统早就 active"。
+        if (!isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
             val rawAltMeta = (event.metaState and KeyEvent.META_ALT_ON) != 0
             if (rawAltMeta && !physicalAltDown && !systemAltSticky) {
                 setSystemAltSticky(true)
