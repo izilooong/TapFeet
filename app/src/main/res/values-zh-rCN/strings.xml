@@ -39,6 +39,9 @@
     <string name="hw_key_profile">键盘布局预设</string>
     <string name="hw_profile_blackberry">BlackBerry</string>
     <string name="hw_profile_tt2">Titan2</string>
+    <string name="hw_candidate_display_mode">候选显示模式</string>
+    <string name="hw_candidate_display_mode_macrohard">巨硬模式</string>
+    <string name="hw_candidate_display_mode_linear">普通模式</string>
     <string name="key_capture_hint">按任意键以绑定…</string>
     <string name="key_captured_format">已捕获: %1$s (%2$d)</string>
     <string name="hw_reset">恢复默认</string>

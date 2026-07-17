@@ -32,6 +32,7 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
+import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateDisplayMode
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyActionListener
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcaster
@@ -236,6 +237,12 @@ class InputView(
     }
 
     private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
+
+    // Hold the ManagedPreference<String> directly (no `by` delegate) so we can call
+    // .getValue() to branch on the active candidate display mode (巨硬 vs 普通) when picking
+    // a candidate via candidate1Key (Space). With `by`, the property would be the unwrapped
+    // String and the method would not resolve — see the same fix in HorizontalCandidateComponent.
+    private val candidateDisplayModePref = AppPrefs.getInstance().hardwareKeyboard.candidateDisplayMode
 
     val keyboardView: View
 
@@ -633,9 +640,21 @@ class InputView(
         val count = horizontalCandidate.visibleCandidateCount()
         if (count <= 0) return false
 
-        // 普通 candidate1：直接选居中候选（Alt/Shift 组合动作已抽到独立快捷键）
+        // Plain candidate1 (no combo modifier): selects the "first-pick" candidate.
+        // The visible position of the first-pick depends on the display mode:
+        //  - Macrohard: candidates are laid out centered/outward, so the first-pick sits at the
+        //    middle visible position — i.e. (count - 1) / 2.
+        //  - Linear: candidates are laid out left-to-right, so the first-pick sits at position 0.
+        // Reading the preference on every press is fine — it is a single SharedPreferences get
+        // and keeps the picker stateless against mode changes that happen in the settings screen.
         if (!candidate1HasModifier && isSameKeySymString(event, c1)) {
-            return selectCandidateAtVisiblePosition((count - 1) / 2)
+            val firstPickPosition = when (
+                CandidateDisplayMode.fromStorage(candidateDisplayModePref.getValue())
+            ) {
+                CandidateDisplayMode.Macrohard -> (count - 1) / 2
+                CandidateDisplayMode.Linear -> 0
+            }
+            return selectCandidateAtVisiblePosition(firstPickPosition)
         }
 
         val position = resolveShortcutPosition(event, count) ?: return false

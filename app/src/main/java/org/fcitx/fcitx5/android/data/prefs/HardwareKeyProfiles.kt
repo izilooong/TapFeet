@@ -23,63 +23,101 @@ object HardwareKeyProfiles {
     /** All available profile ids, in display order. */
     fun ids(): List<String> = listOf(BLACKBERRY, TT2)
 
-    /** Resolve the key-binding map for the given profile id (defaults to [BLACKBERRY]). */
-    fun get(name: String, hw: AppPrefs.HardwareKeyboard): Map<String, String> = when (name) {
-        TT2 -> tt2(hw)
-        else -> blackberry(hw)
+    /**
+     * Single source of truth for the 11 hardware-keyboard key-binding preferences, in canonical
+     * order. The value lists ([blackberryValues] / [tt2Values]) are defined in the same order, so
+     * every profile implementation (`get` / `applyProfile` / `candidateKeys`) is built by
+     * `keyBindings(hw) zip values`, eliminating the duplicate `hw.xxx.key` listings that
+     * previously appeared in `blackberry` / `tt2` / `applyProfile` and could drift apart.
+     */
+    private fun keyBindings(hw: AppPrefs.HardwareKeyboard): List<ManagedPreference.PString> = listOf(
+        hw.candidate1Key,
+        hw.candidate2Key,
+        hw.candidate3Key,
+        hw.candidate4Key,
+        hw.candidate5Key,
+        hw.pageNextKey,
+        hw.pagePrevKey,
+        hw.symbolPickerKey,
+        hw.toggleImeKey,
+        hw.pickerKey,
+        hw.altLatchKey,
+    )
+
+    private val blackberryValues = listOf(
+        "space", "0", "Alt_R", "Shift_L", "Shift_R",
+        "grave", "Alt+grave", "Alt_R", "Alt+space", "Shift+space", "Alt_L",
+    )
+
+    private val tt2Values = listOf(
+        "space", "Control_L", "Tab", "Shift_L", "Alt_R",
+        "", "", "", "Alt+space", "Shift+space", "Alt_R",
+    )
+
+    private fun valuesFor(name: String): List<String> = when (name) {
+        TT2 -> tt2Values
+        else -> blackberryValues
     }
 
-    private fun blackberry(hw: AppPrefs.HardwareKeyboard) = mapOf(
-        hw.candidate1Key.key to "space",
-        hw.candidate2Key.key to "0",
-        hw.candidate3Key.key to "Alt_R",
-        hw.candidate4Key.key to "Shift_L",
-        hw.candidate5Key.key to "Shift_R",
-        hw.pageNextKey.key to "grave",
-        hw.pagePrevKey.key to "Alt+grave",
-        hw.symbolPickerKey.key to "Alt_R",
-        hw.toggleImeKey.key to "Alt+space",
-        hw.pickerKey.key to "Shift+space",
-        hw.altLatchKey.key to "Alt_L",
-    )
-
-    private fun tt2(hw: AppPrefs.HardwareKeyboard) = mapOf(
-        hw.candidate1Key.key to "space",
-        hw.candidate2Key.key to "Control_L",
-        hw.candidate3Key.key to "Tab",
-        hw.candidate4Key.key to "Shift_L",
-        hw.candidate5Key.key to "Alt_R",
-        hw.pageNextKey.key to "",
-        hw.pagePrevKey.key to "",
-        hw.symbolPickerKey.key to "",
-        hw.toggleImeKey.key to "Alt+space",
-        hw.pickerKey.key to "Shift+space",
-        hw.altLatchKey.key to "Alt_R",
-    )
+    /** Resolve the key-binding map for the given profile id (defaults to [BLACKBERRY]). */
+    fun get(name: String, hw: AppPrefs.HardwareKeyboard): Map<String, String> =
+        keyBindings(hw).zip(valuesFor(name)).associate { (pref, value) -> pref.key to value }
 
     /**
      * Overwrite every individual key-binding preference with the values of the given profile.
-     *
-     * Centralised here so the settings screen (UI refresh) and the first-run initialiser share one
-     * code path — the profile is the single source of truth, eliminating the class of bug where a
-     * key's [AppPrefs.HardwareKeyboard] factory default drifts out of sync with the preset (which
-     * left the next-page key dead on a fresh install until a preset was (re)selected).
+     * Centralised here so the settings screen and the first-run initialiser share one code path
+     * — the profile list is the single source of truth, eliminating the class of bug where a
+     * key's factory default drifted out of sync with the preset (which left the next-page key
+     * dead on a fresh install until a preset was re-selected).
      */
     fun applyProfile(name: String, hw: AppPrefs.HardwareKeyboard) {
-        val mapping = get(name, hw)
-        val prefByKey = mapOf(
-            hw.candidate1Key.key to hw.candidate1Key,
-            hw.candidate2Key.key to hw.candidate2Key,
-            hw.candidate3Key.key to hw.candidate3Key,
-            hw.candidate4Key.key to hw.candidate4Key,
-            hw.candidate5Key.key to hw.candidate5Key,
-            hw.pageNextKey.key to hw.pageNextKey,
-            hw.pagePrevKey.key to hw.pagePrevKey,
-            hw.symbolPickerKey.key to hw.symbolPickerKey,
-            hw.toggleImeKey.key to hw.toggleImeKey,
-            hw.pickerKey.key to hw.pickerKey,
-            hw.altLatchKey.key to hw.altLatchKey,
-        )
-        mapping.forEach { (key, value) -> prefByKey[key]?.setValue(value) }
+        keyBindings(hw).zip(valuesFor(name)).forEach { (pref, value) -> pref.setValue(value) }
+    }
+
+    /**
+     * Single source of truth for the four "candidate2-5" preference references. Used by
+     * [candidateKeys] (to seed profile defaults), [clearCandidateKeys] (to wipe them when
+     * switching to 巨硬 → 普通), and the settings UI to identify the four rows whose
+     * visibility is driven by the candidate display mode.
+     */
+    private fun candidate2to5(hw: AppPrefs.HardwareKeyboard): List<ManagedPreference.PString> = listOf(
+        hw.candidate2Key,
+        hw.candidate3Key,
+        hw.candidate4Key,
+        hw.candidate5Key,
+    )
+
+    /**
+     * Returns only the candidate2-5 (preference, value) pairs for the given profile. Values are
+     * looked up by the same [valuesFor] list that [applyProfile] uses, so this method never
+     * redefines a key string and there is exactly one place to update per profile.
+     *
+     * Used by the "候选显示模式 = 巨硬" re-entry path to re-seed the four physical selection keys
+     * after a round trip through "普通" (which clears them) — without touching
+     * [AppPrefs.HardwareKeyboard.candidate1Key] (first-pick, stays bound to Space) or the
+     * paging/symbol/global keys.
+     */
+    fun candidateKeys(name: String, hw: AppPrefs.HardwareKeyboard): List<Pair<ManagedPreference.PString, String>> {
+        val bindings = keyBindings(hw)
+        val values = valuesFor(name)
+        return candidate2to5(hw).mapNotNull { pref ->
+            bindings.indexOf(pref).takeIf { it >= 0 }?.let { pref to values[it] }
+        }
+    }
+
+    /**
+     * Apply only the candidate2-5 portion of the given profile. See [candidateKeys].
+     */
+    fun applyCandidateKeys(name: String, hw: AppPrefs.HardwareKeyboard) {
+        candidateKeys(name, hw).forEach { (pref, value) -> pref.setValue(value) }
+    }
+
+    /**
+     * Clear all four candidate2-5 preferences to empty strings — used by the
+     * "候选显示模式 = 普通" entry path to disable the bottom-row physical-key quick-pick shortcuts
+     * at runtime. Symmetric to [applyCandidateKeys] but writes "" instead of the profile values.
+     */
+    fun clearCandidateKeys(hw: AppPrefs.HardwareKeyboard) {
+        candidate2to5(hw).forEach { it.setValue("") }
     }
 }

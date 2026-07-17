@@ -12,6 +12,7 @@ import android.graphics.drawable.shapes.RectShape
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.annotation.Keep
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
@@ -26,6 +27,7 @@ import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxEvent.PagedCandidateEvent
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.BooleanKey.ExpandedCandidatesEmpty
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.TransitionEvent.ExpandedCandidatesUpdated
@@ -42,6 +44,7 @@ import org.fcitx.fcitx5.android.input.dependency.fcitx
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.inputView
 import org.fcitx.fcitx5.android.input.dependency.theme
+import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.manager.must
 import splitties.dimensions.dp
 
@@ -83,6 +86,26 @@ class HorizontalCandidateComponent :
             else expandedCandidateGridSpanCountLandscape
         }
     }
+
+    // Hold the ManagedPreference<String> directly (no `by` delegate) so we can call
+    // registerOnChangeListener on it. With `by`, the property would be the unwrapped String
+    // and the listener-registration method would not resolve.
+    private val candidateDisplayModePref = AppPrefs.getInstance().hardwareKeyboard.candidateDisplayMode
+
+    @Keep
+    private val onCandidateDisplayModeChangeListener =
+        ManagedPreference.OnChangeListener<String> { _, newValue ->
+            val mode = CandidateDisplayMode.fromStorage(newValue)
+            if (adapter.displayMode != mode) {
+                adapter.displayMode = mode
+                // Re-render the current page so the new ordering (居中展开 vs 线性) takes effect
+                // immediately. The adapter reuses the same `candidates` data, so no Fcitx event
+                // is needed; we just rebuild the display order and notify.
+                if (pageCandidates.isNotEmpty()) {
+                    renderCurrentPage()
+                }
+            }
+        }
 
     private var layoutMinWidth = 0
     private var layoutFlexGrow = 1f
@@ -380,6 +403,14 @@ class HorizontalCandidateComponent :
                     layoutManager = this@HorizontalCandidateComponent.layoutManager
                     addItemDecoration(FlexboxVerticalDecoration(dividerDrawable))
                 }
+    }
+
+    override fun onScopeSetupFinished(scope: DynamicScope) {
+        // Align the adapter's display mode with the persisted preference at startup, so a mode
+        // change made in a previous session (or in the settings screen while the IME is alive)
+        // is honoured on the very next candidate update — no flicker of the old layout first.
+        adapter.displayMode = CandidateDisplayMode.fromStorage(candidateDisplayModePref.getValue())
+        candidateDisplayModePref.registerOnChangeListener(onCandidateDisplayModeChangeListener)
     }
 
     override fun onCandidateUpdate(data: FcitxEvent.CandidateListEvent.Data) {

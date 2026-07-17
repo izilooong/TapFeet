@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * SPDX-FileCopyrightText: Copyright 2025 Fcitx5 for Android Contributors
+ * SPDX-FileCopyrightText: Copyright 2025-2026 Fcitx5 for Android Contributors
  */
 package org.fcitx.fcitx5.android.ui.main.settings.behavior
 
@@ -11,6 +11,7 @@ import androidx.preference.SwitchPreference
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
+import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateDisplayMode
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
 
@@ -18,6 +19,14 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
     private lateinit var hw: AppPrefs.HardwareKeyboard
     private val keyPrefs = mutableListOf<KeyCapturePreference>()
+
+    /**
+     * References to the candidate2-5 [KeyCapturePreference] views. Their visibility is driven by
+     * the candidate display mode: visible in 巨硬 (where the bottom-row physical keys act as
+     * quick-pick shortcuts), hidden in 普通 (where the bar is purely linear and the keys are
+     * cleared so they don't fire on stray presses).
+     */
+    private val candidateShortcutPrefs = mutableListOf<KeyCapturePreference>()
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
@@ -48,6 +57,27 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             true
         }
         screen.addPreference(profileList)
+
+        // Candidate display mode: 巨硬 (default, 巨硬布局 + 物理键快速选字) vs 普通 (线性布局,
+        // 仅 Space 选首选字). 切换时清空 / 恢复 candidate2-5 键值, 并切换对应偏好项的显隐.
+        val displayModePref = ListPreference(context).apply {
+            key = hw.candidateDisplayMode.key
+            title = getString(R.string.hw_candidate_display_mode)
+            entries = arrayOf(
+                getString(R.string.hw_candidate_display_mode_macrohard),
+                getString(R.string.hw_candidate_display_mode_linear)
+            )
+            entryValues = arrayOf(CandidateDisplayMode.MACROHARD, CandidateDisplayMode.LINEAR)
+            setDefaultValue(hw.candidateDisplayMode.getValue())
+            value = hw.candidateDisplayMode.getValue()
+            summary = "%s"
+            isIconSpaceReserved = false
+        }
+        displayModePref.setOnPreferenceChangeListener { _, newValue ->
+            applyDisplayMode(CandidateDisplayMode.fromStorage(newValue as String))
+            true
+        }
+        screen.addPreference(displayModePref)
 
         // Master toggle: double-tap left Alt to latch the Alt modifier.
         val altLatchSwitch = SwitchPreference(context).apply {
@@ -80,6 +110,11 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         screen.addPreference(altLatchKeyPref)
         keyPrefs.add(altLatchKeyPref)
 
+        // Build the per-key preferences. candidate2-5 are remembered separately so the display-mode
+        // handler can flip their visibility without disturbing candidate1 (first-pick, always shown).
+        // Use key string (not `===` reference) to identify the four shortcut prefs — this avoids any
+        // generic-vs-concrete type mismatches that can hide the list when listOf infers a wider type
+        // for the iterated `pref`.
         listOf(
             hw.candidate1Key to R.string.candidate_key_1,
             hw.candidate2Key to R.string.candidate_key_2,
@@ -102,7 +137,16 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             }
             screen.addPreference(capture)
             keyPrefs.add(capture)
+            if (pref.key == hw.candidate2Key.key || pref.key == hw.candidate3Key.key ||
+                pref.key == hw.candidate4Key.key || pref.key == hw.candidate5Key.key) {
+                candidateShortcutPrefs.add(capture)
+            }
         }
+
+        // Apply the persisted mode's visibility to candidate2-5 BEFORE returning, so the screen
+        // never briefly shows rows that the current mode says should be hidden.
+        val currentMode = CandidateDisplayMode.fromStorage(hw.candidateDisplayMode.getValue())
+        setCandidateShortcutVisibility(currentMode == CandidateDisplayMode.Macrohard)
 
         preferenceScreen = screen
     }
@@ -111,5 +155,35 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
     private fun applyProfile(name: String) {
         HardwareKeyProfiles.applyProfile(name, hw)
         keyPrefs.forEach { it.refresh() }
+    }
+
+    /**
+     * Apply a candidate display-mode switch:
+     * - 巨硬 → 普通: clear the four candidate2-5 preferences so the bottom-row physical keys no
+     *   longer act as quick-pick shortcuts at runtime, and hide the four preference rows.
+     * - 普通 → 巨硬: re-seed candidate2-5 from the currently selected [hw.keyProfile] (BlackBerry
+     *   or TT2) and show the four preference rows again.
+     *
+     * Always executes end-to-end on every change, even if the same value is re-selected — keeping
+     * the persisted state and the screen in lock-step avoids "looks like 巨硬 but pref is empty"
+     * drift.
+     */
+    private fun applyDisplayMode(newMode: CandidateDisplayMode) {
+        when (newMode) {
+            CandidateDisplayMode.Linear -> HardwareKeyProfiles.clearCandidateKeys(hw)
+            CandidateDisplayMode.Macrohard ->
+                HardwareKeyProfiles.applyCandidateKeys(hw.keyProfile.getValue(), hw)
+        }
+        setCandidateShortcutVisibility(newMode == CandidateDisplayMode.Macrohard)
+        keyPrefs.forEach { it.refresh() }
+    }
+
+    private fun setCandidateShortcutVisibility(visible: Boolean) {
+        candidateShortcutPrefs.forEach { it.isVisible = visible }
+        // androidx preference 1.2.1: Preference.setVisible fires OnPreferenceChangeInternalListener
+        // .onPreferenceVisibilityChange → onPreferenceHierarchyChange, which rebuilds the
+        // adapter's visible-preferences list and calls notifyDataSetChanged. So setting
+        // isVisible is enough — no extra notifyChanged() is needed (and that method is
+        // package-private anyway, not callable from the fragment).
     }
 }

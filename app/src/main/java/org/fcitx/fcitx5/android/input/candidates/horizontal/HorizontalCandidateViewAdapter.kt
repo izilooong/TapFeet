@@ -34,6 +34,18 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
     private var selectionOrder: IntArray = intArrayOf()
     private var displayNumbers: IntArray = intArrayOf()
 
+    /**
+     * How the candidate bar should lay out words:
+     * - [CandidateDisplayMode.Macrohard] (default, 巨硬): centered/outward BlackBerry-style
+     *   ordering, paired with the bottom-row physical-key shortcuts.
+     * - [CandidateDisplayMode.Linear] (普通): plain left-to-right [1, 2, 3, 4, 5] ordering,
+     *   no bottom-row shortcuts (the four candidate2-5 preferences are expected to be empty).
+     *
+     * Mutating this does NOT automatically re-render; callers (typically the hosting component)
+     * trigger a refresh by calling [updateCandidates] with the same data after assignment.
+     */
+    var displayMode: CandidateDisplayMode = CandidateDisplayMode.Macrohard
+
     var total = -1
         private set
 
@@ -89,7 +101,12 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
         holder.clear()
     }
 
-    private fun buildDisplayOrder(size: Int): IntArray {
+    private fun buildDisplayOrder(size: Int): IntArray = when (displayMode) {
+        CandidateDisplayMode.Linear -> IntArray(size) { it }
+        CandidateDisplayMode.Macrohard -> buildMacrohardDisplayOrder(size)
+    }
+
+    private fun buildMacrohardDisplayOrder(size: Int): IntArray {
         if (size <= 0) return intArrayOf()
         if (size == 1) return intArrayOf(0)
         if (size == 2) return intArrayOf(0, 1)

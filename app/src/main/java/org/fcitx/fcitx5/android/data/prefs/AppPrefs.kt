@@ -15,6 +15,7 @@ import org.fcitx.fcitx5.android.data.InputFeedbacks.InputFeedbackMode
 import org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesOrientation
+import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateDisplayMode
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateMode
 import org.fcitx.fcitx5.android.input.keyboard.LangSwitchBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior
@@ -407,33 +408,54 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // screen overrides all individual key bindings with that preset's values.
         val keyProfile = string("hw_key_profile", "blackberry")
 
+        // Controls how the candidate bar lays out words (居中向两侧展开 vs 从左到右线性) and
+        // whether the bottom-row physical keys (candidate2-5) act as quick-pick shortcuts.
+        // "Macrohard" (default, 巨硬): candidate shortcuts bound to physical keys are active,
+        //   and the bar uses the centered/outward BlackBerry-style ordering.
+        // "linear" (普通): shortcuts are inactive, and the bar uses plain left-to-right ordering.
+        // The name is a literal portmanteau of the Chinese pinyin-input community's nickname for
+        // Microsoft, deliberately decoupled from the [keyProfile] preset (BlackBerry / TT2).
+        val candidateDisplayMode =
+            string("hw_candidate_display_mode", CandidateDisplayMode.MACROHARD)
+
         // Double-tap the latch key to lock the Alt modifier. Default ON.
         val altLatchEnabled = bool("hw_alt_latch_enabled", true)
         // Which physical key, when double-tapped, latches (locks) the Alt modifier.
-        // fcitx5 portableString (default the left Alt key, "Alt_L").
-        val altLatchKey = string("hw_alt_latch_key", "Alt_L")
+        // fcitx5 portableString. Default value left empty: the real default ("Alt_L" for blackberry,
+        // "Alt_R" for tt2) is owned by [HardwareKeyProfiles] and written by [ensureInitialized].
+        val altLatchKey = string("hw_alt_latch_key", "")
 
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
         // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".
-        val candidate1Key = string("hw_candidate_1_key", "space")
-        val candidate2Key = string("hw_candidate_2_key", "0")
-        val candidate3Key = string("hw_candidate_3_key", "Alt_R")
-        val candidate4Key = string("hw_candidate_4_key", "Shift_L")
-        val candidate5Key = string("hw_candidate_5_key", "Shift_R")
-        val pageNextKey = string("hw_candidate_page_next_key", "grave")
-        val pagePrevKey = string("hw_candidate_page_prev_key", "Alt+grave")
-        val symbolPickerKey = string("hw_symbol_picker_key", "Alt_R")
+        //
+        // Default values are intentionally empty: the real blackberry/tt2 defaults live in
+        // [HardwareKeyProfiles.blackberry] / [HardwareKeyProfiles.tt2] (single source of truth
+        // for what "the blackberry preset" means), and [ensureInitialized] writes them into
+        // SharedPreferences on first run. Hard-coding the same strings here as fallback would
+        // let the two definitions drift apart — which is exactly the bug that motivated moving
+        // the values out (the page-prev key used to default to "grave" instead of "Alt+grave").
+        val candidate1Key = string("hw_candidate_1_key", "")
+        val candidate2Key = string("hw_candidate_2_key", "")
+        val candidate3Key = string("hw_candidate_3_key", "")
+        val candidate4Key = string("hw_candidate_4_key", "")
+        val candidate5Key = string("hw_candidate_5_key", "")
+        val pageNextKey = string("hw_candidate_page_next_key", "")
+        val pagePrevKey = string("hw_candidate_page_prev_key", "")
+        val symbolPickerKey = string("hw_symbol_picker_key", "")
         // Global key actions (extracted from candidate1's Alt/Shift combos so they can be rebound).
         // Empty string means "not bound".
-        val toggleImeKey = string("hw_toggle_ime_key", "Alt+space")
-        val pickerKey = string("hw_picker_key", "Shift+space")
+        val toggleImeKey = string("hw_toggle_ime_key", "")
+        val pickerKey = string("hw_picker_key", "")
 
         /**
-         * On a fresh install the individual string keys are never persisted, so they would fall
-         * back to their factory defaults — which must be kept in sync with the preset by hand and
-         * have drifted before (e.g. pagePrev defaulting to "grave" instead of "Alt+grave", deadening
-         * the next-page key until a preset was re-selected). Writing the default preset once makes
-         * "fresh install" and "preset selected" share one code path.
+         * The string() defaults above are intentionally empty placeholders. The real
+         * blackberry/tt2 values live in [HardwareKeyProfiles] (single source of truth) and
+         * are written into SharedPreferences here on the first run, so the keys end up with
+         * the same values whether the user just installed the app or selected the preset
+         * from the settings dropdown. Previously these defaults were hard-coded twice (once
+         * in the string() defaults, once in blackberry()/tt2()) and they drifted — the
+         * page-prev key once defaulted to "grave" instead of "Alt+grave", deadening the
+         * next-page key until the user re-selected a preset.
          *
          * Guard: only seed when NONE of the hardware-keyboard bindings have ever been persisted.
          * If any key already exists, the user has configured them (or upgraded from an older build
