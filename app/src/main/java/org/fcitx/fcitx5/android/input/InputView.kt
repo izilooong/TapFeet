@@ -439,6 +439,10 @@ class InputView(
         kawaiiBar.onAltLatchChanged(locked)
     }
 
+    fun onSystemAltStickyChanged(sticky: Boolean) {
+        kawaiiBar.onSystemAltStickyChanged(sticky)
+    }
+
     // fcitx5 modifier keysym range: Shift_L (0xffe1) through Hyper_R (0xffee).
     // A modifier key sets its own state when pressed, so it must be matched by keysym only.
     private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee

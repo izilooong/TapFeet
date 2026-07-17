@@ -119,6 +119,11 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private var expandButtonEnabledByState = false
     private var hideKeyboardOnNextKeyboardAttach = false
     private var altLatched = false
+    private var systemAltSticky = false
+
+    /** 应用层 latch + 框架层 sticky 的合并显示态。 */
+    private val isAltLockedOrSticky: Boolean
+        get() = altLatched || systemAltSticky
 
     private var isClipboardFresh: Boolean = false
     private var isInlineSuggestionPresent: Boolean = false
@@ -230,7 +235,12 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     fun onAltLatchChanged(latched: Boolean) {
         altLatched = latched
-        idleUi.updateAltLockButton(latched)
+        idleUi.updateAltLockButton(isAltLockedOrSticky)
+    }
+
+    fun onSystemAltStickyChanged(sticky: Boolean) {
+        systemAltSticky = sticky
+        idleUi.updateAltLockButton(isAltLockedOrSticky)
     }
 
     private val hideKeyboardCallback = View.OnClickListener {
@@ -344,7 +354,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 updateKeyboardToggleButton()
             }
             altLockButton.setOnClickListener {
-                service.toggleAltLatch()
+                // 用 unlockAltLatch 而非 toggle：长按 Alt 后即使应用层 altLatched == false
+                // 但系统 sticky meta 仍卡住时，按钮可以无条件清掉两者。
+                service.unlockAltLatch()
             }
             inputMethodButton.setOnClickListener {
                 fcitx.launchOnReady {
@@ -545,7 +557,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             if (shouldShowVoiceInput) switchToVoiceInputCallback else hideKeyboardCallback
         )
         updateKeyboardToggleButton()
-        idleUi.updateAltLockButton(service.isAltLatched())
+        // 同步应用层 latch + 框架层 sticky 的合并状态
+        systemAltSticky = service.isSystemAltSticky()
+        idleUi.updateAltLockButton(isAltLockedOrSticky)
         fcitx.launchOnReady {
             updateInputMethodIcon(it.inputMethodEntryCached)
         }

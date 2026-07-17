@@ -664,6 +664,31 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private val altDoubleTapTimeoutMs = 300L
 
     /**
+     * 框架/编辑器层 Alt sticky 状态（独立于应用层 [altLatched]）。
+     *
+     * 触发场景：长按 Alt 后 Android 框架的 InputConnection 会在 metaState 里残留
+     * META_ALT_ON，应用层 `altLatched` 是 false，但所有后续按键事件都带 Alt meta。
+     *
+     * 检测方法：在 onKeyDown 处理非 Alt 键时，如果 [event.metaState] 含 [KeyEvent.META_ALT_ON]
+     * 但 [physicalAltDown] 为 false，则说明系统处于 sticky 状态。
+     */
+    private var systemAltSticky = false
+
+    /**
+     * 长按 Alt 启发式检测用的状态。
+     *
+     * 单纯靠非 Alt 键的 metaState 检测有一个盲区：用户长按 Alt → 松开 → 直接短按 Alt
+     * （没按任何其他键），整个流程走的是 first-tap 分支，metaState 检测根本没机会跑。
+     * 这时用"按住时长 + 期间是否按过其他键"做启发式补救：
+     * - [altDownStartTime]: Alt 按下时的事件时间
+     * - [altHadOtherKeysDuringHold]: Alt 按住期间是否按过非 Alt 键（用来排除"按住 Alt 输
+     *   入组合键"的正常用法，避免误判）
+     */
+    private var altDownStartTime = 0L
+    private val altLongPressThresholdMs = 500L
+    private var altHadOtherKeysDuringHold = false
+
+    /**
      * Physical modifier state tracked from the raw key-down/key-up stream.
      *
      * Why this is needed: when the Alt-latch logic consumes the Alt key's key-down (it returns
@@ -691,6 +716,28 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     fun isAltLatched(): Boolean = altLatched
 
+    /** 框架/编辑器层是否处于 Alt sticky 状态（独立于应用层 latch）。 */
+    fun isSystemAltSticky(): Boolean = systemAltSticky
+
+    /** 应用层 latch 或框架层 sticky 任意一个为 true 都算 Alt 处于"锁定"展示态。 */
+    fun isAltLockedOrSticky(): Boolean = altLatched || systemAltSticky
+
+    /**
+     * 手动覆盖 sticky 状态显示。系统层 sticky 无法可靠自动检测（不同 ROM 行为差异大），
+     * 提供这个 API 给 UI / 设置 / 调试使用，强制设置锁图标显示。
+     */
+    fun setSystemAltStickyOverride(sticky: Boolean) {
+        setSystemAltSticky(sticky)
+        if (!sticky) {
+            // 同时尝试清掉框架层 meta（如果存在）
+            currentInputConnection?.clearMetaKeyStates(
+                KeyEvent.META_ALT_ON or
+                        KeyEvent.META_ALT_LEFT_ON or
+                        KeyEvent.META_ALT_RIGHT_ON
+            )
+        }
+    }
+
     /** Whether double-tap-left-Alt latching is enabled (setting: hardwareKeyboard.altLatchEnabled). */
     private fun altLatchEnabled(): Boolean =
         AppPrefs.getInstance().hardwareKeyboard.altLatchEnabled.getValue()
@@ -699,10 +746,51 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         setAltLatched(!altLatched)
     }
 
+    /**
+     * 强制解除 Alt 粘滞（应用层 [altLatched] + 框架/编辑器层 sticky meta）。
+     *
+     * 用于：
+     * - 长按 Alt 后系统底层 sticky 被触发，单纯按 Alt 键无法解除的场景
+     * - 外部调用方（如 UI 按钮、设置项）希望无条件清掉 Alt sticky 状态
+     */
+    fun unlockAltLatch() {
+        clearAltLatchAndMetaState()
+    }
+
     private fun setAltLatched(locked: Boolean) {
         if (altLatched == locked) return
         altLatched = locked
         inputView?.onAltLatchChanged(locked)
+    }
+
+    private fun setSystemAltSticky(sticky: Boolean) {
+        if (systemAltSticky == sticky) return
+        systemAltSticky = sticky
+        inputView?.onSystemAltStickyChanged(sticky)
+    }
+
+    /**
+     * 仅清掉系统/编辑器层 sticky meta + 本地 flag，不动应用层 [altLatched]。
+     * 用于 first-tap 分支消费 Alt 键、already-latched 分支等场景。
+     */
+    private fun clearSystemAltSticky() {
+        setSystemAltSticky(false)
+        currentInputConnection?.clearMetaKeyStates(
+            KeyEvent.META_ALT_ON or
+                    KeyEvent.META_ALT_LEFT_ON or
+                    KeyEvent.META_ALT_RIGHT_ON
+        )
+    }
+
+    /**
+     * 同时清掉应用层 [altLatched] 和 Android 框架层在 [InputConnection] 上维护的
+     * Alt latched/locked meta 状态。InputConnection.clearMetaKeyStates 只会清掉
+     * sticky / latched / locked 状态，不会影响当前正在按住的物理修饰键。
+     */
+    private fun clearAltLatchAndMetaState() {
+        setAltLatched(false)
+        clearSystemAltSticky()
+        lastAltTapEventTime = 0L
     }
 
     private fun isAnyAltKeyCode(keyCode: Int): Boolean {
@@ -802,8 +890,65 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             return false
         }
 
+        // ========== Earliest metaState probe ==========
+        // 在任何处理（包括 updatePhysicalModifiers）之前检查 keyEvent 自带的 metaState。
+        // 此时 physicalAltDown 仍反映"本次按键之前"的状态：
+        //   - 非 Alt 键事件：physicalAltDown 是上一帧物理 Alt 状态
+        //   - Alt 键事件：physicalAltDown 还是 false（本次按下还没记录）
+        // 如果 metaState 已经有 META_ALT_ON 但 physicalAltDown 是 false，说明 Alt
+        // 不是用户刚按的，是系统层早就 active（sticky/latched/locked）。
+        //
+        // 适用于任意按键（数字、字母、符号、Alt 自己），不依赖特定的 ROM 行为。
+        // 副作用：logcat 里能看到每次按键的 metaState，方便调试 ROM 行为。
+        if (event.repeatCount == 0) {
+            val rawAltMeta = (event.metaState and KeyEvent.META_ALT_ON) != 0
+            if (rawAltMeta && !physicalAltDown && !systemAltSticky) {
+                setSystemAltSticky(true)
+                Timber.d("Earliest metaState probe: key=$keyCode metaState=0x${event.metaState.toString(16)} → system Alt sticky")
+            }
+        }
+
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, true)
+
+        // Track long-press heuristic: record Alt press start time and reset the
+        // "other keys during hold" flag. Also flag any non-Alt key pressed while Alt
+        // is physically held (so the heuristic won't fire for normal Alt-combo usage).
+        if (isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
+            altDownStartTime = event.eventTime
+            altHadOtherKeysDuringHold = false
+        } else if (!isAnyAltKeyCode(keyCode) && physicalAltDown && event.repeatCount == 0) {
+            altHadOtherKeysDuringHold = true
+        }
+
+        // Detect system-level Alt sticky state (independent of our app-level altLatched).
+        // POSITIVE-ONLY: only use metaState to detect sticky state (set true), never to
+        // clear it (set false). Some ROMs (notably the Q25 / certain Android builds) keep
+        // the system-level Alt sticky in a native input-dispatcher state that is NOT
+        // reflected in the metaState of subsequent regular key events. If we used the
+        // absence of META_ALT_ON to clear the flag, the lock icon would disappear the
+        // moment the user typed any character — even though the system was still sticky.
+        // Clearing must go through explicit [clearSystemAltSticky] (user action).
+        //
+        // Trigger conditions (any of):
+        //   1) Non-Alt key with META_ALT_ON in metaState while Alt NOT physically held
+        //      (post-release sticky detection — the normal case)
+        //   2) Non-Alt key with META_ALT_ON in metaState while Alt IS physically held
+        //      for >= altLongPressThresholdMs (during-hold detection — some ROMs
+        //      latch/lock the modifier while the user is still holding it, e.g. the Q25
+        //      when the user does "hold Alt + type several symbols then release")
+        if (!isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
+            val rawAltMeta = (event.metaState and KeyEvent.META_ALT_ON) != 0
+            if (rawAltMeta && !systemAltSticky) {
+                val postReleaseSticky = !physicalAltDown
+                val duringHoldSticky = physicalAltDown &&
+                        (event.eventTime - altDownStartTime >= altLongPressThresholdMs)
+                if (postReleaseSticky || duringHoldSticky) {
+                    setSystemAltSticky(true)
+                    Timber.d("Detected system Alt sticky (postRelease=$postReleaseSticky, duringHold=$duringHoldSticky) from metaState=0x${event.metaState.toString(16)}")
+                }
+            }
+        }
 
         // When Alt latch is disabled, clear any latched state and let Alt behave as a normal modifier.
         if (!altLatchEnabled() && altLatched) {
@@ -817,6 +962,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // Already latched: pressing the latch key again unlocks it (pure unlock, consume).
                     setAltLatched(false)
                     lastAltTapEventTime = 0L
+                    // 同步清掉框架层 sticky meta，防止长按后系统残留的 locked 状态卡住
+                    clearSystemAltSticky()
                     Timber.d("Alt latch disabled")
                     altLatchConsumedThisGesture = true
                     return true
@@ -837,6 +984,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // into fcitx5.
                     if (inputView?.isHardwareShortcutKey(event) != true) {
                         altLatchConsumedThisGesture = true
+                        // 关键：消费单次 Alt 键时主动清掉框架可能残留的 sticky meta。
+                        // 长按 Alt 后系统可能进入 locked，单按 Alt 命中 first-tap 分支消费
+                        // 掉后框架 locked 状态仍卡住，必须显式清掉。
+                        clearSystemAltSticky()
                         return true
                     }
                     // Otherwise fall through; downstream selection logic handles this press.
@@ -848,6 +999,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (altLatchEnabled() && event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
             setAltLatched(false)
             lastAltTapEventTime = 0L
+            // Alt/Space/Enter 解锁时也清掉框架层 sticky meta
+            clearSystemAltSticky()
             Timber.d("Alt latch disabled by keyCode=$keyCode")
             // Alt key itself acts as a pure unlock action.
             if (isAnyAltKeyCode(keyCode)) return true
@@ -876,6 +1029,33 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, false)
+
+        // Long-press heuristic for system Alt sticky detection.
+        // When Alt is released: if it was held for >= altLongPressThresholdMs, the framework
+        // has likely entered sticky/locked state on this device. We do NOT require that no
+        // other keys were pressed during the hold — on the Q25 / some Android builds the
+        // sticky state is entered even when the user holds Alt and types numbers/symbols
+        // (e.g. Alt+number combos held long enough), so excluding that case would miss
+        // the real bug. The cost of the occasional false positive is minor: the user just
+        // sees a lock icon and can press Alt to clear it.
+        //
+        // Also: check the metaState of the Alt key-up event itself. On some ROMs the system
+        // injects META_ALT_ON into the modifier's own key-up metaState when it has entered
+        // sticky/locked state. If we see that (with physicalAltDown now false), it's a
+        // strong positive signal even when the duration is short.
+        if (isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
+            val duration = event.eventTime - altDownStartTime
+            val rawAltMeta = (event.metaState and KeyEvent.META_ALT_ON) != 0
+            if (!systemAltSticky) {
+                if (duration >= altLongPressThresholdMs) {
+                    setSystemAltSticky(true)
+                    Timber.d("Heuristic: long-press Alt duration=$duration ms (otherKeys=$altHadOtherKeysDuringHold) → system Alt sticky")
+                } else if (rawAltMeta) {
+                    setSystemAltSticky(true)
+                    Timber.d("Heuristic: Alt key-up metaState carries META_ALT_ON → system Alt sticky")
+                }
+            }
+        }
 
         if (altLatchEnabled() && isAltLatchKey(event)) {
             // Only swallow the key-up when THIS gesture was consumed by latching (pure latch key,
@@ -1339,8 +1519,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onFinishInput() {
         Timber.d("onFinishInput: currentInputStarted=$currentInputStarted isInputViewShown=$isInputViewShown")
-        setAltLatched(false)
-        lastAltTapEventTime = 0L
+        clearAltLatchAndMetaState()
         postFcitxJob {
             focus(false)
         }
