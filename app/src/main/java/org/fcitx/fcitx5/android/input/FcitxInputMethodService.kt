@@ -838,10 +838,24 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * state (see [physicalAltDown] etc.) plus any Alt added by latching. This guarantees combos
      * such as `Alt+grave` carry the Alt meta even when the OS failed to attach it after the latch
      * key's key-down was consumed.
+     *
+     * Edit keys (Backspace / Delete) are intentionally excluded from the Alt injection so that
+     * `Alt+Delete` does not get rewritten to "delete whole line" by the fcitx5 side. Users
+     * expect Delete (with or without Alt held) to delete a single character.
      */
     private fun withInjectedModifiers(event: KeyEvent): KeyEvent {
         var meta = event.metaState
-        if (physicalAltDown || altLatched) {
+        val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
+                event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
+        if (isEditKey) {
+            // Edit keys must never carry Alt meta, even if the OS attached it because physical
+            // Alt is held. Otherwise Alt+Backspace / Alt+Delete is forwarded to fcitx5 with
+            // Alt meta, and the fcitx5 side maps Alt+Delete to "delete whole line" (X11 kill-line),
+            // which is not what mobile IME users expect.
+            meta = meta and (KeyEvent.META_ALT_ON or
+                    KeyEvent.META_ALT_LEFT_ON or
+                    KeyEvent.META_ALT_RIGHT_ON).inv()
+        } else if (physicalAltDown || altLatched) {
             meta = meta or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
         }
         if (physicalCtrlDown) {
@@ -1006,6 +1020,22 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (isAnyAltKeyCode(keyCode)) return true
         }
 
+        val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
+                event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
+        // Belt-and-suspenders: when system Alt sticky is flagged, synchronously clear
+        // the editor's metaState right before sending the edit key. This catches the rare
+        // case where a previous Alt key-down/up race leaves the InputConnection holding
+        // META_ALT_ON even after withInjectedModifiers stripped it from the event we
+        // forward. Without this, fcitx5 may still see Alt+Backspace and run a line-kill
+        // shortcut on some ROMs.
+        if (isEditKey && systemAltSticky) {
+            currentInputConnection?.clearMetaKeyStates(
+                KeyEvent.META_ALT_ON or
+                        KeyEvent.META_ALT_LEFT_ON or
+                        KeyEvent.META_ALT_RIGHT_ON
+            )
+        }
+
         val effectiveEvent = withInjectedModifiers(event)
 
         // request to show floating CandidatesView when pressing physical keyboard
@@ -1049,9 +1079,23 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (!systemAltSticky) {
                 if (duration >= altLongPressThresholdMs) {
                     setSystemAltSticky(true)
+                    // Synchronously clear the editor's metaState so the next key (especially
+                    // Backspace/Delete) doesn't get forwarded with a stale META_ALT_ON from
+                    // the InputConnection's perspective, even after we strip it from the
+                    // event itself. Belt-and-suspenders against long-press-induced line-kill.
+                    currentInputConnection?.clearMetaKeyStates(
+                        KeyEvent.META_ALT_ON or
+                                KeyEvent.META_ALT_LEFT_ON or
+                                KeyEvent.META_ALT_RIGHT_ON
+                    )
                     Timber.d("Heuristic: long-press Alt duration=$duration ms (otherKeys=$altHadOtherKeysDuringHold) → system Alt sticky")
                 } else if (rawAltMeta) {
                     setSystemAltSticky(true)
+                    currentInputConnection?.clearMetaKeyStates(
+                        KeyEvent.META_ALT_ON or
+                                KeyEvent.META_ALT_LEFT_ON or
+                                KeyEvent.META_ALT_RIGHT_ON
+                    )
                     Timber.d("Heuristic: Alt key-up metaState carries META_ALT_ON → system Alt sticky")
                 }
             }
@@ -1069,6 +1113,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         if (consumedHardwareCandidateShortcutKeys.remove(keyCode)) {
             return true
+        }
+        val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
+                event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
+        if (isEditKey && systemAltSticky) {
+            currentInputConnection?.clearMetaKeyStates(
+                KeyEvent.META_ALT_ON or
+                        KeyEvent.META_ALT_LEFT_ON or
+                        KeyEvent.META_ALT_RIGHT_ON
+            )
         }
         val effectiveEvent = withInjectedModifiers(event)
         return forwardKeyEvent(effectiveEvent) || super.onKeyUp(keyCode, effectiveEvent)
