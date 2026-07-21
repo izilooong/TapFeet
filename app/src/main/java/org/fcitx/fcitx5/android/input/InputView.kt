@@ -32,7 +32,7 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
-import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateDisplayMode
+import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateArrangementMode
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyActionListener
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcaster
@@ -209,8 +209,8 @@ class InputView(
     }
 
     private val parsedKeyCache = mutableMapOf<String, ParsedKey>()
-    private var preciseShortcutsCache = mutableMapOf<Int, List<ShortcutRule>>()
-    private var wideShortcutsCache: List<ShortcutRule>? = null
+    private var preciseShortcutsCache = mutableMapOf<Pair<Int, CandidateArrangementMode>, List<ShortcutRule>>()
+    private var wideShortcutsCache = mutableMapOf<CandidateArrangementMode, List<ShortcutRule>>()
 
     private fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
@@ -233,7 +233,7 @@ class InputView(
     private val onHardwareKeyChangeListener = ManagedPreferenceProvider.OnChangeListener { _ ->
         parsedKeyCache.clear()
         preciseShortcutsCache.clear()
-        wideShortcutsCache = null
+        wideShortcutsCache.clear()
     }
 
     private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
@@ -242,7 +242,7 @@ class InputView(
     // .getValue() to branch on the active candidate display mode (巨硬 vs 普通) when picking
     // a candidate via candidate1Key (Space). With `by`, the property would be the unwrapped
     // String and the method would not resolve — see the same fix in HorizontalCandidateComponent.
-    private val candidateDisplayModePref = AppPrefs.getInstance().hardwareKeyboard.candidateDisplayMode
+    private val candidateArrangementModePref = AppPrefs.getInstance().candidateBar.arrangementMode
 
     val keyboardView: View
 
@@ -538,43 +538,69 @@ class InputView(
     private fun matchesShortcutKey(event: KeyEvent, rule: ShortcutRule): Boolean =
         matchesParsedKey(event, rule.parsedKey)
 
-    // 1~5 候选的精细映射：以"居中候选"(Space) 为基准，左右物理键按相对偏移定位，
-    // 因此候选数为 2/3/4 时空格两侧按钮（0 / SYM）也能选到对应候选。
-    // candidate1(k1) 始终由 handleHardwareCandidateShortcut 处理为"居中选词"，不在此表内。
-    // 候选数 > 5 走 wideShortcuts()；candidate 数正好 5 时本函数结果与 BB 槽位布局等价。
+    // 1~5 候选的精细映射：物理键 → 可见位置。映射取决于候选栏排列模式（巨硬居中展开 / 普通线性），
+    // 必须与 CandidateArrangementMode 保持一致，否则物理键会选到错误的候选。
+    // candidate1(k1) 始终由 handleHardwareCandidateShortcut 处理为"首选字"，不在此表内。
     private fun preciseShortcuts(count: Int): List<ShortcutRule>? {
         if (count <= 0 || count > 5) return null
-        preciseShortcutsCache[count]?.let { return it }
+        val arrangement = candidateArrangementModePref.getValue()
+        preciseShortcutsCache[count to arrangement]?.let { return it }
         val hw = hardwareKeyboardPrefs
-        val center = (count - 1) / 2
-        val rules = mutableListOf<ShortcutRule>()
-        // candidate2 (空格左侧 0 键)：居中左 1
-        (center - 1).takeIf { it in 0 until count }
-            ?.let { rules.add(ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), it)) }
-        // candidate3 (空格右侧 SYM 键)：居中右 1
-        (center + 1).takeIf { it in 0 until count }
-            ?.let { rules.add(ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), it)) }
-        // candidate4 (Shift_L)：居中左 2
-        (center - 2).takeIf { it in 0 until count }
-            ?.let { rules.add(ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), it)) }
-        // candidate5 (Shift_R)：居中右 2
-        (center + 2).takeIf { it in 0 until count }
-            ?.let { rules.add(ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), it)) }
-        preciseShortcutsCache[count] = rules
+        val rules = when (arrangement) {
+            CandidateArrangementMode.Macrohard -> {
+                // 巨硬：以"居中候选"为基准，左右物理键按相对偏移定位（候选数 2/3/4 时两侧键也能选到对应候选）
+                val center = (count - 1) / 2
+                mutableListOf<ShortcutRule>().apply {
+                    (center - 1).takeIf { it in 0 until count }
+                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), it)) }
+                    (center + 1).takeIf { it in 0 until count }
+                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), it)) }
+                    (center - 2).takeIf { it in 0 until count }
+                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), it)) }
+                    (center + 2).takeIf { it in 0 until count }
+                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), it)) }
+                }
+            }
+            CandidateArrangementMode.Linear -> {
+                // 普通：候选按 [1,2,3,4,5] 线性排布，物理键直接映射到顺序位置（candidate N → 位置 N-1）
+                val keyFor = listOf(
+                    hw.candidate2Key to 2,
+                    hw.candidate3Key to 3,
+                    hw.candidate4Key to 4,
+                    hw.candidate5Key to 5
+                )
+                mutableListOf<ShortcutRule>().apply {
+                    keyFor.forEach { (pref, n) ->
+                        val pos = n - 1
+                        if (pos < count) add(ShortcutRule(parseKeyString(pref.getValue()), pos))
+                    }
+                }
+            }
+        }
+        preciseShortcutsCache[count to arrangement] = rules
         return rules
     }
 
-    // >5 候选（wide layout）：槽位号即可见位置，沿用原快捷键映射
+    // >5 候选（wide layout）：物理键 → 可见位置，取决于排列模式。
     private fun wideShortcuts(): List<ShortcutRule> {
-        wideShortcutsCache?.let { return it }
+        val arrangement = candidateArrangementModePref.getValue()
+        wideShortcutsCache[arrangement]?.let { return it }
         val hw = hardwareKeyboardPrefs
-        val rules = listOf(
-            ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), CandidateUi.BlackBerryLeftSlot),
-            ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), CandidateUi.BlackBerryInnerLeftSlot),
-            ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), CandidateUi.BlackBerryInnerRightSlot),
-            ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), CandidateUi.BlackBerryRightSlot),
-        )
-        wideShortcutsCache = rules
+        val rules = when (arrangement) {
+            CandidateArrangementMode.Macrohard -> listOf(
+                ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), CandidateUi.BlackBerryLeftSlot),
+                ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), CandidateUi.BlackBerryInnerLeftSlot),
+                ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), CandidateUi.BlackBerryInnerRightSlot),
+                ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), CandidateUi.BlackBerryRightSlot),
+            )
+            CandidateArrangementMode.Linear -> listOf(
+                ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), 1),
+                ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), 2),
+                ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), 3),
+                ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), 4),
+            )
+        }
+        wideShortcutsCache[arrangement] = rules
         return rules
     }
 
@@ -649,10 +675,10 @@ class InputView(
         // and keeps the picker stateless against mode changes that happen in the settings screen.
         if (!candidate1HasModifier && isSameKeySymString(event, c1)) {
             val firstPickPosition = when (
-                CandidateDisplayMode.fromStorage(candidateDisplayModePref.getValue())
+                candidateArrangementModePref.getValue()
             ) {
-                CandidateDisplayMode.Macrohard -> (count - 1) / 2
-                CandidateDisplayMode.Linear -> 0
+                CandidateArrangementMode.Macrohard -> (count - 1) / 2
+                CandidateArrangementMode.Linear -> 0
             }
             return selectCandidateAtVisiblePosition(firstPickPosition)
         }

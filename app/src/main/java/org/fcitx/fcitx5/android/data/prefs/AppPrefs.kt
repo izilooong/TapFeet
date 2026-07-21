@@ -15,7 +15,7 @@ import org.fcitx.fcitx5.android.data.InputFeedbacks.InputFeedbackMode
 import org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesOrientation
-import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateDisplayMode
+import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateArrangementMode
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateMode
 import org.fcitx.fcitx5.android.input.keyboard.LangSwitchBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior
@@ -330,6 +330,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     inner class CandidateBar :
         ManagedPreferenceCategory(R.string.candidate_bar_options, sharedPreferences) {
 
+        // 候选栏的排列顺序（仅影响视觉排布，不影响物理键快速选字）：
+        //   Macrohard 巨硬 [4-2-1-3-5]（首选字居中向两侧展开）
+        //   Linear    普通 [1-2-3-4-5]（从左到右线性）
+        // 物理键快速选字的开关在 HardwareKeyboard.enableCandidateQuickPick。
+        val arrangementMode = enumList(
+            R.string.candidate_arrangement_mode,
+            "candidate_arrangement_mode",
+            CandidateArrangementMode.Macrohard
+        )
+
         val showCandidateIndex = switch(
             R.string.show_candidate_index,
             "show_candidate_index",
@@ -408,15 +418,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // screen overrides all individual key bindings with that preset's values.
         val keyProfile = string("hw_key_profile", "blackberry")
 
-        // Controls how the candidate bar lays out words (居中向两侧展开 vs 从左到右线性) and
-        // whether the bottom-row physical keys (candidate2-5) act as quick-pick shortcuts.
-        // "Macrohard" (default, 巨硬): candidate shortcuts bound to physical keys are active,
-        //   and the bar uses the centered/outward BlackBerry-style ordering.
-        // "linear" (普通): shortcuts are inactive, and the bar uses plain left-to-right ordering.
-        // The name is a literal portmanteau of the Chinese pinyin-input community's nickname for
-        // Microsoft, deliberately decoupled from the [keyProfile] preset (BlackBerry / TT2).
-        val candidateDisplayMode =
-            string("hw_candidate_display_mode", CandidateDisplayMode.MACROHARD)
+        // 仅控制底排物理键（candidate2-5）是否作为快速选字快捷键，与候选栏的排列顺序无关。
+        // 开启（默认）：candidate2-5 按当前 keyProfile 绑定物理键，可快速选字。
+        // 关闭：清空 candidate2-5 键值，底排物理键不再触发选字（candidate1/Space 仍可选首选字）。
+        // 排列顺序由 CandidateBar.arrangementMode 决定。
+        val enableCandidateQuickPick = switch(
+            R.string.hw_enable_candidate_quick_pick,
+            "hw_enable_candidate_quick_pick",
+            true,
+            R.string.hw_enable_candidate_quick_pick_summary
+        )
 
         // Double-tap the latch key to lock the Alt modifier. Default ON.
         val altLatchEnabled = bool("hw_alt_latch_enabled", true)

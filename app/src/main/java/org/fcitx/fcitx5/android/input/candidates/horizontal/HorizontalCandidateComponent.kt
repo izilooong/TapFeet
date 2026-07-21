@@ -90,12 +90,12 @@ class HorizontalCandidateComponent :
     // Hold the ManagedPreference<String> directly (no `by` delegate) so we can call
     // registerOnChangeListener on it. With `by`, the property would be the unwrapped String
     // and the listener-registration method would not resolve.
-    private val candidateDisplayModePref = AppPrefs.getInstance().hardwareKeyboard.candidateDisplayMode
+    private val candidateArrangementModePref = AppPrefs.getInstance().candidateBar.arrangementMode
 
     @Keep
-    private val onCandidateDisplayModeChangeListener =
-        ManagedPreference.OnChangeListener<String> { _, newValue ->
-            val mode = CandidateDisplayMode.fromStorage(newValue)
+    private val onCandidateArrangementModeChangeListener =
+        ManagedPreference.OnChangeListener<CandidateArrangementMode> { _, newValue ->
+            val mode = newValue.toDisplayMode()
             if (adapter.displayMode != mode) {
                 adapter.displayMode = mode
                 // Re-render the current page so the new ordering (居中展开 vs 线性) takes effect
@@ -409,8 +409,8 @@ class HorizontalCandidateComponent :
         // Align the adapter's display mode with the persisted preference at startup, so a mode
         // change made in a previous session (or in the settings screen while the IME is alive)
         // is honoured on the very next candidate update — no flicker of the old layout first.
-        adapter.displayMode = CandidateDisplayMode.fromStorage(candidateDisplayModePref.getValue())
-        candidateDisplayModePref.registerOnChangeListener(onCandidateDisplayModeChangeListener)
+        adapter.displayMode = candidateArrangementModePref.getValue().toDisplayMode()
+        candidateArrangementModePref.registerOnChangeListener(onCandidateArrangementModeChangeListener)
     }
 
     override fun onCandidateUpdate(data: FcitxEvent.CandidateListEvent.Data) {

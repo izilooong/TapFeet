@@ -281,6 +281,11 @@
     <string name="candidates_padding">候選詞邊距</string>
     <string name="candidates_window_min_width">候選窗口最小寬度</string>
     <string name="candidates_window_padding">候選窗口邊距</string>
+    <string name="candidate_arrangement_mode">候選欄排列方式</string>
+    <string name="arrangement_macrohard">巨硬（4-2-1-3-5）</string>
+    <string name="arrangement_linear">普通（1-2-3-4-5）</string>
+    <string name="hw_enable_candidate_quick_pick">巨硬模式</string>
+    <string name="hw_enable_candidate_quick_pick_summary">由物理按鍵（Shift、0、Space、SYM、Shift）直接選詞</string>
     <string name="restart_fcitx_instance">重新啟動 Fcitx 實例</string>
     <string name="restart_fcitx_instance_confirm">Fcitx 實例將被銷燬並重新初始化。繼續嗎？</string>
     <string name="ignore_system_window_insets">忽略系統窗口邊襯區 (WindowInsets)</string>

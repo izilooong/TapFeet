@@ -42,6 +42,8 @@
     <string name="hw_candidate_display_mode">Candidate display mode</string>
     <string name="hw_candidate_display_mode_macrohard">Macrohard</string>
     <string name="hw_candidate_display_mode_linear">Linear</string>
+    <string name="hw_enable_candidate_quick_pick">Bottom-row quick-pick</string>
+    <string name="hw_enable_candidate_quick_pick_summary">Let physical keys (0, SYM, Shift) pick candidates. Independent of the candidate arrangement.</string>
     <string name="key_capture_hint">Press any key to bind…</string>
     <string name="key_captured_format">Captured: %1$s (%2$d)</string>
     <string name="hw_reset">Reset to default</string>
@@ -314,6 +316,9 @@
     <string name="candidates_font_size">Candidate word font size</string>
     <string name="candidates_padding">Candidate word padding</string>
     <string name="candidate_bar_options">Candidate bar options</string>
+    <string name="candidate_arrangement_mode">Candidate arrangement</string>
+    <string name="arrangement_macrohard">Macrohard (4-2-1-3-5)</string>
+    <string name="arrangement_linear">Linear (1-2-3-4-5)</string>
     <string name="show_candidate_index">Show candidate index</string>
     <string name="candidate_index_font_size">Candidate index font size</string>
     <string name="candidate_text_font_size">Candidate text font size</string>

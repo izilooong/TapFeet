@@ -39,9 +39,8 @@
     <string name="hw_key_profile">键盘布局预设</string>
     <string name="hw_profile_blackberry">BlackBerry</string>
     <string name="hw_profile_tt2">Titan2</string>
-    <string name="hw_candidate_display_mode">候选显示模式</string>
-    <string name="hw_candidate_display_mode_macrohard">巨硬模式</string>
-    <string name="hw_candidate_display_mode_linear">普通模式</string>
+    <string name="hw_enable_candidate_quick_pick">巨硬模式</string>
+    <string name="hw_enable_candidate_quick_pick_summary">由物理按键（Shift、0、Space、SYM、Shift）直接选词</string>
     <string name="key_capture_hint">按任意键以绑定…</string>
     <string name="key_captured_format">已捕获: %1$s (%2$d)</string>
     <string name="hw_reset">恢复默认</string>
@@ -314,6 +313,9 @@
     <string name="candidates_font_size">候选词字体大小</string>
     <string name="candidates_padding">候选词边距</string>
     <string name="candidate_bar_options">候选栏</string>
+    <string name="candidate_arrangement_mode">候选栏排列模式</string>
+    <string name="arrangement_macrohard">巨硬模式（4-2-1-3-5）</string>
+    <string name="arrangement_linear">普通（1-2-3-4-5）</string>
     <string name="show_candidate_index">显示候选序号</string>
     <string name="candidate_index_font_size">候选序号字体大小</string>
     <string name="candidate_text_font_size">候选字字体大小</string>
