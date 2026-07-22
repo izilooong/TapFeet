@@ -89,6 +89,12 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
     override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
         val originalIndex = displayOrder[position]
         val isActive = originalIndex == 0
+        // Give the preferred (first) candidate extra horizontal padding so it stands out
+        // visually from the other candidates on the bar — the bold typeface + activeBackground
+        // alone are subtle on a narrow BlackBerry-style bar, and the extra breathing room
+        // makes the "tap Space to commit this one" affordance much more obvious.
+        val horizontalPaddingDp = if (isActive) 20 else 10
+        holder.ui.root.setPaddingDp(horizontalPaddingDp, 0, horizontalPaddingDp, 0)
         val prefs = AppPrefs.getInstance().candidateBar
         val showIndex = prefs.showCandidateIndex.getValue()
         val indexFontSize = prefs.candidateIndexFontSize.getValue()

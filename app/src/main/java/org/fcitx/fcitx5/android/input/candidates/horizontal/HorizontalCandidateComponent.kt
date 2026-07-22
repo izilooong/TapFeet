@@ -16,6 +16,7 @@ import androidx.annotation.Keep
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
+import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.JustifyContent
 import kotlin.math.max
 import kotlin.math.min
@@ -116,6 +117,15 @@ class HorizontalCandidateComponent :
     private var remoteHasNext = false
     private var localPageStart = 0
     private var localPageSize = Int.MAX_VALUE
+    /**
+     * When the user advances into an orphan tail page (e.g. 4 candidates → page 1 of 3 leaves a
+     * lonely 1-item tail), we always trigger a remote page fetch first to try to fill a normal
+     * {5, 3, 1} page from the next backend batch. If the backend genuinely has no more
+     * candidates ([onPagedCandidateUpdate] returns an empty list), we fall back to rendering
+     * this small tail page. This field records the `nextStart` to fall back to so the fallback
+     * path knows where to resume locally.
+     */
+    private var pendingOrphanTailStart: Int = -1
     private var pendingLocalPageSize = -1
     private var pagingStateListener: ((Boolean, Boolean) -> Unit)? = null
 
@@ -159,28 +169,20 @@ class HorizontalCandidateComponent :
                 val nextStart =
                         min(localPageStart + effectiveLocalPageSize(), lastLocalPageStart())
                 if (isOrphanPage(nextStart)) {
-                    if (remoteHasNext) {
-                        // Sparse tail (e.g. only 1 candidate left): load the subsequent batch
-                        // from the backend to fill a proper page instead of showing a lonely
-                        // 1-item page.
-                        candidatePagingMode = 1
-                        fcitx.launchOnReady {
-                            it.setCandidatePagingMode(1)
-                            it.offsetCandidatePage(1)
-                        }
-                        updatePagingState()
-                        return
+                    // Sparse tail (e.g. only 1 candidate left): always try to load the next
+                    // backend batch first so we can fill a normal {5, 3, 1} page instead of
+                    // showing a lonely 1-item page — even when [remoteHasNext] is currently
+                    // false (the flag can be stale; the fcitx backend may still have more
+                    // candidates than the initial batch reported). If the backend genuinely
+                    // has no more, [onPagedCandidateUpdate] will see an empty response and
+                    // fall back to rendering the small local tail via [pendingOrphanTailStart].
+                    pendingOrphanTailStart = nextStart
+                    candidatePagingMode = 1
+                    fcitx.launchOnReady {
+                        it.setCandidatePagingMode(1)
+                        it.offsetCandidatePage(1)
                     }
-                    // No more data behind: borrow candidates from the current page so the
-                    // trailing page is no longer an orphan (e.g. [4,1] -> [3,2]).
-                    val orphanThreshold = (effectiveLocalPageSize().coerceAtLeast(1) + 1) / 2
-                    while (localPageSize > 1 &&
-                            (pageCandidates.size - (localPageStart + localPageSize)) < orphanThreshold) {
-                        localPageSize -= 1
-                    }
-                    localPageStart = min(localPageStart + localPageSize, lastLocalPageStart())
-                    localPageSize = preferredLocalPageSize(localPageStart)
-                    renderCurrentPage()
+                    updatePagingState()
                     return
                 }
                 localPageStart = nextStart
@@ -233,7 +235,42 @@ class HorizontalCandidateComponent :
     private fun preferredLocalPageSize(start: Int): Int {
         val remaining = pageCandidates.size - start
         if (remaining <= 0) return 0
-        return min(maxSpanCountPref.getValue().coerceAtLeast(1), remaining)
+        val raw = min(maxSpanCountPref.getValue().coerceAtLeast(1), remaining)
+        // Snap to {5, 3, 1} so the local page never shows 2 or 4 candidates. 4 and 2 break the
+        // visual rhythm of the 巨硬/普通 layout (居中展开的间距假设) and also force the Flexbox
+        // 5-slice layoutMinWidth to compress candidates into non-round widths; 5/3/1 are the only
+        // tiers that look correct and trigger the width-based overflow fallback cleanly (5→3,
+        // 3→1) in onLayoutCompleted.
+        //
+        // Note: snap is computed from `raw` (= min(maxSpan, remaining)), NOT from `remaining` —
+        // a 2-candidate query must show 1, not 3; a 4-candidate query must show 3, not 5. If we
+        // returned 3 when only 2 candidates exist, renderCurrentPage's slice would be capped at
+        // pageCandidates.size and the user would still see 2 (the bug this snap was added to fix).
+        //
+        // Pagination still walks every candidate: 4 candidates → page 1 shows 3, page 2 shows 1;
+        // 7 candidates with maxSpan=5 → 5+1+1 (3 pages). All candidates remain reachable, just
+        // possibly with one extra tap.
+        return when {
+            raw <= 2 -> 1
+            raw <= 4 -> 3
+            else -> 5
+        }
+    }
+
+    /**
+     * Apply a new [localPageSize] and keep [layoutMinWidth] in lockstep with it, so the Flexbox
+     * layout manager distributes the bar width evenly across the visible candidates at every tier
+     * (5/3/1). Without this, shrinking the page size to 3 would still leave each candidate at the
+     * 5-slice minimum, so the overflow check in [layoutManager]'s `onLayoutCompleted` would never
+     * see a clean 3-across layout and would collapse straight to 1.
+     */
+    private fun applyLocalPageSize(size: Int) {
+        localPageSize = size
+        // AutoFillWidth no longer forces a 1/size layoutMinWidth — candidates stay at their
+        // natural text width regardless of the page-size tier (see onCandidateUpdate).
+        if (fillStyle == AlwaysFillWidth) {
+            layoutMinWidth = 0
+        }
     }
 
     private fun lastLocalPageStart(): Int {
@@ -304,7 +341,7 @@ class HorizontalCandidateComponent :
             if (pendingLocalPageSize != childCount) return@post
             pendingLocalPageSize = -1
             if (localPageSize == childCount) return@post
-            localPageSize = childCount
+            applyLocalPageSize(childCount)
             renderCurrentPage()
         }
     }
@@ -316,6 +353,11 @@ class HorizontalCandidateComponent :
                 holder.itemView.updateLayoutParams<FlexboxLayoutManager.LayoutParams> {
                     minWidth = layoutMinWidth
                     flexGrow = layoutFlexGrow
+                    // flexShrink must be 0 so wide candidates keep their natural text width and
+                    // actually overflow the bar — otherwise the Flexbox layout manager silently
+                    // shrinks each item down to minWidth and clips the text, which prevents the
+                    // 5→3→1 overflow fallback in onLayoutCompleted from ever triggering.
+                    flexShrink = 0f
                 }
                 holder.itemView.setOnClickListener {
                     prepareFlyAnimation(holder.candidate.text, holder.ui.text)
@@ -346,6 +388,28 @@ class HorizontalCandidateComponent :
                     override fun onLayoutCompleted(state: RecyclerView.State) {
                         super.onLayoutCompleted(state)
                         val cnt = this.childCount
+                        // Responsive 5→3→1 fallback: if the laid-out children overflow the
+                        // candidate bar's width, the candidate words are too wide to fit at the
+                        // current tier — snap down to the next smaller one (5→3 or 3→1) and
+                        // re-render. Without this gate, layoutMinWidth would force every
+                        // candidate to claim its 5-slice minimum and wide candidates would be
+                        // silently clipped at the right edge instead of the bar showing fewer,
+                        // properly-sized words.
+                        if (cnt > 0 && view.width > 0 && localPageSize > 1) {
+                            var totalWidth = 0
+                            for (i in 0 until cnt) totalWidth += getChildAt(i)!!.width
+                            if (totalWidth > view.width) {
+                                val nextSize = when {
+                                    localPageSize > 3 -> 3
+                                    else -> 1
+                                }
+                                if (nextSize < localPageSize) {
+                                    applyLocalPageSize(nextSize)
+                                    view.post { renderCurrentPage() }
+                                    return
+                                }
+                            }
+                        }
                         if (secondLayoutPassNeeded) {
                             if (cnt < adapter.candidates.size) {
                                 // [^2] RecyclerView can't display all candidates
@@ -369,7 +433,13 @@ class HorizontalCandidateComponent :
                     // guarantees ViewHolder's layoutParams to be
                     // `FlexboxLayoutManager.LayoutParams`
                 }
-                .apply { justifyContent = JustifyContent.CENTER }
+                .apply {
+                    justifyContent = JustifyContent.CENTER
+                    // Force a single row: without NOWRAP (the default is WRAP), 5 wide candidates
+                    // would silently wrap to 3+2 or 2+3, producing a visible "2" / "3" stack
+                    // instead of triggering the 5→3→1 overflow fallback in onLayoutCompleted.
+                    flexWrap = FlexWrap.NOWRAP
+                }
     }
 
     private val dividerDrawable by lazy {
@@ -385,13 +455,19 @@ class HorizontalCandidateComponent :
         object : RecyclerView(context) {
                     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                         super.onSizeChanged(w, h, oldw, oldh)
-                        if (fillStyle == AutoFillWidth) {
-                            val maxSpanCount = maxSpanCountPref.getValue()
-                            layoutMinWidth = w / maxSpanCount - dividerDrawable.intrinsicWidth
-                        }
+                        // Resize the page first so layoutMinWidth reflects the actual tier (5/3/1)
+                        // we are about to render, not the pref's max span count.
                         if (w != oldw && oldw > 0) {
                             pendingLocalPageSize = -1
                             localPageSize = preferredLocalPageSize(localPageStart)
+                        }
+                        if (fillStyle == AutoFillWidth) {
+                            // AutoFillWidth no longer sets a 1/size layoutMinWidth (see
+                            // onCandidateUpdate) — keep minWidth at 0 so candidates stay at their
+                            // natural text width after a width change.
+                            layoutMinWidth = 0
+                        }
+                        if (w != oldw && oldw > 0) {
                             renderCurrentPage()
                         }
                     }
@@ -423,6 +499,7 @@ class HorizontalCandidateComponent :
         remoteHasNext = total > candidates.size
         localPageStart = 0
         pendingLocalPageSize = -1
+        pendingOrphanTailStart = -1
         localPageSize = preferredLocalPageSize(0)
         val maxSpanCount = maxSpanCountPref.getValue()
         when (fillStyle) {
@@ -432,10 +509,20 @@ class HorizontalCandidateComponent :
                 secondLayoutPassNeeded = false
             }
             AutoFillWidth -> {
-                layoutMinWidth = view.width / maxSpanCount - dividerDrawable.intrinsicWidth
-                layoutFlexGrow = if (candidates.size < maxSpanCount) 0f else 1f
-                // [^1] total candidates count < maxSpanCount
-                secondLayoutPassNeeded = candidates.size < maxSpanCount
+                // Don't force-fill each candidate cell to view.width / maxSpanCount. The user
+                // wants each candidate at its natural text width, so:
+                //   - minWidth=0 lets short candidates take just their text width (no padding-out
+                //     to a 1/N slot).
+                //   - flexGrow=0 stops Flexbox from stretching wide candidates into the leftover
+                //     bar space.
+                // Combined with the {5, 3, 1} snap in [preferredLocalPageSize] and the
+                // onLayoutCompleted overflow fallback (5→3→1), the visible count now reflects
+                // how many candidates actually fit at their natural width — instead of always
+                // squeezing 5 short candidates into a 5-slot layout or stretching 3 short
+                // candidates into a 3-slot layout.
+                layoutMinWidth = 0
+                layoutFlexGrow = 0f
+                secondLayoutPassNeeded = false
                 secondLayoutPassDone = false
             }
             AlwaysFillWidth -> {
@@ -452,6 +539,19 @@ class HorizontalCandidateComponent :
     }
 
     override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) {
+        // If we triggered this fetch as an orphan-tail fallback (see [page] delta>0 branch)
+        // and the backend genuinely has no more candidates (empty response), fall back to
+        // rendering the small local tail page so the user still sees the leftover candidate
+        // instead of a blank bar.
+        if (data.candidates.isEmpty() && pendingOrphanTailStart >= 0) {
+            val fallbackStart = pendingOrphanTailStart
+            pendingOrphanTailStart = -1
+            localPageStart = fallbackStart
+            localPageSize = preferredLocalPageSize(fallbackStart)
+            renderCurrentPage()
+            return
+        }
+        pendingOrphanTailStart = -1
         pageCandidates = data.candidates
         sourceTotal = data.candidates.size + if (data.hasPrev || data.hasNext) 1 else 0
         candidatePagingMode = 1
