@@ -751,6 +751,30 @@ class InputView(
         return true
     }
 
+    /**
+     * When prediction (联想) candidates are showing — i.e. preedit is empty (user already
+     * committed the previous word) but the candidate bar still has candidates — the first
+     * Delete/Backspace press should clear those prediction candidates instead of deleting
+     * the character before the cursor in the editor. The user explicitly asked for this
+     * two-step behavior so they can dismiss an unwanted prediction without losing typed text.
+     *
+     * Returns true if the Delete key was consumed (prediction cleared); false to let the
+     * key fall through to normal processing.
+     */
+    fun handleDeleteClearsPrediction(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        if (event.keyCode != KeyEvent.KEYCODE_DEL) return false
+        if (event.repeatCount != 0) return false
+        // Only intercept when there's no preedit (prediction mode) but candidates are visible.
+        if (!preeditEmptyState.isEmpty) return false
+        if (!kawaiiBar.isCandidateUiShowing()) return false
+        if (horizontalCandidate.visibleCandidateCount() <= 0) return false
+        // Clear prediction candidates by resetting fcitx's input panel. This dismisses the
+        // candidate list without committing anything; the editor's text is untouched.
+        fcitx.launchOnReady { it.reset() }
+        return true
+    }
+
     @RequiresApi(Build.VERSION_CODES.R)
     fun handleInlineSuggestions(response: InlineSuggestionsResponse): Boolean {
         return kawaiiBar.handleInlineSuggestions(response)

@@ -1049,6 +1049,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             consumedHardwareCandidateShortcutKeys.add(keyCode)
             return true
         }
+        // Prediction-candidate dismiss: when 联想 candidates are showing (no preedit), the first
+        // Delete press clears them instead of deleting editor text. See InputView for full logic.
+        if (event.repeatCount == 0 && inputView?.handleDeleteClearsPrediction(effectiveEvent) == true) {
+            return true
+        }
         return forwardKeyEvent(effectiveEvent) || super.onKeyDown(keyCode, effectiveEvent)
     }
 
