@@ -118,16 +118,32 @@ class HorizontalCandidateComponent :
     private var localPageStart = 0
     private var localPageSize = Int.MAX_VALUE
     /**
-     * When the user advances into an orphan tail page (e.g. 4 candidates → page 1 of 3 leaves a
-     * lonely 1-item tail), we always trigger a remote page fetch first to try to fill a normal
-     * {5, 3, 1} page from the next backend batch. If the backend genuinely has no more
-     * candidates ([onPagedCandidateUpdate] returns an empty list), we fall back to rendering
-     * this small tail page. This field records the `nextStart` to fall back to so the fallback
-     * path knows where to resume locally.
+     * When the user advances into a tail page that would be too small (e.g. only 1 candidate
+     * left locally) while the backend still has more data, we fetch the next slice first and
+     * continue from this position once it lands. If the backend genuinely has no more,
+     * [onSliceFetched] falls back to rendering the small tail page (single-candidate pages are
+     * only acceptable when fcitx truly has no next page of data).
      */
     private var pendingOrphanTailStart: Int = -1
     private var pendingLocalPageSize = -1
     private var pagingStateListener: ((Boolean, Boolean) -> Unit)? = null
+
+    /** Guards against concurrent slice fetches and double-appends. */
+    private var prefetchInFlight = false
+
+    /**
+     * Bumped on every new query ([onCandidateUpdate]). Slice fetch responses are tagged with
+     * the generation they were issued under; a mismatched response is stale (from the previous
+     * query) and must be dropped without touching state.
+     */
+    private var queryGeneration = 0
+
+    /**
+     * Slice size for backend fetches. Matches the bulk batch granularity used by the C++
+     * frontend (`updateCandidatesBulk` caps the initial batch at 16), so a full slice back
+     * implies "probably more data behind" when the backend total is unknown.
+     */
+    private val prefetchSliceLimit = 16
 
     /**
      * (for [HorizontalCandidateMode.AutoFillWidth] only) Second layout pass is needed when: [^1]
@@ -155,33 +171,19 @@ class HorizontalCandidateComponent :
                 localPageStart = max(0, localPageStart - effectiveLocalPageSize())
                 localPageSize = preferredLocalPageSize(localPageStart)
                 renderCurrentPage()
-            } else if (remoteHasPrev) {
-                // Remote paging in bulk mode would keep returning the same leading slice.
-                // Switch to paged mode first so the backend advances by page.
-                candidatePagingMode = 1
-                fcitx.launchOnReady {
-                    it.setCandidatePagingMode(1)
-                    it.offsetCandidatePage(-1)
-                }
             }
+            // No remote-prev: bulk mode keeps every fetched slice in [pageCandidates], so
+            // navigating backwards is always local.
         } else if (delta > 0) {
             if (hasLocalNext()) {
                 val nextStart =
                         min(localPageStart + effectiveLocalPageSize(), lastLocalPageStart())
-                if (isOrphanPage(nextStart)) {
-                    // Sparse tail (e.g. only 1 candidate left): always try to load the next
-                    // backend batch first so we can fill a normal {5, 3, 1} page instead of
-                    // showing a lonely 1-item page — even when [remoteHasNext] is currently
-                    // false (the flag can be stale; the fcitx backend may still have more
-                    // candidates than the initial batch reported). If the backend genuinely
-                    // has no more, [onPagedCandidateUpdate] will see an empty response and
-                    // fall back to rendering the small local tail via [pendingOrphanTailStart].
-                    pendingOrphanTailStart = nextStart
-                    candidatePagingMode = 1
-                    fcitx.launchOnReady {
-                        it.setCandidatePagingMode(1)
-                        it.offsetCandidatePage(1)
-                    }
+                if (isOrphanPage(nextStart) && remoteHasNext) {
+                    // The tail page would be too small (e.g. a single leftover candidate) but
+                    // the backend has more data: fetch the next slice first and continue from
+                    // [nextStart] when it lands, so the user sees a full page. Only if the
+                    // backend is truly exhausted do we fall back to the small tail.
+                    fetchNextSlice(continueFromStart = nextStart)
                     updatePagingState()
                     return
                 }
@@ -189,16 +191,87 @@ class HorizontalCandidateComponent :
                 localPageSize = preferredLocalPageSize(localPageStart)
                 renderCurrentPage()
             } else if (remoteHasNext) {
-                // Remote paging in bulk mode would keep returning the same leading slice.
-                // Switch to paged mode first so the backend advances by page.
-                candidatePagingMode = 1
-                fcitx.launchOnReady {
-                    it.setCandidatePagingMode(1)
-                    it.offsetCandidatePage(1)
-                }
+                // Local history exhausted but the backend has more: pull the next slice and
+                // continue from where the user wanted to go.
+                fetchNextSlice(continueFromStart = localPageStart + effectiveLocalPageSize())
                 updatePagingState()
             }
         }
+    }
+
+    /**
+     * Fetch the next slice of candidates from the backend's bulk list via
+     * [org.fcitx.fcitx5.android.core.FcitxAPI.getCandidates] and APPEND it to [pageCandidates].
+     * Unlike the old paged-mode path (`setCandidatePagingMode(1)` + `offsetCandidatePage`), this:
+     *  - never discards local leftovers (the {5,3,1} snap can leave 1-2 trailing candidates;
+     *    appending keeps them so the next page shows a full count instead of a lonely tail);
+     *  - keeps selection indices GLOBAL: [FcitxAPI.select] in bulk mode resolves through
+     *    `candidateFromAll(idx)`, which matches our absolute indices into the appended array.
+     */
+    private fun fetchNextSlice(continueFromStart: Int = -1) {
+        if (continueFromStart >= 0) pendingOrphanTailStart = continueFromStart
+        if (prefetchInFlight) return
+        prefetchInFlight = true
+        val offset = pageCandidates.size
+        val generation = queryGeneration
+        fcitx.launchOnReady {
+            val more = it.getCandidates(offset, prefetchSliceLimit)
+            view.post { onSliceFetched(more, generation) }
+        }
+    }
+
+    private fun onSliceFetched(
+            more: Array<org.fcitx.fcitx5.android.core.CandidateWord>,
+            generation: Int
+    ) {
+        // Stale slice from a previous query: drop it entirely (state was already reset by
+        // onCandidateUpdate, and a new fetch may be in flight).
+        if (generation != queryGeneration) return
+        prefetchInFlight = false
+        if (more.isEmpty()) {
+            // Backend genuinely exhausted: a small tail page is acceptable here.
+            remoteHasNext = false
+            if (pendingOrphanTailStart >= 0) {
+                val fallbackStart = pendingOrphanTailStart
+                pendingOrphanTailStart = -1
+                localPageStart = fallbackStart
+                localPageSize = preferredLocalPageSize(fallbackStart)
+                renderCurrentPage()
+            } else {
+                updatePagingState()
+            }
+            return
+        }
+        pageCandidates = pageCandidates + more
+        // sourceTotal is authoritative when positive (bulk totalSize); otherwise infer from
+        // whether the backend returned a full slice.
+        remoteHasNext =
+                if (sourceTotal > 0) pageCandidates.size < sourceTotal
+                else more.size >= prefetchSliceLimit
+        val continueFromStart = pendingOrphanTailStart
+        pendingOrphanTailStart = -1
+        if (continueFromStart >= 0) {
+            localPageStart = min(continueFromStart, lastLocalPageStart())
+            localPageSize = preferredLocalPageSize(localPageStart)
+            renderCurrentPage()
+        } else {
+            updatePagingState()
+            // Data arrived while the user was browsing: if they're already near the end of the
+            // freshly-extended array, keep the pipeline warm for the next page.
+            maybePrefetchNextSlice()
+        }
+    }
+
+    /**
+     * Preload the next slice while the user is still on the current page, so pressing "next"
+     * shows a full page instantly instead of a partially-filled (or 1-item) page. Fires when
+     * the number of not-yet-displayed local candidates drops to one page's worth or less.
+     */
+    private fun maybePrefetchNextSlice() {
+        if (prefetchInFlight || !remoteHasNext) return
+        val remaining = pageCandidates.size - (localPageStart + effectiveLocalPageSize())
+        if (remaining > maxSpanCountPref.getValue().coerceAtLeast(1)) return
+        fetchNextSlice()
     }
 
     fun selectionIndexForLocalNumber(number: Int): Int? {
@@ -319,6 +392,9 @@ class HorizontalCandidateComponent :
         if (slice.isEmpty()) {
             refreshExpanded(0)
         }
+        // Preload the next backend slice in the background while the user reads this page,
+        // so pressing "next" lands on a full page instead of a sparse tail.
+        maybePrefetchNextSlice()
     }
 
     private fun refreshExpanded(childCount: Int) {
@@ -496,10 +572,16 @@ class HorizontalCandidateComponent :
         sourceTotal = total
         candidatePagingMode = 0
         remoteHasPrev = false
-        remoteHasNext = total > candidates.size
+        // total == -1 means the engine doesn't report a total; if the initial batch filled the
+        // backend's bulk slice granularity, assume there's more behind it.
+        remoteHasNext =
+                if (total >= 0) total > candidates.size
+                else candidates.size >= prefetchSliceLimit
         localPageStart = 0
         pendingLocalPageSize = -1
         pendingOrphanTailStart = -1
+        prefetchInFlight = false
+        queryGeneration++
         localPageSize = preferredLocalPageSize(0)
         val maxSpanCount = maxSpanCountPref.getValue()
         when (fillStyle) {
@@ -539,31 +621,11 @@ class HorizontalCandidateComponent :
     }
 
     override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) {
-        // If we triggered this fetch as an orphan-tail fallback (see [page] delta>0 branch)
-        // and the backend genuinely has no more candidates (empty response), fall back to
-        // rendering the small local tail page so the user still sees the leftover candidate
-        // instead of a blank bar.
-        if (data.candidates.isEmpty() && pendingOrphanTailStart >= 0) {
-            val fallbackStart = pendingOrphanTailStart
-            pendingOrphanTailStart = -1
-            localPageStart = fallbackStart
-            localPageSize = preferredLocalPageSize(fallbackStart)
-            renderCurrentPage()
-            return
-        }
-        pendingOrphanTailStart = -1
-        pageCandidates = data.candidates
-        sourceTotal = data.candidates.size + if (data.hasPrev || data.hasNext) 1 else 0
-        candidatePagingMode = 1
-        remoteHasPrev = data.hasPrev
-        remoteHasNext = data.hasNext
-        localPageStart = 0
-        pendingLocalPageSize = -1
-        localPageSize = preferredLocalPageSize(0)
-        renderCurrentPage()
-        if (data.candidates.isEmpty()) {
-            refreshExpanded(0)
-        }
+        // No-op: this component pages through the backend's bulk candidate list via
+        // getCandidates(offset, limit) slices (see fetchNextSlice), never via paged mode.
+        // PagedCandidateEvents arrive here only when another component (e.g. the floating
+        // CandidatesView) drives paged mode — letting them replace [pageCandidates] would
+        // corrupt the appended local history and its global selection indices.
     }
 
     override fun onCommitText(text: String) {
