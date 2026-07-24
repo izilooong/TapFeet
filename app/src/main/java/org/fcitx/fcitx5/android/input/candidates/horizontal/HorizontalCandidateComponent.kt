@@ -79,7 +79,7 @@ class HorizontalCandidateComponent :
         prepareFlyAnimation(candidate.text, viewHolder.ui.text)
     }
 
-    private val fillStyle by AppPrefs.getInstance().keyboard.horizontalCandidateStyle
+    private val fillStyle by AppPrefs.getInstance().candidateBar.horizontalCandidateStyle
     private val maxSpanCountPref by lazy {
         AppPrefs.getInstance().keyboard.run {
             if (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT)
@@ -381,6 +381,13 @@ class HorizontalCandidateComponent :
     }
 
     private fun renderCurrentPage() {
+        // 翻页（上一页/下一页/首屏重渲染都会走到这里）必须重新评估「按需填充」意图：
+        // AutoFillWidth 重新打开二次 layout pass；Never/Always 关闭它
+        // （Always 已靠 layoutFlexGrow=1f 直接铺满，无需二次 pass）。
+        // 否则上一页填充后 secondLayoutPassDone 置 true、或「已满」时
+        // secondLayoutPassNeeded 置 false，会让后续页永远不再触发填充。
+        secondLayoutPassDone = false
+        secondLayoutPassNeeded = fillStyle == AutoFillWidth
         val pageSize = effectiveLocalPageSize()
         localPageStart = localPageStart.coerceIn(0, lastLocalPageStart())
         val end = min(localPageStart + pageSize, pageCandidates.size)
@@ -464,6 +471,10 @@ class HorizontalCandidateComponent :
                     override fun onLayoutCompleted(state: RecyclerView.State) {
                         super.onLayoutCompleted(state)
                         val cnt = this.childCount
+                        // Aggregate every laid-out candidate's width once — consumed by both the
+                        // 5→3→1 overflow fallback below and the AutoFillWidth fill-on-demand pass.
+                        var totalWidth = 0
+                        for (i in 0 until cnt) totalWidth += getChildAt(i)!!.width
                         // Responsive 5→3→1 fallback: if the laid-out children overflow the
                         // candidate bar's width, the candidate words are too wide to fit at the
                         // current tier — snap down to the next smaller one (5→3 or 3→1) and
@@ -472,25 +483,32 @@ class HorizontalCandidateComponent :
                         // silently clipped at the right edge instead of the bar showing fewer,
                         // properly-sized words.
                         if (cnt > 0 && view.width > 0 && localPageSize > 1) {
-                            var totalWidth = 0
-                            for (i in 0 until cnt) totalWidth += getChildAt(i)!!.width
                             if (totalWidth > view.width) {
                                 val nextSize = when {
                                     localPageSize > 3 -> 3
                                     else -> 1
                                 }
                                 if (nextSize < localPageSize) {
+                                    // 先藏住这一帧过宽的候选，避免「先画出 5/4 个、再回退成 3 个」
+                                    // 的闪一下；下一帧渲染到正确档位（3/1）后由下方稳定分支恢复可见。
+                                    view.visibility = View.INVISIBLE
                                     applyLocalPageSize(nextSize)
                                     view.post { renderCurrentPage() }
                                     return
                                 }
                             }
                         }
-                        if (secondLayoutPassNeeded) {
-                            if (cnt < adapter.candidates.size) {
-                                // [^2] RecyclerView can't display all candidates
-                                // update LayoutParams in onLayoutCompleted would trigger another
-                                // onLayoutCompleted, skip the second one to avoid infinite loop
+                        // 稳定帧（无溢出回退）：确保候选栏可见。上一帧若被上面藏住，
+                        // 这一帧已渲染到正确档位，在此恢复，避免出现空白闪烁。
+                        if (view.visibility != View.VISIBLE) view.visibility = View.VISIBLE
+                        // Fill-on-demand (AutoFillWidth only): after the first natural-width
+                        // pass, if the candidates don't already span the full bar, stretch them
+                        // evenly to consume the leftover space. Replaces the old `cnt <
+                        // adapter.candidates.size` check, which never fired under the single-row
+                        // NOWRAP Flexbox (every child stays attached, so cnt == size). The
+                        // secondLayoutPassDone guard prevents onLayoutCompleted re-entry loops.
+                        if (secondLayoutPassNeeded && localPageSize > 1) {
+                            if (totalWidth < view.width) {
                                 if (secondLayoutPassDone) return
                                 secondLayoutPassDone = true
                                 for (i in 0 until cnt) {
@@ -591,20 +609,16 @@ class HorizontalCandidateComponent :
                 secondLayoutPassNeeded = false
             }
             AutoFillWidth -> {
-                // Don't force-fill each candidate cell to view.width / maxSpanCount. The user
-                // wants each candidate at its natural text width, so:
-                //   - minWidth=0 lets short candidates take just their text width (no padding-out
-                //     to a 1/N slot).
-                //   - flexGrow=0 stops Flexbox from stretching wide candidates into the leftover
-                //     bar space.
-                // Combined with the {5, 3, 1} snap in [preferredLocalPageSize] and the
-                // onLayoutCompleted overflow fallback (5→3→1), the visible count now reflects
-                // how many candidates actually fit at their natural width — instead of always
-                // squeezing 5 short candidates into a 5-slot layout or stretching 3 short
-                // candidates into a 3-slot layout.
+                // Keep each candidate at its natural text width on the first pass (minWidth=0,
+                // flexGrow=0), but re-enable the "fill on demand" second layout pass: if the
+                // laid-out candidates don't already span the full bar width, [onLayoutCompleted]
+                // stretches them evenly to consume the leftover space. This is distinct from
+                // [AlwaysFillWidth] (forces flexGrow=1f unconditionally) and [NeverFillWidth]
+                // (never fills). Restored after 03c5d8b disabled it and collapsed AutoFillWidth
+                // into NeverFillWidth.
                 layoutMinWidth = 0
                 layoutFlexGrow = 0f
-                secondLayoutPassNeeded = false
+                secondLayoutPassNeeded = true
                 secondLayoutPassDone = false
             }
             AlwaysFillWidth -> {

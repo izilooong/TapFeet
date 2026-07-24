@@ -240,11 +240,6 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             keyboardBottomPaddingLandscape = secondary
         }
 
-        val horizontalCandidateStyle = enumList(
-            R.string.horizontal_candidate_style,
-            "horizontal_candidate_style",
-            HorizontalCandidateMode.AutoFillWidth
-        )
         val expandedCandidateStyle = enumList(
             R.string.expanded_candidate_style,
             "expanded_candidate_style",
@@ -338,6 +333,15 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             R.string.candidate_arrangement_mode,
             "candidate_arrangement_mode",
             CandidateArrangementMode.Macrohard
+        )
+
+        // 横向候选词的填充模式：从不填充 / 按需填充（默认）/ 总是填充
+        // 同时在触摸虚拟键盘的横向候选条（HorizontalCandidateComponent）
+        // 与 Q25 物理键盘的悬浮候选窗（PagedCandidatesUi）中生效。
+        val horizontalCandidateStyle = enumList(
+            R.string.horizontal_candidate_style,
+            "horizontal_candidate_style",
+            HorizontalCandidateMode.AutoFillWidth
         )
 
         val showCandidateIndex = switch(
