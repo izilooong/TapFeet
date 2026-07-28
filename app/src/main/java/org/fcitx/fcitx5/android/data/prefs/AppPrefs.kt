@@ -36,6 +36,15 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val pid = int("pid", 0)
         val editorInfoInspector = bool("editor_info_inspector", false)
         val needNotifications = bool("need_notifications", true)
+        // Online update cache: whether a newer version is available, plus its metadata.
+        // (No `long` delegate exists in ManagedPreferenceInternal, so timestamps are stored as strings.)
+        val cachedUpdateAvailable = bool("cached_update_available", false)
+        val cachedUpdateVersionName = string("cached_update_version_name", "")
+        val cachedUpdateDownloadUrl = string("cached_update_download_url", "")
+        val cachedUpdateReleaseNotes = string("cached_update_release_notes", "")
+        val lastUpdateCheckTime = string("last_update_check_time", "0")
+        // Optional user-overridden update metadata URL (advanced setting). Empty = built-in default.
+        val updateInfoUrlOverride = string("update_info_url_override", "")
     }
 
     inner class Advanced : ManagedPreferenceCategory(R.string.advanced, sharedPreferences) {

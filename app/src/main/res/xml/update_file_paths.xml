@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- APK downloaded by DownloadManager lives in getExternalFilesDir(DIRECTORY_DOWNLOADS)/updates -->
+    <external-files-path
+        name="updates"
+        path="Download/updates" />
+</paths>

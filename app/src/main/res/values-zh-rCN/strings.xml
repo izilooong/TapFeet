@@ -358,4 +358,24 @@
     <string name="key_border_stroke">启用按键边框描边</string>
     <string name="preferred_voice_input">首选语音输入</string>
     <string name="show_candidate_fly_animation">开启选字动画</string>
+    <string name="check_update">检查更新</string>
+    <string name="update_status_unknown">点击检查新版本</string>
+    <string name="update_status_checking">正在检查更新…</string>
+    <string name="update_status_uptodate">已是最新版本（%1$s）</string>
+    <string name="update_status_available">发现新版本：%1$s（点击下载）</string>
+    <string name="update_found_title">发现新版本</string>
+    <string name="update_found_message">发现新版本 %1$s。\n\n%2$s</string>
+    <string name="download_update">下载更新</string>
+    <string name="later">稍后</string>
+    <string name="update_downloading">已开始下载，可在通知栏查看进度</string>
+    <string name="update_check_failed">检查更新失败</string>
+    <string name="network_unavailable">网络不可用</string>
+    <string name="grant_install_permission">请允许本应用安装应用以完成更新</string>
+    <string name="install_permission_denied">未授予安装权限。请为「大脚输入法」开启“安装未知应用”，然后重新点击下载更新。</string>
+    <string name="open_settings">去设置</string>
+    <string name="about_app">关于大脚输入法</string>
+    <string name="update_source_url">更新源地址（高级）</string>
+    <string name="update_source_url_default">默认（Gitee 镜像）</string>
+    <string name="update_source_url_saved">更新源已保存</string>
+    <string name="update_source_url_placeholder">留空使用内置默认地址</string>
 </resources>

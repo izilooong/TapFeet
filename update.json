@@ -1,7 +1,7 @@
 {
   "versionCode": 102,
   "versionName": "V1.0.2-06",
-  "downloadUrl": "https://github.com/izilooong/TapFeet/releases/download/V1.0.2/tapfeet-ime-release.apk",
+  "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.2-06/tapfeet.ime-v1.0.2-06.apk",
   "releaseNotes": "Bug fixes and Q25 physical-keyboard improvements.",
   "minVersionCode": 0,
   "publishDate": "2026-07-28"

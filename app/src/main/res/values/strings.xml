@@ -364,4 +364,24 @@
     <string name="alt_lock_enabled">Alt locked</string>
     <string name="alt_lock_disabled">Alt unlocked</string>
     <string name="show_candidate_fly_animation">Candidate selection animation</string>
+    <string name="check_update">Check for Updates</string>
+    <string name="update_status_unknown">Tap to check for new versions</string>
+    <string name="update_status_checking">Checking for updates…</string>
+    <string name="update_status_uptodate">Up to date (%1$s)</string>
+    <string name="update_status_available">New version available: %1$s (tap to download)</string>
+    <string name="update_found_title">Update Available</string>
+    <string name="update_found_message">A new version %1$s is available.\n\n%2$s</string>
+    <string name="download_update">Download Update</string>
+    <string name="later">Later</string>
+    <string name="update_downloading">Download started. Track progress in the notification bar.</string>
+    <string name="update_check_failed">Failed to check for updates</string>
+    <string name="network_unavailable">Network unavailable</string>
+    <string name="grant_install_permission">Please allow this app to install packages to update.</string>
+    <string name="install_permission_denied">Install permission not granted. Enable \"Install unknown apps\" for TapFeet, then tap Download Update again.</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="about_app">About TapFeet</string>
+    <string name="update_source_url">Update source URL (advanced)</string>
+    <string name="update_source_url_default">Default (Gitee mirror)</string>
+    <string name="update_source_url_saved">Update source saved</string>
+    <string name="update_source_url_placeholder">Leave empty for the built-in default</string>
 </resources>
