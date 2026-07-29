@@ -211,6 +211,27 @@ class InputView(
     private val parsedKeyCache = mutableMapOf<String, ParsedKey>()
     private var preciseShortcutsCache = mutableMapOf<Pair<Int, CandidateArrangementMode>, List<ShortcutRule>>()
     private var wideShortcutsCache = mutableMapOf<CandidateArrangementMode, List<ShortcutRule>>()
+    // All configured shortcut keys, parsed once and memoized. `isHardwareShortcutKey` runs on
+    // EVERY physical key down, and re-parsing 10 key strings (incl. 10 SharedPreferences reads)
+    // each time is pure waste. Invalidated together with the other caches below.
+    private var shortcutKeysCache: List<ParsedKey>? = null
+
+    /**
+     * Memoized list of every configured hardware shortcut key (candidates 1-5, symbol picker,
+     * paging, toggle-IME, picker). Used by [isHardwareShortcutKey], which runs on every physical
+     * key down — building this list once and reusing it avoids 10 SharedPreferences reads + 10
+     * cache lookups per keystroke. Invalidated on pref change via [onHardwareKeyChangeListener].
+     */
+    private fun shortcutParsedKeys(): List<ParsedKey> {
+        shortcutKeysCache?.let { return it }
+        val hw = hardwareKeyboardPrefs
+        val keys = listOf(
+            hw.candidate1Key, hw.candidate2Key, hw.candidate3Key, hw.candidate4Key, hw.candidate5Key,
+            hw.symbolPickerKey, hw.pageNextKey, hw.pagePrevKey, hw.toggleImeKey, hw.pickerKey,
+        ).mapNotNull { parseKeyString(it.getValue()) }
+        shortcutKeysCache = keys
+        return keys
+    }
 
     private fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
@@ -234,6 +255,7 @@ class InputView(
         parsedKeyCache.clear()
         preciseShortcutsCache.clear()
         wideShortcutsCache.clear()
+        shortcutKeysCache = null
     }
 
     private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
@@ -626,17 +648,7 @@ class InputView(
      * compares key syms, so it is safe to call from the key-down dispatch path.
      */
     fun isHardwareShortcutKey(event: KeyEvent): Boolean {
-        val hw = hardwareKeyboardPrefs
-        return matchesParsedKey(event, parseKeyString(hw.candidate1Key.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.candidate2Key.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.candidate3Key.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.candidate4Key.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.candidate5Key.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.symbolPickerKey.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.pageNextKey.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.pagePrevKey.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.toggleImeKey.getValue())) ||
-            matchesParsedKey(event, parseKeyString(hw.pickerKey.getValue()))
+        return shortcutParsedKeys().any { matchesParsedKey(event, it) }
     }
 
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
@@ -762,13 +774,15 @@ class InputView(
      * key fall through to normal processing.
      */
     fun handleDeleteClearsPrediction(event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) return false
-        if (event.keyCode != KeyEvent.KEYCODE_DEL) return false
-        if (event.repeatCount != 0) return false
-        // Only intercept when there's no preedit (prediction mode) but candidates are visible.
-        if (!preeditEmptyState.isEmpty) return false
-        if (!kawaiiBar.isCandidateUiShowing()) return false
-        if (horizontalCandidate.visibleCandidateCount() <= 0) return false
+        if (!shouldClearPredictionOnDelete(
+                keyAction = event.action,
+                keyCode = event.keyCode,
+                repeatCount = event.repeatCount,
+                isPreeditEmpty = preeditEmptyState.isEmpty,
+                isCandidateUiShowing = kawaiiBar.isCandidateUiShowing(),
+                candidateCount = horizontalCandidate.visibleCandidateCount(),
+            )
+        ) return false
         // Clear prediction candidates by resetting fcitx's input panel. This dismisses the
         // candidate list without committing anything; the editor's text is untouched.
         fcitx.launchOnReady { it.reset() }
@@ -788,4 +802,36 @@ class InputView(
         super.onDetachedFromWindow()
     }
 
+}
+
+/**
+ * Pure decision for [InputView.handleDeleteClearsPrediction]: should a Delete/Backspace press
+ * clear the prediction candidates (instead of deleting the character before the cursor in the
+ * editor)? The two-step behavior lets the user dismiss an unwanted prediction without losing
+ * typed text.
+ *
+ * Extracted as a framework-free top-level function so the boundary can be covered by a plain JVM
+ * unit test ([org.fcitx.fcitx5.android.DeleteClearsPredictionTest]) without constructing the
+ * (heavy) Android View.
+ *
+ * @param keyAction [android.view.KeyEvent.getAction]
+ * @param keyCode [android.view.KeyEvent.getKeyCode]
+ * @param repeatCount [android.view.KeyEvent.getRepeatCount]
+ */
+internal fun shouldClearPredictionOnDelete(
+    keyAction: Int,
+    keyCode: Int,
+    repeatCount: Int,
+    isPreeditEmpty: Boolean,
+    isCandidateUiShowing: Boolean,
+    candidateCount: Int,
+): Boolean {
+    if (keyAction != KeyEvent.ACTION_DOWN) return false
+    if (keyCode != KeyEvent.KEYCODE_DEL) return false
+    if (repeatCount != 0) return false
+    // Only intercept when there's no preedit (prediction mode) but candidates are visible.
+    if (!isPreeditEmpty) return false
+    if (!isCandidateUiShowing) return false
+    if (candidateCount <= 0) return false
+    return true
 }
