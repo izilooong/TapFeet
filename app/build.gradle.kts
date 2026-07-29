@@ -40,26 +40,33 @@ android {
         resValues = true
     }
 
-     // 1. 读取 gradle.properties 中的签名属性
-    val keystoreProperties = Properties()
-    val keystorePropertiesFile = rootProject.file("gradle.properties")
-    if (keystorePropertiesFile.exists()) {
-        keystoreProperties.load(keystorePropertiesFile.inputStream())
+     // 签名配置从 local.properties 读取（该文件已被 .gitignore 忽略，不会进入版本库），
+    // 避免密钥密码泄露到 git 历史。CI / 未配置 keystore 的环境不会创建 release signingConfig，
+    // 此时不应执行 assembleRelease（缺少签名配置会失败，属预期行为）；发布签名仅应在具备
+    // keystore 的本地环境或带 secrets 的 release 流水线中进行。
+    val keystoreProps = Properties()
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use {
+        keystoreProps.load(it)
     }
+    val hasReleaseKeystore = keystoreProps.getProperty("RELEASE_STORE_FILE") != null
 
-    // 2. 配置签名
-    signingConfigs {
-        create("release") {
-            storeFile = file(keystoreProperties.getProperty("RELEASE_STORE_FILE"))
-            storePassword = keystoreProperties.getProperty("RELEASE_STORE_PASSWORD")
-            keyAlias = keystoreProperties.getProperty("RELEASE_KEY_ALIAS")
-            keyPassword = keystoreProperties.getProperty("RELEASE_KEY_PASSWORD")
+    if (hasReleaseKeystore) {
+        // 2. 配置签名
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("RELEASE_STORE_FILE")!!)
+                storePassword = keystoreProps.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = keystoreProps.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = keystoreProps.getProperty("RELEASE_KEY_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             resValue("mipmap", "app_icon", "@mipmap/ic_launcher")
             resValue("mipmap", "app_icon_round", "@mipmap/ic_launcher_round")
             resValue("string", "app_name", "@string/app_name_release")
