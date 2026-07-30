@@ -1,8 +1,8 @@
 {
-  "versionCode": 102,
-  "versionName": "V1.0.2-06",
-  "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.2-06/tapfeet.ime-v1.0.2-06.apk",
-  "releaseNotes": "Bug fixes and Q25 physical-keyboard improvements.",
+  "versionCode": 103,
+  "versionName": "V1.0.3-01",
+  "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.3-01/tapfeet.ime-v1.0.3-01.apk",
+  "releaseNotes": "兼容 fcitx5-android 插件.\n 新增在线升级功能.",
   "minVersionCode": 0,
-  "publishDate": "2026-07-28"
+  "publishDate": "2026-07-30"
 }

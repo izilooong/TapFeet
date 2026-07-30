@@ -23,8 +23,9 @@
     <queries tools:node="removeAll" />
 
     <queries>
+        <!-- Upstream plugin contract action, so upstream-built plugins are discoverable -->
         <intent>
-            <action android:name="${applicationId}.plugin.MANIFEST" />
+            <action android:name="org.fcitx.fcitx5.android.plugin.MANIFEST" />
         </intent>
         <intent>
             <action android:name="android.view.InputMethod" />

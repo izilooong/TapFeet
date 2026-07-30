@@ -11,7 +11,6 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.Message
 import android.os.Messenger
-import org.fcitx.fcitx5.android.BuildConfig
 import org.fcitx.fcitx5.android.core.data.DataManager
 import org.fcitx.fcitx5.android.core.data.PluginDescriptor
 import org.fcitx.fcitx5.android.utils.appContext
@@ -19,7 +18,9 @@ import timber.log.Timber
 
 object FcitxPluginServices {
 
-    const val PLUGIN_SERVICE_ACTION = "${BuildConfig.APPLICATION_ID}.plugin.SERVICE"
+    // Service action follows our own applicationId (see PluginDescriptor.serviceAppId),
+    // matching in-tree hasService plugins (e.g. clipboard-filter) whose `mainApplicationId` is tapfeet.ime.
+    const val PLUGIN_SERVICE_ACTION = "${PluginDescriptor.serviceAppId}.plugin.SERVICE"
 
     class PluginServiceConnection(
         private val pluginId: String,

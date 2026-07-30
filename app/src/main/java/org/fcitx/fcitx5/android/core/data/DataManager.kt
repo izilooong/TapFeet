@@ -34,7 +34,9 @@ object DataManager {
         val failed: Map<String, PluginLoadFailed>
     )
 
-    const val PLUGIN_INTENT = "${BuildConfig.APPLICATION_ID}.plugin.MANIFEST"
+    // Discovery intent is pinned to the upstream plugin contract (see PluginDescriptor.contractAppId),
+    // not our own applicationId, so upstream-built plugins can be discovered and loaded.
+    const val PLUGIN_INTENT = "${PluginDescriptor.contractAppId}.plugin.MANIFEST"
 
     private val lock = ReentrantLock()
 
