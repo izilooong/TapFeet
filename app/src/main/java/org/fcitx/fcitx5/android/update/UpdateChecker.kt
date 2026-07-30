@@ -10,14 +10,17 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import org.fcitx.fcitx5.android.BuildConfig
 import org.fcitx.fcitx5.android.utils.Const
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Fetches the latest [UpdateInfo] over HTTPS and decides whether an update is available
- * for the currently installed build (compared by [BuildConfig.VERSION_CODE]).
+ * Fetches the latest [UpdateInfo] over HTTPS and decides whether an update is available.
+ * The "currently installed" version must be passed in by the caller as [currentVersionCode],
+ * read at runtime from [android.content.pm.PackageManager] — NOT [android.os.BuildConfig.VERSION_CODE],
+ * which is a compile-time constant that stays stale after an in-app update until the process
+ * is restarted (the running settings process keeps reporting the OLD version, so an update would
+ * look perpetually available).
  */
 object UpdateChecker {
 
@@ -74,9 +77,9 @@ object UpdateChecker {
         Result.failure(lastError ?: IOException("All update sources failed"))
     }
 
-    fun isUpdateAvailable(info: UpdateInfo): Boolean =
-        info.versionCode > BuildConfig.VERSION_CODE
+    fun isUpdateAvailable(info: UpdateInfo, currentVersionCode: Long): Boolean =
+        info.versionCode > currentVersionCode
 
-    fun isForceUpdate(info: UpdateInfo): Boolean =
-        info.minVersionCode > BuildConfig.VERSION_CODE
+    fun isForceUpdate(info: UpdateInfo, currentVersionCode: Long): Boolean =
+        info.minVersionCode > currentVersionCode
 }

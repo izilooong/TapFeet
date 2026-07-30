@@ -44,6 +44,24 @@ class MainFragment : PaddingPreferenceFragment() {
     // cleared once the install is (re)triggered or the user denies it.
     private var awaitingInstallPermission = false
 
+    // Runtime version of the *actually installed* APK. BuildConfig.VERSION_CODE / VERSION_NAME are
+    // compile-time constants that stay stale until the process restarts — after an in-app update
+    // the running settings process can still report the OLD version, making an update look
+    // permanently available. PackageManager always reflects the package truly on disk.
+    @Suppress("DEPRECATION")
+    private val currentVersionCode: Long
+        get() = runCatching {
+            val ctx = requireContext()
+            val pi = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pi.longVersionCode else pi.versionCode.toLong()
+        }.getOrDefault(BuildConfig.VERSION_CODE.toLong())
+
+    private val currentVersionName: String
+        get() = runCatching {
+            val ctx = requireContext()
+            ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName.orEmpty()
+        }.getOrDefault(BuildConfig.VERSION_NAME)
+
     override fun onStart() {
         super.onStart()
         // Show any cached result immediately, then refresh in the background (throttled).
@@ -189,11 +207,15 @@ class MainFragment : PaddingPreferenceFragment() {
 
     private fun refreshSummaryFromCache(pref: Preference) {
         val prefs = AppPrefs.getInstance().internal
+        val cachedCode = prefs.cachedUpdateVersionCode.getValue().toLongOrNull() ?: 0
         pref.summary = when {
-            prefs.cachedUpdateAvailable.getValue() ->
+            // Only show "available" if the cached newer version is actually newer than what's
+            // installed on disk. After an in-app update the running process may still hold the old
+            // version, but PackageManager (currentVersionCode) reflects the real installed build.
+            prefs.cachedUpdateAvailable.getValue() && cachedCode > currentVersionCode ->
                 getString(R.string.update_status_available, prefs.cachedUpdateVersionName.getValue())
             prefs.lastUpdateCheckTime.getValue() != "0" ->
-                getString(R.string.update_status_uptodate, BuildConfig.VERSION_NAME)
+                getString(R.string.update_status_uptodate, currentVersionName)
             else -> getString(R.string.update_status_unknown)
         }
     }
@@ -215,20 +237,21 @@ class MainFragment : PaddingPreferenceFragment() {
             result.onSuccess { info ->
                 val prefs = AppPrefs.getInstance().internal
                 prefs.lastUpdateCheckTime.setValue(System.currentTimeMillis().toString())
-                if (UpdateChecker.isUpdateAvailable(info)) {
+                if (UpdateChecker.isUpdateAvailable(info, currentVersionCode)) {
                     prefs.cachedUpdateAvailable.setValue(true)
                     prefs.cachedUpdateVersionName.setValue(info.versionName)
+                    prefs.cachedUpdateVersionCode.setValue(info.versionCode.toString())
                     prefs.cachedUpdateDownloadUrl.setValue(info.downloadUrl)
                     prefs.cachedUpdateReleaseNotes.setValue(info.releaseNotes)
                     pref.summary = getString(R.string.update_status_available, info.versionName)
                     if (manual) showUpdateDialog(info)
                 } else {
                     prefs.cachedUpdateAvailable.setValue(false)
-                    pref.summary = getString(R.string.update_status_uptodate, BuildConfig.VERSION_NAME)
+                    pref.summary = getString(R.string.update_status_uptodate, currentVersionName)
                     if (manual) {
                         Toast.makeText(
                             requireContext(),
-                            getString(R.string.update_status_uptodate, BuildConfig.VERSION_NAME),
+                            getString(R.string.update_status_uptodate, currentVersionName),
                             Toast.LENGTH_SHORT
                         ).show()
                     }

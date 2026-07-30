@@ -40,6 +40,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // (No `long` delegate exists in ManagedPreferenceInternal, so timestamps are stored as strings.)
         val cachedUpdateAvailable = bool("cached_update_available", false)
         val cachedUpdateVersionName = string("cached_update_version_name", "")
+        val cachedUpdateVersionCode = string("cached_update_version_code", "0")
         val cachedUpdateDownloadUrl = string("cached_update_download_url", "")
         val cachedUpdateReleaseNotes = string("cached_update_release_notes", "")
         val lastUpdateCheckTime = string("last_update_check_time", "0")
