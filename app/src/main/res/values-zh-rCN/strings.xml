@@ -308,6 +308,8 @@
     <string name="show_candidates_window">显示候选窗口</string>
     <string name="candidates_window_radius">候选窗口圆角半径</string>
     <string name="candidates_window_shadow">候选窗口阴影</string>
+    <string name="candidates_show_preedit">在候选框显示拼音</string>
+    <string name="candidates_show_preedit_summary">在候选框显示输入中的字母。关闭时字母直接显示在目标输入框中。</string>
     <string name="follow_input_device">根据输入设备而定</string>
     <string name="candidates_orientation">候选词列表方向</string>
     <string name="automatic">自动</string>

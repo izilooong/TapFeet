@@ -311,6 +311,8 @@
     <string name="show_candidates_window">Show candidates window</string>
     <string name="candidates_window_radius">Candidates window radius</string>
     <string name="candidates_window_shadow">Candidate window shadow</string>
+    <string name="candidates_show_preedit">Show preedit in candidate window</string>
+    <string name="candidates_show_preedit_summary">Display the composing letters here. When off, they appear directly in the target text box.</string>
     <string name="follow_input_device">Depends on input device</string>
     <string name="candidates_orientation">Candidates list orientation</string>
     <string name="automatic">Automatic</string>

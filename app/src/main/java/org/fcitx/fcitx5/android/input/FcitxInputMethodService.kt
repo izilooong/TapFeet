@@ -349,6 +349,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             is FcitxEvent.CandidateListEvent -> {
                 lastCandidateListData = event.data
             }
+            is FcitxEvent.InputPanelEvent -> {
+                // When the floating candidate window isn't rendering the composing letters
+                // (showPreedit == false, the default), push the preedit to the target text box so
+                // the letters (e.g. pinyin) appear inline at the cursor instead of only inside our
+                // own window. We reuse the same composing-text state machine as the (unused)
+                // ClientPreeditEvent path, so commit/clear stays consistent.
+                if (!prefs.candidates.showPreedit.getValue()) {
+                    updateComposingText(event.data.preedit)
+                }
+            }
             else -> {}
         }
     }

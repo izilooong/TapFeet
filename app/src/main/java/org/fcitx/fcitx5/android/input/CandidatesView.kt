@@ -53,6 +53,7 @@ class CandidatesView(
     private val windowPadding by candidatesPrefs.windowPadding
     private val windowRadius by candidatesPrefs.windowRadius
     private val windowShadow by candidatesPrefs.windowShadow
+    private val showPreedit by candidatesPrefs.showPreedit
     private val fontSize by candidatesPrefs.fontSize
     private val itemPaddingVertical by candidatesPrefs.itemPaddingVertical
     private val itemPaddingHorizontal by candidatesPrefs.itemPaddingHorizontal
@@ -127,7 +128,11 @@ class CandidatesView(
     }
 
     private fun evaluateVisibility(): Boolean {
-        return inputPanel.preedit.isNotEmpty() ||
+        // When the preedit is not drawn in this window (showPreedit == false), it must not keep
+        // the floating window alive on its own — the composing letters are shown in the target
+        // text box instead. Only the candidate list / auxiliary text justify showing the window.
+        val preeditVisible = showPreedit && inputPanel.preedit.isNotEmpty()
+        return preeditVisible ||
                 paged.candidates.isNotEmpty() ||
                 inputPanel.auxUp.isNotEmpty() ||
                 inputPanel.auxDown.isNotEmpty()
@@ -135,7 +140,7 @@ class CandidatesView(
 
     private fun updateUi() {
         preeditUi.update(inputPanel)
-        preeditUi.root.visibility = if (preeditUi.visible) VISIBLE else GONE
+        preeditUi.root.visibility = if (showPreedit && preeditUi.visible) VISIBLE else GONE
         candidatesUi.update(paged, orientation)
         if (evaluateVisibility()) {
             visibility = VISIBLE

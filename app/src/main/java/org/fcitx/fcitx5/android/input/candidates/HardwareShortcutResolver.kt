@@ -107,7 +107,15 @@ object HardwareShortcutResolver {
         // raw states (no stripping). A plain key (no modifier) keeps [KeyStates.fromKeyEvent]'s
         // tolerant stripping, so an Alt-latched press of a number/symbol key still selects the
         // candidate (the original fcitx5-android behaviour).
-        val states = if (key.states != 0) rawModifierStates(event) else KeyStates.fromKeyEvent(event)
+        // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so
+        // use raw states (no stripping). A plain key (no modifier) must ignore the system's residual
+        // modifier state — notably Alt sticky/locked left by some ROMs after an Alt tap — so the
+        // shortcut still works in editors where that happens. KeyStates.fromKeyEvent does this
+        // clearing for number/symbol keys but *skips* the space key (it special-cases unicode == ' '),
+        // which is exactly why the first-pick (Space) candidate shortcut failed in some editors while
+        // candidate keys 2-5 kept working. Use an empty state directly so any plain key, Space
+        // included, matches regardless of leftover Alt.
+        val states = if (key.states != 0) rawModifierStates(event) else KeyStates.Empty
         return states.toInt() == key.states
     }
 

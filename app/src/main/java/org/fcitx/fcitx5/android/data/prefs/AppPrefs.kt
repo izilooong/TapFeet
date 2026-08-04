@@ -313,6 +313,20 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val windowShadow =
             int(R.string.candidates_window_shadow, "candidates_window_shadow", 16, 0, 48, "dp")
 
+        /**
+         * Show the composing letters (preedit, e.g. pinyin) inside the floating candidate window.
+         * When OFF (default) the preedit is *not* rendered here; instead
+         * [org.fcitx.fcitx5.android.input.FcitxInputMethodService] pushes it to the target text box
+         * as composing text on every [org.fcitx.fcitx5.android.core.FcitxEvent.InputPanelEvent],
+         * so the letters appear directly in the app's EditText at the cursor.
+         */
+        val showPreedit = switch(
+            R.string.candidates_show_preedit,
+            "candidates_show_preedit",
+            false,
+            R.string.candidates_show_preedit_summary
+        )
+
         val itemPaddingVertical: ManagedPreference.PInt
         val itemPaddingHorizontal: ManagedPreference.PInt
 
