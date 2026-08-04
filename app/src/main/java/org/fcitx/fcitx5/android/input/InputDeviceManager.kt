@@ -46,6 +46,9 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
             }
             field = value
             setupViewEvents(value)
+            // keep InputView aware of the current mode so it can reveal/hide the keyboard window
+            // base when toggling the symbol window in physical-keyboard mode
+            inputView?.onKeyboardModeChanged(value)
             // fire change AFTER updating InputView(s),
             // make the view(s) ready for incoming events during `onChange`
             onChange(value)
@@ -54,6 +57,8 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
     fun setInputView(inputView: InputView) {
         this.inputView = inputView
         setupInputViewEvents(this.isVirtualKeyboard)
+        // sync the initial mode so the symbol-window toggle knows whether to reveal InputView
+        inputView.onKeyboardModeChanged(this.isVirtualKeyboard)
     }
 
     fun setCandidatesView(candidatesView: CandidatesView) {

@@ -302,13 +302,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         )
 
         val windowPadding =
-            int(R.string.candidates_window_padding, "candidates_window_padding", 4, 0, 32, "dp")
+            int(R.string.candidates_window_padding, "candidates_window_padding", 12, 0, 32, "dp")
 
         val fontSize =
             int(R.string.candidates_font_size, "candidates_window_font_size", 20, 4, 64, "sp")
 
         val windowRadius =
-            int(R.string.candidates_window_radius, "candidates_window_radius", 0, 0, 48, "dp")
+            int(R.string.candidates_window_radius, "candidates_window_radius", 10, 0, 48, "dp")
+
+        val windowShadow =
+            int(R.string.candidates_window_shadow, "candidates_window_shadow", 16, 0, 48, "dp")
 
         val itemPaddingVertical: ManagedPreference.PInt
         val itemPaddingHorizontal: ManagedPreference.PInt
@@ -318,10 +321,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
                 R.string.candidates_padding,
                 R.string.vertical,
                 "candidates_item_padding_vertical",
-                2,
+                4,
                 R.string.horizontal,
                 "candidates_item_padding_horizontal",
-                4,
+                8,
                 0,
                 64,
                 "dp"

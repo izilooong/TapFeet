@@ -6,14 +6,15 @@
 package org.fcitx.fcitx5.android.input
 
 import android.annotation.SuppressLint
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
-import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver.OnGlobalLayoutListener
 import android.view.ViewTreeObserver.OnPreDrawListener
 import android.view.WindowInsets
 import android.widget.TextView
+import org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver
 import androidx.annotation.Size
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
@@ -51,6 +52,7 @@ class CandidatesView(
     private val windowMinWidth by candidatesPrefs.windowMinWidth
     private val windowPadding by candidatesPrefs.windowPadding
     private val windowRadius by candidatesPrefs.windowRadius
+    private val windowShadow by candidatesPrefs.windowShadow
     private val fontSize by candidatesPrefs.fontSize
     private val itemPaddingVertical by candidatesPrefs.itemPaddingVertical
     private val itemPaddingHorizontal by candidatesPrefs.itemPaddingHorizontal
@@ -208,19 +210,85 @@ class CandidatesView(
         updatePosition()
     }
 
+    /**
+     * Handle a physical-keyboard candidate shortcut while this floating window is the active
+     * candidate surface (physical-keyboard mode). Selection is resolved **strictly by sequence
+     * number** ([HardwareShortcutResolver.resolveShortcutPositionBySequence]) because the floating
+     * window renders candidates in plain index order (candidate1 → 0, candidate2 → 1, …), unlike
+     * the horizontal bar which uses arrangement-aware first-pick / BlackBerry slots. The final pick
+     * is committed via [org.fcitx.fcitx5.android.core.FcitxAPI.select] — exactly what a touch tap does.
+     *
+     * Global actions (toggle IME / input-method picker) and the symbol-picker toggle are still
+     * handled by [org.fcitx.fcitx5.android.input.InputView] (they are view-independent); this
+     * method only deals with candidate selection and paging.
+     */
+    fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        if (!isShowingCandidates()) return false
+
+        // Paging: previous / next candidate page (layout-independent).
+        val paging = HardwareShortcutResolver.resolvePaging(event)
+        if (paging != null) {
+            pageCandidates(paging)
+            return true
+        }
+
+        val count = visibleCandidateCount()
+        if (count <= 0) return false
+
+        // Selection is purely by sequence number: candidate N → visible position N-1.
+        val position = HardwareShortcutResolver.resolveShortcutPositionBySequence(event, count)
+            ?: return false
+        return selectAtVisiblePosition(position)
+    }
+
+    internal fun isShowingCandidates(): Boolean =
+        visibility == VISIBLE && paged.candidates.isNotEmpty()
+
+    private fun visibleCandidateCount(): Int = paged.candidates.size
+
+    private fun selectAtVisiblePosition(position: Int): Boolean {
+        if (position !in 0 until paged.candidates.size) return false
+        fcitx.launchOnReady { it.select(position) }
+        return true
+    }
+
+    private fun pageCandidates(direction: Int) {
+        fcitx.launchOnReady { it.offsetCandidatePage(direction) }
+    }
+
     init {
         // invisible by default
         visibility = INVISIBLE
 
-        minWidth = dp(windowMinWidth)
-        padding = dp(windowPadding)
-        background = GradientDrawable().apply {
-            setColor(theme.backgroundColor)
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(windowRadius).toFloat()
-        }
-        clipToOutline = true
-        outlineProvider = ViewOutlineProvider.BACKGROUND
+        val shadowPx = dp(windowShadow).toFloat()
+        val shadowDyPx = shadowPx * 0.6f
+        // The self-painted shadow insets the fill asymmetrically: the fill is pushed in by
+        // shadowPx on the top/left/right and by shadowPx + shadowDy on the bottom (the drop
+        // shadow falls downward). Grow the padding by exactly those insets PLUS the normal
+        // windowPadding, so children keep a uniform windowPadding of breathing room *inside*
+        // the painted fill* on every side — otherwise the bottom row would hug the fill edge.
+        val sideDp = windowPadding + windowShadow
+        val bottomDp = windowPadding + windowShadow + (windowShadow * 0.6f).toInt()
+        setPadding(dp(sideDp), dp(sideDp), dp(sideDp), dp(bottomDp))
+        minWidth = dp(windowMinWidth) + (shadowPx * 2).toInt()
+        // Self-contained drop shadow: painted by CandidateWindowShadowDrawable so it shows on
+        // every API level and theme (elevation shadows are unreliable inside an IME window and
+        // tinted outline colours are only honoured on API 28+). Size stays user-configurable via
+        // candidates.windowShadow.
+        background = CandidateWindowShadowDrawable(
+            fillColor = theme.backgroundColor,
+            radius = dp(windowRadius).toFloat(),
+            shadowColor = 0x40000000,
+            shadowRadius = shadowPx,
+            shadowDy = shadowPx * 0.6f
+        )
+        // Keep the content from bleeding past the rounded fill; the drawable already insets the
+        // fill by the shadow amount, so children never overflow the corners.
+        clipToOutline = false
+        // Force a software layer so setShadowLayer() renders on all Android versions (pre-28
+        // ignores it under hardware acceleration). Cost is negligible for a small floating window.
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         add(preeditUi.root, lParams(wrapContent, wrapContent) {
             topOfParent()
             startOfParent()

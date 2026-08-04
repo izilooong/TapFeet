@@ -1056,9 +1056,38 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             forceShowSelf()
         }
-        if (event.repeatCount == 0 && inputView?.handleHardwareCandidateShortcut(effectiveEvent) == true) {
-            consumedHardwareCandidateShortcutKeys.add(keyCode)
-            return true
+        if (event.repeatCount == 0) {
+            // Candidate-selection dispatch. The two surfaces handle different key sets:
+            //  - Virtual keyboard mode: the horizontal candidate bar (InputView) is the surface.
+            //  - Physical keyboard mode: the floating CandidatesView is the surface.
+            // In PHYSICAL mode we probe CandidatesView FIRST, then fall back to InputView. This
+            // matters because a candidate key can also be bound to the symbol picker (the
+            // blackberry profile binds Alt_R to BOTH candidate3 and symbolPicker). InputView's
+            // symbol toggle would otherwise swallow the key before the floating window ever sees
+            // it — leaving the 3rd candidate unselectable — because in physical mode InputView no
+            // longer receives candidate events, so its "no active input" guard is permanently
+            // true and the toggle always fires. Probing CandidatesView first lets the candidate
+            // win when candidates are showing, and the symbol picker still reaches InputView when
+            // they are not. Global actions keep falling through to InputView as before.
+            // In VIRTUAL mode only InputView is consulted (CandidatesView isn't the surface).
+            val handled = if (!inputDeviceMgr.isVirtualKeyboard) {
+                // Floating CandidatesView is the primary surface in physical mode.
+                candidatesView?.handleHardwareCandidateShortcut(effectiveEvent) == true ||
+                    // When the floating window isn't showing candidates, the symbol key (Alt_R on
+                    // BlackBerry, where SYM reports as KEYCODE_ALT_RIGHT) opens the symbol window
+                    // directly. InputView's own noActiveInput guard is frozen in physical mode, so
+                    // we gate on the live floating-window state and toggle via the unguarded path.
+                    (candidatesView?.isShowingCandidates() != true &&
+                        inputView?.handleHardwareSymKey(effectiveEvent) == true) ||
+                    // Fall through to InputView for global actions and everything else.
+                    inputView?.handleHardwareCandidateShortcut(effectiveEvent) == true
+            } else {
+                inputView?.handleHardwareCandidateShortcut(effectiveEvent) == true
+            }
+            if (handled) {
+                consumedHardwareCandidateShortcutKeys.add(keyCode)
+                return true
+            }
         }
         // Prediction-candidate dismiss: when 联想 candidates are showing (no preedit), the first
         // Delete press clears them instead of deleting editor text. See InputView for full logic.

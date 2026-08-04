@@ -730,12 +730,66 @@ class InputView(
                 (!kawaiiBar.isCandidateUiShowing() || horizontalCandidate.visibleCandidateCount() <= 0)
         if (!noActiveInput) return false
 
+        toggleSymbolWindow()
+        return true
+    }
+
+    /**
+     * Toggle the symbol picker window. Triggered by the configurable symbol key
+     * ([AppPrefs.HardwareKeyboard.symbolPickerKey], e.g. Alt_R on BlackBerry-style keyboards where
+     * the SYM key reports as [KeyEvent.KEYCODE_ALT_RIGHT]).
+     */
+    private fun toggleSymbolWindow() {
         if (windowManager.isKeyboardWindowVisible() && windowManager.isAttached(symbolPicker)) {
             windowManager.setKeyboardWindowVisible(false)
             windowManager.attachWindow(KeyboardWindow)
         } else {
             windowManager.setKeyboardWindowVisible(true)
             windowManager.attachWindow(PickerWindow.Key.Symbol)
+        }
+    }
+
+    /**
+     * Whether the IME is currently in PHYSICAL keyboard mode, synced from
+     * [org.fcitx.fcitx5.android.input.InputDeviceManager.isVirtualKeyboard]. In physical mode this
+     * [InputView] is held GONE (the virtual keyboard is hidden), so the symbol window — which
+     * attaches onto the keyboard window — has no visible base unless we reveal it first.
+     */
+    internal var physicalKeyboardMode = false
+        private set
+
+    internal fun onKeyboardModeChanged(isVirtualKeyboard: Boolean) {
+        physicalKeyboardMode = !isVirtualKeyboard
+    }
+
+    /**
+     * Physical-keyboard symbol-key toggle used in PHYSICAL mode, where InputView no longer
+     * receives live candidate/preedit events and its [handleHardwareSymToggle] "no active input"
+     * guard is frozen (stale). This matches the configured symbol key
+     * ([AppPrefs.HardwareKeyboard.symbolPickerKey], Alt_R on BlackBerry where SYM reports as
+     * [KeyEvent.KEYCODE_ALT_RIGHT]) and toggles the window regardless of composition state. The
+     * "no candidate shown" precondition is enforced by the caller
+     * ([org.fcitx.fcitx5.android.input.FcitxInputMethodService]) against the live floating
+     * CandidatesView state, not against InputView's frozen state.
+     *
+     * Because the symbol window attaches onto the (hidden) keyboard window in physical mode, we
+     * reveal this [InputView] before opening it and hide it again after closing — i.e. show the
+     * virtual keyboard first, then the symbol window on top of it.
+     */
+    fun handleHardwareSymKey(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        val symKey = hardwareKeyboardPrefs.symbolPickerKey.getValue()
+        if (!matchesParsedKey(event, parseKeyString(symKey))) return false
+
+        if (windowManager.isAttached(symbolPicker)) {
+            // Symbol window is currently open → close it.
+            toggleSymbolWindow()
+            if (physicalKeyboardMode) visibility = View.GONE
+        } else {
+            // Open the symbol window: in physical mode the keyboard window (its base) is hidden,
+            // so reveal this InputView first.
+            if (physicalKeyboardMode) visibility = View.VISIBLE
+            toggleSymbolWindow()
         }
         return true
     }
