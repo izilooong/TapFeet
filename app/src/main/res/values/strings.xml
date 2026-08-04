@@ -34,6 +34,8 @@
     <string name="hw_alt_latch">Alt lock</string>
     <string name="hw_alt_latch_summary">Double-tap the latch key to latch (lock) Alt.</string>
     <string name="hw_alt_latch_key">Alt lock key (double-tap)</string>
+    <string name="hw_alt_delete_line">Alt + Del deletes line</string>
+    <string name="hw_alt_delete_line_summary">When on, Alt+Delete / Alt+Backspace deletes the whole line (terminal kill-line). When off, they delete a single character.</string>
     <string name="hw_toggle_ime">Toggle IME</string>
     <string name="hw_show_picker">Show input method picker</string>
     <string name="hw_key_profile">Key layout preset</string>

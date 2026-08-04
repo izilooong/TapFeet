@@ -742,6 +742,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private fun altLatchEnabled(): Boolean =
         AppPrefs.getInstance().hardwareKeyboard.altLatchEnabled.getValue()
 
+    /**
+     * Whether Alt+Delete / Alt+Backspace deletes the whole line (setting:
+     * hardwareKeyboard.altDeleteLineEnabled). When ON, edit keys keep their Alt meta so fcitx5
+     * performs the kill-line; when OFF (default), the Alt meta is stripped and a single character
+     * is deleted.
+     */
+    private fun altDeleteLineEnabled(): Boolean =
+        AppPrefs.getInstance().hardwareKeyboard.altDeleteLineEnabled.getValue()
+
     fun toggleAltLatch() {
         setAltLatched(!altLatched)
     }
@@ -847,11 +856,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         var meta = event.metaState
         val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
                 event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
-        if (isEditKey) {
-            // Edit keys must never carry Alt meta, even if the OS attached it because physical
-            // Alt is held. Otherwise Alt+Backspace / Alt+Delete is forwarded to fcitx5 with
-            // Alt meta, and the fcitx5 side maps Alt+Delete to "delete whole line" (X11 kill-line),
-            // which is not what mobile IME users expect.
+        if (isEditKey && !altDeleteLineEnabled()) {
+            // By default, edit keys must never carry Alt meta, even if the OS attached it because
+            // physical Alt is held. Otherwise Alt+Backspace / Alt+Delete is forwarded to fcitx5
+            // with Alt meta, and the fcitx5 side maps Alt+Delete to "delete whole line" (X11
+            // kill-line), which is not what mobile IME users expect. When the setting is ON we
+            // intentionally keep Alt (the else-branch below re-injects it from our tracked
+            // physical/latched Alt state) so fcitx5 performs the kill-line instead.
             meta = meta and (KeyEvent.META_ALT_ON or
                     KeyEvent.META_ALT_LEFT_ON or
                     KeyEvent.META_ALT_RIGHT_ON).inv()
@@ -1028,7 +1039,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // META_ALT_ON even after withInjectedModifiers stripped it from the event we
         // forward. Without this, fcitx5 may still see Alt+Backspace and run a line-kill
         // shortcut on some ROMs.
-        if (isEditKey && systemAltSticky) {
+        if (isEditKey && systemAltSticky && !altDeleteLineEnabled()) {
             currentInputConnection?.clearMetaKeyStates(
                 KeyEvent.META_ALT_ON or
                         KeyEvent.META_ALT_LEFT_ON or
@@ -1121,7 +1132,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
                 event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
-        if (isEditKey && systemAltSticky) {
+        if (isEditKey && systemAltSticky && !altDeleteLineEnabled()) {
             currentInputConnection?.clearMetaKeyStates(
                 KeyEvent.META_ALT_ON or
                         KeyEvent.META_ALT_LEFT_ON or

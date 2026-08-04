@@ -104,6 +104,18 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         screen.addPreference(altLatchKeyPref)
         keyPrefs.add(altLatchKeyPref)
 
+        // Alt+Delete / Alt+Backspace deletes the whole line (terminal kill-line) instead of a
+        // single character. Default OFF preserves the classic mobile delete-one-char behaviour.
+        val altDeleteLineSwitch = SwitchPreference(context).apply {
+            key = hw.altDeleteLineEnabled.key
+            title = getString(R.string.hw_alt_delete_line)
+            summary = getString(R.string.hw_alt_delete_line_summary)
+            setDefaultValue(hw.altDeleteLineEnabled.getValue())
+            isChecked = hw.altDeleteLineEnabled.getValue()
+            isIconSpaceReserved = false
+        }
+        screen.addPreference(altDeleteLineSwitch)
+
         // Build the per-key preferences. candidate2-5 are remembered separately so the display-mode
         // handler can flip their visibility without disturbing candidate1 (first-pick, always shown).
         // Use key string (not `===` reference) to identify the four shortcut prefs — this avoids any

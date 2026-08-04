@@ -450,6 +450,11 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // "Alt_R" for tt2) is owned by [HardwareKeyProfiles] and written by [ensureInitialized].
         val altLatchKey = string("hw_alt_latch_key", "")
 
+        // Alt+Delete / Alt+Backspace (physical Alt held, or Alt latched) deletes the whole line
+        // via fcitx5's kill-line, instead of deleting a single character. Default OFF so the
+        // classic mobile behaviour is preserved; turn ON to re-enable the terminal-style kill-line.
+        val altDeleteLineEnabled = bool("hw_alt_delete_line_enabled", false)
+
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
         // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".
         //
