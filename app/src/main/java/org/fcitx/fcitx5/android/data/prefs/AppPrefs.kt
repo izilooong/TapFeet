@@ -311,7 +311,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             int(R.string.candidates_window_radius, "candidates_window_radius", 10, 0, 48, "dp")
 
         val windowShadow =
-            int(R.string.candidates_window_shadow, "candidates_window_shadow", 16, 0, 48, "dp")
+            int(R.string.candidates_window_shadow, "candidates_window_shadow", 16, 0, 16, "dp")
 
         /**
          * Show the composing letters (preedit, e.g. pinyin) inside the floating candidate window.
@@ -323,7 +323,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val showPreedit = switch(
             R.string.candidates_show_preedit,
             "candidates_show_preedit",
-            false,
+            true,
             R.string.candidates_show_preedit_summary
         )
 
@@ -335,7 +335,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
                 R.string.candidates_padding,
                 R.string.vertical,
                 "candidates_item_padding_vertical",
-                4,
+                2,
                 R.string.horizontal,
                 "candidates_item_padding_horizontal",
                 8,

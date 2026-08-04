@@ -50,21 +50,10 @@ class LabeledCandidateItemUi(
         val bg = if (active) theme.genericActiveBackgroundColor else Color.TRANSPARENT
         root.backgroundColor = bg
         if (active) {
+            // Active candidate is indicated by the background tint above; do NOT draw the extra
+            // bottom underline bar — it reads as an underline under the first candidate (首选字).
             root.setTypeface(Typeface.DEFAULT_BOLD)
-            val borderThickness = android.util.TypedValue.applyDimension(
-                android.util.TypedValue.COMPLEX_UNIT_DIP, 1f,
-                ctx.resources.displayMetrics
-            ).toInt()
-            val border = android.graphics.drawable.ColorDrawable(theme.genericActiveForegroundColor)
-            root.background = android.graphics.drawable.LayerDrawable(
-                arrayOf(
-                    android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT),
-                    border
-                )
-            ).apply {
-                setLayerGravity(1, android.view.Gravity.BOTTOM)
-                setLayerHeight(1, borderThickness)
-            }
+            root.background = null
         } else {
             root.setTypeface(Typeface.DEFAULT)
             root.background = null

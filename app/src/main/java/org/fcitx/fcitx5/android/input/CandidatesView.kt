@@ -98,7 +98,14 @@ class CandidatesView(
         setPadding(h, v, h, v)
     }
 
-    private val preeditUi = PreeditUi(ctx, theme, setupTextView)
+    // The preedit hint sits in the top-left corner of the floating window as a small, padding-free
+    // label — visually distinct from the candidate items (which use the normal font size + padding).
+    private val setupPreeditTextView: TextView.() -> Unit = {
+        textSize = 13f
+        setPadding(0, 0, 0, 0)
+    }
+
+    private val preeditUi = PreeditUi(ctx, theme, setupPreeditTextView)
 
     private val candidatesUi = PagedCandidatesUi(
         ctx, theme, setupTextView,
