@@ -316,11 +316,11 @@ class CandidatesView(
             startOfParent()
         })
         // Paging buttons: stacked vertically (prev on top, next on bottom), always pinned to the
-        // right side of the window. Total height = one default candidate row, each button gets
-        // half of it (enforced by layout weights inside PaginationUi).
+        // bottom-right corner of the window (the candidate list may wrap to several rows). Total
+        // height = one default candidate row, each button gets half of it (enforced by layout
+        // weights inside PaginationUi).
         val pagination = candidatesUi.paginationUi.root
         add(pagination, lParams(candidateRowHeightPx, candidateRowHeightPx) {
-            below(preeditUi.root)
             bottomOfParent()
             endOfParent()
         })
