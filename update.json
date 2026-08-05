@@ -1,8 +1,8 @@
 {
-  "versionCode": 112,
-  "versionName": "V1.0.3-01",
-  "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.3-01/tapfeet.ime-v1.0.3-01.apk",
-  "releaseNotes": "兼容 fcitx5-android 插件.\n新增在线升级功能.",
-  "minVersionCode": 0,
-  "publishDate": "2026-07-30"
+    "versionCode": 123,
+    "versionName": "V1.0.4-01",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.4-01/tapfeet.ime-v1.0.4-01.apk",
+    "releaseNotes": "兼容 fcitx5-android 插件.\n新增在线升级功能.",
+    "minVersionCode": 0,
+    "publishDate": "2026-07-30"
 }

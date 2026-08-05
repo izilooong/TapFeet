@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.kotlin.parcelize) apply false
+    // Registers the `generateUpdateJson` task for the online-update metadata (update.json)
+    id("org.fcitx.fcitx5.android.update-json")
 }
 
 tasks.register("clean", Delete::class) {
