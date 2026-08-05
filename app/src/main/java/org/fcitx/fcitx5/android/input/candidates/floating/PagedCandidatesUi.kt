@@ -40,7 +40,18 @@ class PagedCandidatesUi(
 
     sealed class UiHolder(open val ui: Ui) : RecyclerView.ViewHolder(ui.root) {
         class Candidate(override val ui: LabeledCandidateItemUi) : UiHolder(ui)
-        class Pagination(override val ui: PaginationUi) : UiHolder(ui)
+    }
+
+    // Pagination buttons live OUTSIDE the candidate list (the caller pins them to the right side
+    // of the floating window), not as a trailing flexbox item anymore.
+    val paginationUi = PaginationUi(ctx, theme).apply {
+        root.visibility = View.GONE
+        prevIcon.setOnClickListener {
+            onPrevPage.invoke()
+        }
+        nextIcon.setOnClickListener {
+            onNextPage.invoke()
+        }
     }
 
     private val candidatesAdapter = object : RecyclerView.Adapter<UiHolder>() {
@@ -52,22 +63,10 @@ class PagedCandidatesUi(
             data.candidates.getOrNull(position).hashCode().toLong()
 
         override fun getItemCount() =
-            data.candidates.size + (if (data.hasPrev || data.hasNext) 1 else 0)
-
-        override fun getItemViewType(position: Int) = if (position < data.candidates.size) 0 else 1
+            data.candidates.size
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): UiHolder {
-            return when (viewType) {
-                0 -> UiHolder.Candidate(LabeledCandidateItemUi(ctx, theme, setupTextView))
-                else -> UiHolder.Pagination(PaginationUi(ctx, theme)).apply {
-                    ui.prevIcon.setOnClickListener {
-                        onPrevPage.invoke()
-                    }
-                    ui.nextIcon.setOnClickListener {
-                        onNextPage.invoke()
-                    }
-                }
-            }.apply {
+            return UiHolder.Candidate(LabeledCandidateItemUi(ctx, theme, setupTextView)).apply {
                 // assign default LayoutParams, otherwise updateLayoutParams won't work
                 ui.root.layoutParams = FlexboxLayoutManager.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
             }
@@ -87,14 +86,6 @@ class PagedCandidatesUi(
                     }
                     holder.ui.root.updateLayoutParams<FlexboxLayoutManager.LayoutParams> {
                         width = if (isVertical) MATCH_PARENT else WRAP_CONTENT
-                    }
-                }
-                is UiHolder.Pagination -> {
-                    holder.ui.update(data)
-                    holder.ui.root.updateLayoutParams<FlexboxLayoutManager.LayoutParams> {
-                        flexGrow = 1f
-                        width = if (isVertical) MATCH_PARENT else WRAP_CONTENT
-                        alignSelf = if (isVertical) AlignItems.STRETCH else AlignItems.CENTER
                     }
                 }
             }
@@ -139,6 +130,8 @@ class PagedCandidatesUi(
                 alignItems = AlignItems.BASELINE
             }
         }
+        paginationUi.update(data)
+        paginationUi.root.visibility = if (data.hasPrev || data.hasNext) View.VISIBLE else View.GONE
         candidatesAdapter.notifyDataSetChanged()
     }
 }

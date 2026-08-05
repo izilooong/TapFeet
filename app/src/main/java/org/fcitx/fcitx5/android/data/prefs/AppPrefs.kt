@@ -311,7 +311,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             int(R.string.candidates_window_radius, "candidates_window_radius", 10, 0, 48, "dp")
 
         val windowShadow =
-            int(R.string.candidates_window_shadow, "candidates_window_shadow", 16, 0, 16, "dp")
+            int(R.string.candidates_window_shadow, "candidates_window_shadow", 6, 0, 16, "dp")
 
         /**
          * Show the composing letters (preedit, e.g. pinyin) inside the floating candidate window.

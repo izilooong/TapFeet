@@ -25,9 +25,10 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.candidates.floating.PagedCandidatesUi
 import org.fcitx.fcitx5.android.input.preedit.PreeditUi
 import splitties.dimensions.dp
+import splitties.views.dsl.constraintlayout.before
 import splitties.views.dsl.constraintlayout.below
 import splitties.views.dsl.constraintlayout.bottomOfParent
-import splitties.views.dsl.constraintlayout.centerHorizontally
+import splitties.views.dsl.constraintlayout.endOfParent
 import splitties.views.dsl.constraintlayout.lParams
 import splitties.views.dsl.constraintlayout.matchConstraints
 import splitties.views.dsl.constraintlayout.startOfParent
@@ -106,6 +107,15 @@ class CandidatesView(
     }
 
     private val preeditUi = PreeditUi(ctx, theme, setupPreeditTextView)
+
+    // Default candidate row height: one line of text at candidates.fontSize plus the vertical
+    // item padding. The paging-buttons column is sized to this height, so the two stacked buttons
+    // split a default row evenly (half a row each).
+    private val candidateRowHeightPx: Int by lazy {
+        val fontHeight = TextView(ctx).apply { textSize = fontSize.toFloat() }
+            .paint.fontMetricsInt.let { it.bottom - it.top }
+        fontHeight + dp(itemPaddingVertical) * 2
+    }
 
     private val candidatesUi = PagedCandidatesUi(
         ctx, theme, setupTextView,
@@ -305,10 +315,21 @@ class CandidatesView(
             topOfParent()
             startOfParent()
         })
+        // Paging buttons: stacked vertically (prev on top, next on bottom), always pinned to the
+        // right side of the window. Total height = one default candidate row, each button gets
+        // half of it (enforced by layout weights inside PaginationUi).
+        val pagination = candidatesUi.paginationUi.root
+        add(pagination, lParams(candidateRowHeightPx, candidateRowHeightPx) {
+            below(preeditUi.root)
+            bottomOfParent()
+            endOfParent()
+        })
         add(candidatesUi.root, lParams(matchConstraints, wrapContent) {
             matchConstraintMinWidth = wrapContent
+            horizontalBias = 0.5f
             below(preeditUi.root)
-            centerHorizontally()
+            startOfParent()
+            before(pagination)
             bottomOfParent()
         })
 
