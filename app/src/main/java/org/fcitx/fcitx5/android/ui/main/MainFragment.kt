@@ -316,6 +316,7 @@ class MainFragment : PaddingPreferenceFragment() {
         Timber.d("开始下载更新 APK: ${info.downloadUrl}")
         lifecycleScope.launch {
             val result = UpdateManager.downloadApk(requireContext(), info.downloadUrl) { downloaded, total ->
+                // onProgress is dispatched on the main thread by UpdateManager
                 if (total > 0) {
                     val pct = (downloaded * 100 / total).toInt()
                     progressBar.progress = pct

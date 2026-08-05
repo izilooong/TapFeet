@@ -104,3 +104,6 @@ lint/tmp/
 .kotlin/
 
 gradle.properties
+
+.qoder
+.workbuddy

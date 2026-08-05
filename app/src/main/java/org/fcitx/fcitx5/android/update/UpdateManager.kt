@@ -9,6 +9,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.core.content.getSystemService
@@ -39,6 +41,11 @@ object UpdateManager {
     private const val DOWNLOAD_SUBDIR = "updates"
     private const val APK_NAME = "tapfeet-update.apk"
 
+    // Progress callbacks are dispatched on the main looper so callers can touch views directly.
+    // Delivering them on the IO thread used to throw CalledFromWrongThreadException inside the
+    // download's runCatching, surfacing as a bogus "download failed" on strict devices.
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private val client by lazy {
         OkHttpClient.Builder()
             // DNS + TLS handshake on the first Gitee hit can be slow; be generous.
@@ -60,8 +67,9 @@ object UpdateManager {
     /**
      * Download the APK via OkHttp to the app-private external files dir.
      * Follows redirects (e.g. Gitee's foruda token link) automatically.
-     * [onProgress] is invoked with (downloaded bytes, total bytes) on the IO thread;
-     * a total of -1 means the server did not advertise a Content-Length.
+     * [onProgress] is invoked with (downloaded bytes, total bytes) **on the main thread**
+     * (posted via a main-looper Handler), so callers may update views directly.
+     * A total of -1 means the server did not advertise a Content-Length.
      * Returns the downloaded [File], or a failure describing what went wrong.
      */
     suspend fun downloadApk(
@@ -93,11 +101,15 @@ object UpdateManager {
                         while (input.read(buf).also { n = it } != -1) {
                             out.write(buf, 0, n)
                             downloaded += n
-                            onProgress(downloaded, total)
+                            // snapshot the counters: the posted runnable must not observe
+                            // later loop iterations' values
+                            val d = downloaded
+                            val t = total
+                            mainHandler.post { onProgress(d, t) }
                         }
                     }
                 }
-                onProgress(apk.length(), apk.length())
+                mainHandler.post { onProgress(apk.length(), apk.length()) }
             }
             Timber.d("UpdateManager: APK downloaded to ${apk.absolutePath} (${apk.length()} bytes)")
             apk
