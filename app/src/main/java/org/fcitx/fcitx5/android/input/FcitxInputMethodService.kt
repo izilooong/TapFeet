@@ -648,7 +648,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var cachedNavBarBg: View? = null
 
     override fun onComputeInsets(outInsets: Insets) {
-        if (inputDeviceMgr.isVirtualKeyboard) {
+        // When a window is revealed inside this InputView in physical-keyboard mode (the symbol
+        // picker, or the number/letter keyboard switched to from within it), the InputView is a
+        // normal view inside the IME window — unlike the floating CandidatesView which uses its
+        // own PopupWindow — so it must be touchable across its whole surface. Otherwise the items
+        // above the navbar strip are untouchable. Reuse the virtual-keyboard touchable region.
+        val revealedSurface = !inputDeviceMgr.isVirtualKeyboard &&
+                inputView?.isInputViewRevealed() == true
+        if (inputDeviceMgr.isVirtualKeyboard || revealedSurface) {
             // Keyboard is pinned to the bottom; its top is just window height minus its
             // height. The previous getLocationInWindow call was redundant (its result was
             // overwritten) and an extra IPC we can skip on this hot insets path.
@@ -671,6 +678,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 visibleTopInsets = h
                 touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
             }
+        }
+    }
+
+    /**
+     * Re-apply the IME window layout so the framework re-invokes [onComputeInsets]. Needed when
+     * the symbol window is revealed/hidden in physical-keyboard mode, because that changes how
+     * much of the (otherwise hidden) [InputView] must be touchable.
+     */
+    internal fun requestInsetsUpdate() {
+        window.window?.let { w ->
+            val p = w.attributes
+            w.setLayout(p.width, p.height)
         }
     }
 

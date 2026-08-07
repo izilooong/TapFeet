@@ -42,6 +42,13 @@ class InputWindowManager : UniqueViewComponent<InputWindowManager, FrameLayout>(
     private var currentWindow: InputWindow? = null
     private var currentView: View? = null
 
+    /**
+     * Invoked after any window is (re)attached (e.g. opening the symbol picker, or switching to
+     * the number/letter keyboard from within it). Used to trigger an IME touchable-insets
+     * recompute when the revealed surface changes.
+     */
+    var onWindowAttached: (() -> Unit)? = null
+
     private val disableAnimation by AppPrefs.getInstance().advanced.disableAnimation
 
     private fun prepareAnimation(
@@ -195,6 +202,7 @@ class InputWindowManager : UniqueViewComponent<InputWindowManager, FrameLayout>(
         // notify the window it was attached
         window.onAttached()
         currentWindow = window
+        onWindowAttached?.invoke()
         // broadcast the new window was added to layout
         broadcaster.onWindowAttached(window)
     }

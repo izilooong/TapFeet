@@ -298,6 +298,11 @@ class InputView(
         // keep the toolbar visible and collapse the button area by default
         windowManager.attachWindow(KeyboardWindow)
 
+        // Whenever a window is (re)attached inside this InputView — the symbol picker, or the
+        // number/letter keyboard switched to from within the picker — the IME's touchable insets
+        // may need to be recomputed (see FcitxInputMethodService.onComputeInsets). Force it.
+        windowManager.onWindowAttached = { service.requestInsetsUpdate() }
+
         broadcaster.onImeUpdate(fcitx.runImmediately { inputMethodEntryCached })
 
         customBackground.imageDrawable = theme.backgroundDrawable(keyBorder)
@@ -773,6 +778,18 @@ class InputView(
     }
 
     /**
+     * Whether this [InputView] is currently revealed in physical-keyboard mode to host a window
+     * that is a normal view inside the IME window (the symbol picker, or the number/letter
+     * keyboard switched to from within the picker). Used by
+     * [org.fcitx.fcitx5.android.input.FcitxInputMethodService.onComputeInsets] to decide the IME's
+     * touchable region: such windows are subject to the IME's touchable insets (unlike the floating
+     * CandidatesView which uses its own PopupWindow), so they must be made fully touchable while
+     * revealed. Equivalent to `visibility == VISIBLE` in physical mode — InputView is hidden (GONE)
+     * otherwise.
+     */
+    fun isInputViewRevealed(): Boolean = visibility == View.VISIBLE
+
+    /**
      * Physical-keyboard symbol-key toggle used in PHYSICAL mode, where InputView no longer
      * receives live candidate/preedit events and its [handleHardwareSymToggle] "no active input"
      * guard is frozen (stale). This matches the configured symbol key
@@ -810,6 +827,10 @@ class InputView(
             }
             toggleSymbolWindow()
         }
+        // The symbol window lives inside this InputView, so revealing/hiding it changes how much
+        // of the IME window must be touchable. Force the framework to recompute the touchable
+        // insets (see [FcitxInputMethodService.onComputeInsets]).
+        service.requestInsetsUpdate()
         return true
     }
 
