@@ -1,8 +1,8 @@
 {
-    "versionCode": 122,
-    "versionName": "V1.0.4-01",
-    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.4-01/tapfeet.ime-v1.0.4-01.apk",
+    "versionCode": 132,
+    "versionName": "V1.0.4-02",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.4-02/tapfeet.ime-v1.0.4-02.apk",
     "releaseNotes": "- 候选窗模式支持巨硬选字\n- 支持 Alt+Del 删除整行开关",
     "minVersionCode": 0,
-    "publishDate": "2026-07-30"
+    "publishDate": "2026-08-07"
 }
