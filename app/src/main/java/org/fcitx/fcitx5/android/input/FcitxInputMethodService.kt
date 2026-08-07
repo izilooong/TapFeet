@@ -349,6 +349,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             is FcitxEvent.CandidateListEvent -> {
                 lastCandidateListData = event.data
             }
+            is FcitxEvent.PagedCandidateEvent -> {
+                lastPagedCandidateData = event.data
+            }
             is FcitxEvent.InputPanelEvent -> {
                 // When the floating candidate window isn't rendering the composing letters
                 // (showPreedit == false, the default), push the preedit to the target text box so
@@ -559,6 +562,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private lateinit var lastKnownConfig: Configuration
 
     var lastCandidateListData = FcitxEvent.CandidateListEvent.Data()
+
+    /**
+     * Last [FcitxEvent.PagedCandidateEvent] seen by the service. Mirrors [lastCandidateListData]
+     * but for the paged-mode event the floating [CandidatesView] relies on. Replayed by
+     * [CandidatesView.onStartHandleFcitxEvent] so the floating window shows the live candidate
+     * list immediately when it (re)starts collecting — the event flow has no replay, so a fresh
+     * collector would otherwise miss the last event and render stale/empty candidates until the
+     * engine emits again.
+     */
+    var lastPagedCandidateData = FcitxEvent.PagedCandidateEvent.Data.Empty
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         /**

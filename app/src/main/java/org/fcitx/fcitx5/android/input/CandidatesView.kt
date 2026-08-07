@@ -127,7 +127,13 @@ class CandidatesView(
 
     override fun onStartHandleFcitxEvent() {
         val inputPanelData = fcitx.runImmediately { inputPanelCached }
+        val pagedData = service.lastPagedCandidateData
         handleFcitxEvent(FcitxEvent.InputPanelEvent(inputPanelData))
+        // Replay the latest PagedCandidateEvent so the floating window shows the live candidate
+        // list immediately on activation, instead of waiting for the next keystroke. The event
+        // flow has no replay, so a freshly (re)started collector would otherwise miss the last
+        // event and render stale/empty candidates until the engine emits again.
+        handleFcitxEvent(FcitxEvent.PagedCandidateEvent(pagedData))
     }
 
     override fun handleFcitxEvent(it: FcitxEvent<*>) {

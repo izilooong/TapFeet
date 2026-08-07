@@ -503,6 +503,21 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     fun isCandidateUiShowing(): Boolean = view.displayedChild == Candidate.ordinal
 
+    /**
+     * Force the bar back to its Idle state (hides the candidate surface, shows the toolbar).
+     *
+     * Used when [org.fcitx.fcitx5.android.input.InputView] is briefly revealed in physical-keyboard
+     * mode — e.g. to host the symbol picker — while its candidate-event collector is disabled
+     * (`handleEvents == false`). Without this the KawaiiBar would keep showing the last (now stale,
+     * frozen) candidate list for as long as the InputView stays visible. Pushing to Idle hides that
+     * surface; the live candidate list stays in the floating window, and re-entering virtual mode
+     * pushes the bar back to Candidate via the normal event flow.
+     */
+    fun resetToIdleState() {
+        barStateMachine.push(PreeditUpdated, PreeditEmpty to true)
+        barStateMachine.push(CandidatesUpdated, CandidateEmpty to true)
+    }
+
     private fun switchUiByState(state: KawaiiBarStateMachine.State) {
         val index = state.ordinal
         if (view.displayedChild == index) return

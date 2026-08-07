@@ -658,6 +658,16 @@ class InputView(
         // 放在最前，确保无论候选窗是否显示都能触发。
         if (handleHardwareGlobalAction(event)) return true
 
+        // 物理键盘模式下，本 InputView 的水平候选条已隐藏，活跃的候选面是浮动窗口
+        // （CandidatesView）。此处若继续走下方的"选字 / 翻页"分支，会经
+        // selectCandidateAtVisiblePosition() 调用 setCandidatePagingMode(0)（bulk 模式），
+        // 把引擎的候选分页模式从浮动窗口依赖的 paged(1) 切回 bulk(0)。结果浮动窗口再也
+        // 收不到 PagedCandidateEvent：表现为"候选栏永远显示同一组、上下页点击无反应"，
+        // 但底层选字（引擎状态正确）仍然有效。
+        // 物理键盘模式的选字 / 翻页 / 符号键已由浮动窗口处理，这里直接返回，交给浮动窗口，
+        // 避免污染引擎分页模式。
+        if (physicalKeyboardMode) return false
+
         val hw = hardwareKeyboardPrefs
         val c1 = hw.candidate1Key.getValue()
         val c1Parsed = parseKeyString(c1)
@@ -788,7 +798,16 @@ class InputView(
         } else {
             // Open the symbol window: in physical mode the keyboard window (its base) is hidden,
             // so reveal this InputView first.
-            if (physicalKeyboardMode) visibility = View.VISIBLE
+            if (physicalKeyboardMode) {
+                visibility = View.VISIBLE
+                // The KawaiiBar candidate surface is a virtual-keyboard component and its event
+                // collector is disabled (handleEvents == false) in physical mode, so it would
+                // otherwise keep showing the last stale, frozen candidate list for the whole time
+                // the InputView is revealed. Push it back to Idle (toolbar) — the floating window
+                // remains the live candidate surface, and normal virtual-mode events will restore
+                // it later.
+                kawaiiBar.resetToIdleState()
+            }
             toggleSymbolWindow()
         }
         return true
