@@ -4,7 +4,9 @@
  */
 package org.fcitx.fcitx5.android.data
 
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.SoundPool
 import android.os.Build
 import android.os.VibrationEffect
 import android.provider.Settings
@@ -17,6 +19,8 @@ import org.fcitx.fcitx5.android.utils.appContext
 import org.fcitx.fcitx5.android.utils.audioManager
 import org.fcitx.fcitx5.android.utils.getSystemSettings
 import org.fcitx.fcitx5.android.utils.vibrator
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 object InputFeedbacks {
 
@@ -110,6 +114,86 @@ object InputFeedbacks {
 
     private val audioManager = appContext.audioManager
 
+    // ---- Precise-volume playback -----------------------------------------------------------
+    //
+    // `AudioManager.playSoundEffect(fx, volume)` hands the request to the system AudioService,
+    // whose SoundPool is bound to STREAM_SYSTEM. The volume we pass is only a relative scalar on
+    // top of the system stream volume, and a fair number of vendor ROMs drop it entirely — which
+    // makes an in-app volume slider look completely dead.
+    //
+    // Load the very same system keypress samples into our own SoundPool instead, so the requested
+    // gain is applied verbatim. Anything that fails (missing files, unreadable, load error) falls
+    // back to the AudioManager path, so behaviour degrades to the platform default rather than
+    // going silent.
+
+    private const val SystemUiSoundDir = "/system/media/audio/ui"
+
+    private val sampleFileNames = mapOf(
+        SoundEffect.Standard to "KeypressStandard.ogg",
+        SoundEffect.SpaceBar to "KeypressSpacebar.ogg",
+        SoundEffect.Delete to "KeypressDelete.ogg",
+        SoundEffect.Return to "KeypressReturn.ogg"
+    )
+
+    // Only ever touched from the IME main thread (onCreate + key/touch handling).
+    private val sampleIds = mutableMapOf<SoundEffect, Int>()
+
+    // Written from the SoundPool load callback (binder thread), read while typing (main thread).
+    private val loadedSamples: MutableSet<Int> = ConcurrentHashMap.newKeySet<Int>()
+
+    @Volatile
+    private var samplesRequested = false
+
+    private val soundPool: SoundPool by lazy {
+        SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
+            .apply {
+                setOnLoadCompleteListener { _, sampleId, status ->
+                    if (status == 0) loadedSamples.add(sampleId)
+                }
+            }
+    }
+
+    /**
+     * Load the system keypress samples into our own [SoundPool]. Idempotent — only the first call
+     * does any work. Call it early (IME `onCreate`) so the very first keypress already has a
+     * loaded sample instead of falling back to the platform path.
+     */
+    fun preloadSoundEffects() {
+        // Unsynchronised fast path: this runs on every keypress via [playAtExactVolume].
+        if (samplesRequested) return
+        loadSamples()
+    }
+
+    @Synchronized
+    private fun loadSamples() {
+        if (samplesRequested) return
+        samplesRequested = true
+        sampleFileNames.forEach { (effect, name) ->
+            val file = File(SystemUiSoundDir, name)
+            if (!file.canRead()) return@forEach
+            val id = runCatching { soundPool.load(file.absolutePath, 1) }.getOrNull() ?: return@forEach
+            // load() returns 0 on failure.
+            if (id != 0) sampleIds[effect] = id
+        }
+    }
+
+    /** @return true when the sample was actually played at the requested [gain]. */
+    private fun playAtExactVolume(effect: SoundEffect, gain: Float): Boolean {
+        preloadSoundEffects()
+        val id = sampleIds[effect] ?: return false
+        // Still decoding: let this press fall back rather than dropping it silently.
+        if (id !in loadedSamples) return false
+        return soundPool.play(id, gain, gain, 1, 0, 1f) != 0
+    }
+
     /**
      * Play a keypress sound effect.
      *
@@ -123,6 +207,9 @@ object InputFeedbacks {
             InputFeedbackMode.Disabled -> return
             InputFeedbackMode.FollowingSystem -> if (!systemSoundEffects) return
         }
+        // An explicit volume only means something if we control the gain ourselves; `0` keeps the
+        // platform's own default level.
+        if (volume > 0 && playAtExactVolume(effect, volume / 100f)) return
         val fx = when (effect) {
             SoundEffect.Standard -> AudioManager.FX_KEYPRESS_STANDARD
             SoundEffect.SpaceBar -> AudioManager.FX_KEYPRESS_SPACEBAR

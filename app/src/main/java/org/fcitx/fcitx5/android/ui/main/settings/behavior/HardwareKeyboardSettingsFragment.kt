@@ -148,7 +148,12 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             title = getString(R.string.hw_key_sound_volume)
             dialogTitle = getString(R.string.hw_key_sound_volume)
             defaultLabel = getString(R.string.system_default)
-            setDefaultValue(hw.keySoundVolume.getValue())
+            // MUST be the preference's constant default (0 = system default), NOT the current
+            // value: DialogSeekBarPreference.textForValue() renders `defaultLabel` whenever
+            // value == default, so seeding it with the persisted value makes a saved 50% show up
+            // as "system default" on the next visit (and rebinds the dialog's "default" button to
+            // that value). This mirrors ManagedPreferenceUi.SeekBarInt, which passes the constant.
+            setDefaultValue(hw.keySoundVolume.defaultValue)
             min = 0
             max = 100
             step = 1

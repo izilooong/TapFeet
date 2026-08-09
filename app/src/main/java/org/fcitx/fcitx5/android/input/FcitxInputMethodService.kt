@@ -243,6 +243,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // press can happen before the IME window is ever shown (which is the other sync point),
         // and the default "following system" feedback mode would otherwise stay silent.
         InputFeedbacks.syncSystemPrefs()
+        // Decode the keypress samples now so the very first press already honours the configured
+        // volume instead of falling back to the platform's fixed-level effect.
+        InputFeedbacks.preloadSoundEffects()
         decorView = window.window!!.decorView
         contentView = decorView.findViewById(android.R.id.content)
         lastKnownConfig = resources.configuration
