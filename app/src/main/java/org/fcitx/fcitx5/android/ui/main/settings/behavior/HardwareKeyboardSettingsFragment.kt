@@ -116,6 +116,17 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         screen.addPreference(altDeleteLineSwitch)
 
+        // Long-press a physical key to input its keycap symbol (BlackBerry-style). Default ON.
+        val longPressSymbolSwitch = SwitchPreference(context).apply {
+            key = hw.longPressSymbolEnabled.key
+            title = getString(R.string.hw_long_press_symbol)
+            summary = getString(R.string.hw_long_press_symbol_summary)
+            setDefaultValue(hw.longPressSymbolEnabled.getValue())
+            isChecked = hw.longPressSymbolEnabled.getValue()
+            isIconSpaceReserved = false
+        }
+        screen.addPreference(longPressSymbolSwitch)
+
         // Build the per-key preferences. candidate2-5 are remembered separately so the display-mode
         // handler can flip their visibility without disturbing candidate1 (first-pick, always shown).
         // Use key string (not `===` reference) to identify the four shortcut prefs — this avoids any

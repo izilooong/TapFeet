@@ -14,6 +14,8 @@ import android.graphics.Color
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
 import android.util.LruCache
@@ -751,6 +753,26 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> physicalShiftDown = isDown
         }
     }
+
+    // ===== Long-press a physical key to input its keycap symbol (BlackBerry-style) =====
+    // A held key (>= [HARDWARE_SYMBOL_LONG_PRESS_MS]) commits its [HardwareKeySymbolMap] symbol
+    // instead of the normal character. A quick tap falls through to the normal key on key-up,
+    // so existing typing is unchanged. See also [onKeyDown]/[onKeyUp].
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var symbolLongPressRunnable: Runnable? = null
+    private var symbolLongPressKeyCode = -1
+    private var symbolLongPressFired = false
+    private val hardwareSymbolLongPressMs = 400L
+
+    private fun longPressSymbolEnabled(): Boolean =
+        AppPrefs.getInstance().hardwareKeyboard.longPressSymbolEnabled.getValue()
+
+    private fun cancelSymbolLongPress() {
+        symbolLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
+        symbolLongPressRunnable = null
+        symbolLongPressKeyCode = -1
+        symbolLongPressFired = false
+    }
     // True when THIS key gesture was consumed by latching (pure latch key, double-tap latch, or
     // unlock). Used so onKeyUp only swallows the key-up for gestures latching actually handled,
     // letting a colliding selection key's own key-up handling run.
@@ -978,6 +1000,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, true)
 
+        // Swallow auto-repeat of a key that is pending / has fired long-press-to-symbol, so
+        // holding the key doesn't spam the underlying character before/after the symbol commits.
+        if (event.repeatCount > 0 && symbolLongPressKeyCode == keyCode) {
+            return true
+        }
+
         // Track long-press heuristic: record Alt press start time and reset the
         // "other keys during hold" flag. Also flag any non-Alt key pressed while Alt
         // is physically held (so the heuristic won't fire for normal Alt-combo usage).
@@ -1073,6 +1101,34 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (isAnyAltKeyCode(keyCode)) return true
         }
 
+        // Long-press a physical key to input its keycap symbol (BlackBerry-style).
+        // Skip while Alt is active so Alt+number keeps selecting candidates; keys bound to other
+        // jobs (0, Shift, SYM/Alt_R, Space) are absent from the map and fall through naturally.
+        if (event.repeatCount == 0 &&
+            longPressSymbolEnabled() &&
+            !physicalAltDown && !altLatched && !systemAltSticky &&
+            HardwareKeySymbolMap.contains(keyCode)
+        ) {
+            // Show the floating candidate window exactly like a normal physical-key press would.
+            val effectiveForShow = withInjectedModifiers(event)
+            if (inputDeviceMgr.evaluateOnKeyDown(effectiveForShow, this)) {
+                postFcitxJob { focus(true) }
+                forceShowSelf()
+            }
+            // Consume the down; the normal character is forwarded on key-up for a short press,
+            // or replaced by the symbol if the long-press timer fires first.
+            symbolLongPressKeyCode = keyCode
+            symbolLongPressFired = false
+            symbolLongPressRunnable = Runnable {
+                if (symbolLongPressKeyCode == keyCode && !symbolLongPressFired) {
+                    symbolLongPressFired = true
+                    HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { commitText(it) }
+                }
+            }
+            mainHandler.postDelayed(symbolLongPressRunnable!!, hardwareSymbolLongPressMs)
+            return true
+        }
+
         val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
                 event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
         // Belt-and-suspenders: when system Alt sticky is flagged, synchronously clear
@@ -1146,6 +1202,36 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, false)
+
+        // Resolve a pending long-press-to-symbol gesture for this key.
+        if (symbolLongPressKeyCode == keyCode) {
+            symbolLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
+            symbolLongPressRunnable = null
+            val wasLongPress = symbolLongPressFired
+            symbolLongPressKeyCode = -1
+            symbolLongPressFired = false
+            if (wasLongPress) {
+                // Symbol already committed on long-press; swallow the key-up.
+                return true
+            }
+            // Short press: replay down+up so fcitx sees the full gesture (it needs both edges to
+            // register the character). Mirrors what the normal onKeyDown/onKeyUp flow would send.
+            val effectiveEvent = withInjectedModifiers(event)
+            val downEvent = KeyEvent(
+                effectiveEvent.downTime,
+                effectiveEvent.eventTime,
+                KeyEvent.ACTION_DOWN,
+                effectiveEvent.keyCode,
+                0,
+                effectiveEvent.metaState,
+                effectiveEvent.deviceId,
+                effectiveEvent.scanCode,
+                effectiveEvent.flags,
+                effectiveEvent.source
+            )
+            forwardKeyEvent(downEvent)
+            return forwardKeyEvent(effectiveEvent) || super.onKeyUp(keyCode, effectiveEvent)
+        }
 
         // Long-press heuristic for system Alt sticky detection.
         // When Alt is released: if it was held for >= altLongPressThresholdMs, the framework
@@ -1660,6 +1746,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     override fun onFinishInput() {
         Timber.d("onFinishInput: currentInputStarted=$currentInputStarted isInputViewShown=$isInputViewShown")
         clearAltLatchAndMetaState()
+        cancelSymbolLongPress()
         postFcitxJob {
             focus(false)
         }
@@ -1668,6 +1755,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onUnbindInput() {
         cachedKeyEvents.evictAll()
+        cancelSymbolLongPress()
         cachedKeyEventIndex = 0
         cursorUpdateIndex = 0
         // currentInputBinding can be null on some devices under some special Multi-screen mode

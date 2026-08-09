@@ -472,6 +472,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // classic mobile behaviour is preserved; turn ON to re-enable the terminal-style kill-line.
         val altDeleteLineEnabled = bool("hw_alt_delete_line_enabled", false)
 
+        // Long-press a physical key to input the symbol printed on its keycap (BlackBerry-style).
+        // Default ON. While ON, holding a letter/number key for ~0.4s commits its keycap symbol
+        // instead of the character; a quick tap still types the character as usual.
+        val longPressSymbolEnabled = switch(
+            R.string.hw_long_press_symbol,
+            "hw_long_press_symbol",
+            true,
+            R.string.hw_long_press_symbol_summary
+        )
+
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
         // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".
         //

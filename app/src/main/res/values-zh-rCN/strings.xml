@@ -36,6 +36,8 @@
     <string name="hw_alt_latch_key">Alt 锁定键（双击）</string>
     <string name="hw_alt_delete_line">Alt + Del 删除整行</string>
     <string name="hw_alt_delete_line_summary">开启后，Alt+Del / Alt+退格 删除整行（终端式 kill-line）；关闭时只删除单个字符。</string>
+    <string name="hw_long_press_symbol">长按按键输入符号</string>
+    <string name="hw_long_press_symbol_summary">按住字母/数字键约 0.4 秒输入键帽上的符号；轻点仍正常输入字符。</string>
     <string name="hw_toggle_ime">切换输入法</string>
     <string name="hw_show_picker">显示输入法选择器</string>
     <string name="hw_key_profile">键盘布局预设</string>
