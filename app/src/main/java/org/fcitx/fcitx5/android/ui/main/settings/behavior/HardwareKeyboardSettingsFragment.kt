@@ -12,6 +12,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
+import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
 
 class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
@@ -126,6 +127,42 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isIconSpaceReserved = false
         }
         screen.addPreference(longPressSymbolSwitch)
+
+        // Play the on-screen keyboard's click sound for physical key presses too. Default ON;
+        // the sound mode (following-system / on / off) is shared with the virtual keyboard, but
+        // the volume below is physical-keyboard specific.
+        val keySoundSwitch = SwitchPreference(context).apply {
+            key = hw.keySoundEnabled.key
+            title = getString(R.string.hw_key_sound)
+            summary = getString(R.string.hw_key_sound_summary)
+            setDefaultValue(hw.keySoundEnabled.getValue())
+            isChecked = hw.keySoundEnabled.getValue()
+            isIconSpaceReserved = false
+        }
+        screen.addPreference(keySoundSwitch)
+
+        // Physical key sound volume (0 = system default). Same manual enable/disable wiring as
+        // altLatchKeyPref — Preference.dependency cannot be used while building the screen here.
+        val keySoundVolumePref = DialogSeekBarPreference(context).apply {
+            key = hw.keySoundVolume.key
+            title = getString(R.string.hw_key_sound_volume)
+            dialogTitle = getString(R.string.hw_key_sound_volume)
+            defaultLabel = getString(R.string.system_default)
+            setDefaultValue(hw.keySoundVolume.getValue())
+            min = 0
+            max = 100
+            step = 1
+            unit = "%"
+            summaryProvider = DialogSeekBarPreference.SimpleSummaryProvider
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+        }
+        keySoundVolumePref.isEnabled = keySoundSwitch.isChecked
+        keySoundSwitch.setOnPreferenceChangeListener { _, newValue ->
+            keySoundVolumePref.isEnabled = newValue as Boolean
+            true
+        }
+        screen.addPreference(keySoundVolumePref)
 
         // Build the per-key preferences. candidate2-5 are remembered separately so the display-mode
         // handler can flip their visibility without disturbing candidate1 (first-pick, always shown).

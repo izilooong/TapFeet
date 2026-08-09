@@ -110,7 +110,14 @@ object InputFeedbacks {
 
     private val audioManager = appContext.audioManager
 
-    fun soundEffect(effect: SoundEffect) {
+    /**
+     * Play a keypress sound effect.
+     *
+     * @param volume playback volume in percent (0-100); `0` means "system default volume".
+     *  Defaults to the on-screen keyboard's volume preference — callers driven by a different
+     *  input source (e.g. the physical keyboard) pass their own volume here.
+     */
+    fun soundEffect(effect: SoundEffect, volume: Int = soundOnKeyPressVolume) {
         when (soundOnKeyPress) {
             InputFeedbackMode.Enabled -> {}
             InputFeedbackMode.Disabled -> return
@@ -122,7 +129,6 @@ object InputFeedbacks {
             SoundEffect.Delete -> AudioManager.FX_KEYPRESS_DELETE
             SoundEffect.Return -> AudioManager.FX_KEYPRESS_RETURN
         }
-        val volume = soundOnKeyPressVolume
         if (volume == 0) {
             audioManager.playSoundEffect(fx, -1f)
         } else {

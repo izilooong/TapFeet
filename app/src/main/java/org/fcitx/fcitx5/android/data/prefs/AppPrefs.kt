@@ -482,6 +482,32 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             R.string.hw_long_press_symbol_summary
         )
 
+        // Play the keyboard click sound when a physical key is pressed, mirroring the on-screen
+        // keyboard. This is only the "physical keys too" gate: the sound mode
+        // (following-system / enabled / disabled) is still shared with the virtual keyboard via
+        // [Keyboard.soundOnKeyPress]. The volume, however, is physical-keyboard specific — see
+        // [keySoundVolume].
+        val keySoundEnabled = switch(
+            R.string.hw_key_sound,
+            "hw_key_sound_enabled",
+            true,
+            R.string.hw_key_sound_summary
+        )
+
+        // Volume of the physical key press sound, independent from the on-screen keyboard's
+        // [Keyboard.soundOnKeyPressVolume]. 0 means "system default volume".
+        val keySoundVolume = int(
+            R.string.hw_key_sound_volume,
+            "hw_key_sound_volume",
+            0,
+            0,
+            100,
+            "%",
+            defaultLabel = R.string.system_default
+        ) {
+            keySoundEnabled.getValue()
+        }
+
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
         // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".
         //

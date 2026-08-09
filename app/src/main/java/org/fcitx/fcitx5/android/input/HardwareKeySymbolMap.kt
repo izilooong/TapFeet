@@ -33,8 +33,7 @@ object HardwareKeySymbolMap {
     // a quick tap keeps the original behaviour (e.g. 0 still picks candidate 1 on short press).
     private val blackberrySymbolMap: Map<Int, String> = mapOf(
         // Number keycap symbol (0 only; 1-9 short-press already types the digit as usual).
-        KeyEvent.KEYCODE_0 to "$",
-
+        
         // Letters: BlackBerry keycap symbols (corrected for Q25).
         KeyEvent.KEYCODE_Q to "#",
         KeyEvent.KEYCODE_W to "1",
@@ -66,16 +65,7 @@ object HardwareKeySymbolMap {
 
     // TT2 device: same number-row symbols; letter symbols to be verified for the TT2 keycaps.
     private val tt2SymbolMap: Map<Int, String> = mapOf(
-        KeyEvent.KEYCODE_1 to "!",
-        KeyEvent.KEYCODE_2 to "@",
-        KeyEvent.KEYCODE_3 to "#",
-        KeyEvent.KEYCODE_4 to "$",
-        KeyEvent.KEYCODE_5 to "%",
-        KeyEvent.KEYCODE_6 to "^",
-        KeyEvent.KEYCODE_7 to "&",
-        KeyEvent.KEYCODE_8 to "*",
-        KeyEvent.KEYCODE_9 to "(",
-
+     
         KeyEvent.KEYCODE_Q to "0",
         KeyEvent.KEYCODE_W to "1",
         KeyEvent.KEYCODE_E to "2",

@@ -239,6 +239,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
         }
         super.onCreate()
+        // Sync the system sound/haptic switches up-front: with a physical keyboard the first key
+        // press can happen before the IME window is ever shown (which is the other sync point),
+        // and the default "following system" feedback mode would otherwise stay silent.
+        InputFeedbacks.syncSystemPrefs()
         decorView = window.window!!.decorView
         contentView = decorView.findViewById(android.R.id.content)
         lastKnownConfig = resources.configuration
@@ -773,6 +777,64 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         symbolLongPressKeyCode = -1
         symbolLongPressFired = false
     }
+
+    /**
+     * Send a keycap symbol through the fcitx pipeline (the same path virtual keyboard symbol keys
+     * use) instead of committing the raw text to the editor. Going through the engine is what lets
+     * addons apply their rules: full-width/half-width punctuation conversion, punctuation mapping,
+     * and committing any pending preedit first.
+     *
+     * When the input panel is not empty (candidates shown and/or preedit pending) it is reset
+     * before the symbol is sent, so the symbol always lands in the editor instead of being
+     * consumed by the in-flight input sequence.
+     *
+     * Multi-character entries cannot be expressed as a single key, so they fall back to a plain
+     * commit.
+     */
+    private fun sendSymbolToFcitx(symbol: String) {
+        if (symbol.isEmpty()) return
+        if (symbol.length > 1) {
+            commitText(symbol)
+            return
+        }
+        val code = ScancodeMapping.charToScancode(symbol[0])
+        postFcitxJob {
+            // Clear the input panel first when candidates / preedit are pending, so the symbol is
+            // never swallowed by the running input sequence nor interleaved with candidate state.
+            // Both calls run inside the same serial fcitx job, so the ordering is guaranteed.
+            if (!isEmpty()) reset()
+            sendKey(symbol, KeyStates.Virtual.states, code)
+        }
+    }
+
+    // ===== Physical key press sound =====
+    /**
+     * Play the keyboard click sound for a physical key press, mirroring the on-screen keyboard
+     * (which calls [InputFeedbacks.soundEffect] from `CustomGestureView` on ACTION_DOWN).
+     *
+     * The hardware-keyboard settings own the "physical keys too" gate and the playback volume;
+     * only the sound mode (following-system / enabled / disabled) is shared with the virtual
+     * keyboard and applied inside [InputFeedbacks.soundEffect].
+     */
+    private fun playHardwareKeySound(keyCode: Int) {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        if (!hw.keySoundEnabled.getValue()) return
+        // Navigation / system keys are not typing keys and already have their own system feedback.
+        when (keyCode) {
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MENU,
+            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
+            KeyEvent.KEYCODE_VOLUME_MUTE, KeyEvent.KEYCODE_POWER -> return
+        }
+        val effect = when (keyCode) {
+            KeyEvent.KEYCODE_SPACE -> InputFeedbacks.SoundEffect.SpaceBar
+            KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL -> InputFeedbacks.SoundEffect.Delete
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> InputFeedbacks.SoundEffect.Return
+            else -> InputFeedbacks.SoundEffect.Standard
+        }
+        // Physical keys use their own volume, not the on-screen keyboard's.
+        InputFeedbacks.soundEffect(effect, hw.keySoundVolume.getValue())
+    }
+
     // True when THIS key gesture was consumed by latching (pure latch key, double-tap latch, or
     // unlock). Used so onKeyUp only swallows the key-up for gestures latching actually handled,
     // letting a colliding selection key's own key-up handling run.
@@ -979,6 +1041,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             return false
         }
 
+        // Key sound on press, exactly like the on-screen keyboard. Done before any dispatch logic
+        // so every physical key clicks regardless of which branch ends up consuming it. Auto-repeat
+        // is skipped so holding a key doesn't machine-gun the sound (the virtual keyboard's repeat
+        // handler doesn't replay it either).
+        if (event.repeatCount == 0) {
+            playHardwareKeySound(keyCode)
+        }
+
         // ========== Earliest metaState probe ==========
         // 在任何处理（包括 updatePhysicalModifiers）之前检查 keyEvent 自带的 metaState。
         // 此时 physicalAltDown 仍反映"本次按键之前"的状态。
@@ -1122,7 +1192,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             symbolLongPressRunnable = Runnable {
                 if (symbolLongPressKeyCode == keyCode && !symbolLongPressFired) {
                     symbolLongPressFired = true
-                    HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { commitText(it) }
+                    HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { sendSymbolToFcitx(it) }
                 }
             }
             mainHandler.postDelayed(symbolLongPressRunnable!!, hardwareSymbolLongPressMs)
