@@ -87,6 +87,12 @@ class PinyinCustomPhraseFragment : Fragment(), OnItemChangedListener<PinyinCusto
                 }
             }
 
+            override fun updateFAB() {
+                shouldShowFab = true
+                fab.show()
+                fab.setOnClickListener { showFabMenu() }
+            }
+
             override fun showEditDialog(
                 title: String,
                 entry: PinyinCustomPhrase?,
@@ -185,9 +191,36 @@ class PinyinCustomPhraseFragment : Fragment(), OnItemChangedListener<PinyinCusto
         batchRemove(indexed)
     }
 
+    override fun onItemAddedBatch(indexed: List<Pair<Int, PinyinCustomPhrase>>) {
+        indexed.forEach { dustman.addOrUpdate(it.second.serialize(), it.second) }
+    }
+
     override fun onItemUpdated(idx: Int, old: PinyinCustomPhrase, new: PinyinCustomPhrase) {
         dustman.remove(old.serialize())
         dustman.addOrUpdate(new.serialize(), new)
+    }
+
+    private fun showFabMenu() {
+        val items = arrayOf(
+            getString(R.string.add_custom_phrase),
+            getString(R.string.import_from_text)
+        )
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.add)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> ui.showEditDialog(getString(R.string.add)) { ui.addItem(item = it) }
+                    1 -> showImportDialog()
+                }
+            }
+            .show()
+    }
+
+    private fun showImportDialog() {
+        PinyinCustomPhraseImportDialog.show(requireContext(), ui.entries) { phrases ->
+            ui.addItems(phrases)
+            saveConfig()
+        }
     }
 
     private fun saveConfig() {

@@ -388,4 +388,17 @@
     <string name="update_source_url_default">默认（Gitee 镜像）</string>
     <string name="update_source_url_saved">更新源已保存</string>
     <string name="update_source_url_placeholder">留空使用内置默认地址</string>
+    <string name="added_n_items">已添加 %1$d 条</string>
+    <string name="add_custom_phrase">新增词组</string>
+    <string name="import_from_text">从文本导入</string>
+    <string name="import_custom_phrase_title">导入自定义词组</string>
+    <string name="import_custom_phrase_hint">在此粘贴词组，每行一条</string>
+    <string name="import_custom_phrase_format">每行一条。格式：`nh,1=你好`（nh 是拼音、1 是顺序，顺序可省略）或直接写中文（自动补拼音）。`#` 开头为注释。</string>
+    <string name="import_custom_phrase_empty">请至少粘贴一行</string>
+    <string name="import_custom_phrase_preview">导入预览</string>
+    <string name="import_custom_phrase_summary">新增：%1$d　跳过重复：%2$d　失败：%3$d</string>
+    <string name="import_custom_phrase_preview_head">预览（前 30 条）：</string>
+    <string name="import_custom_phrase_errors_head">失败行（前 20 条）：</string>
+    <string name="import_custom_phrase_no_valid">没有可导入的有效条目，请检查格式。</string>
+    <string name="back">返回</string>
 </resources>

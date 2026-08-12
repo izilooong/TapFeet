@@ -212,6 +212,16 @@ abstract class DynamicListAdapter<T>(
     }
 
     @CallSuper
+    open fun addItems(items: List<T>) {
+        if (items.isEmpty()) return
+        val start = _entries.size
+        _entries.addAll(items)
+        notifyItemRangeInserted(start, items.size)
+        listener?.onItemAddedBatch(items.mapIndexed { i, item -> (start + i) to item })
+        mainViewModel?.showToolbarEditButton()
+    }
+
+    @CallSuper
     open fun removeItem(idx: Int): T {
         val item = _entries.removeAt(idx)
         notifyItemRemoved(idx)

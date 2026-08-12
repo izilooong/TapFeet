@@ -394,4 +394,17 @@
     <string name="update_source_url_default">Default (Gitee mirror)</string>
     <string name="update_source_url_saved">Update source saved</string>
     <string name="update_source_url_placeholder">Leave empty for the built-in default</string>
+    <string name="added_n_items">Added %1$d item(s)</string>
+    <string name="add_custom_phrase">Add phrase</string>
+    <string name="import_from_text">Import from text</string>
+    <string name="import_custom_phrase_title">Import custom phrases</string>
+    <string name="import_custom_phrase_hint">Paste phrases, one per line</string>
+    <string name="import_custom_phrase_format">One phrase per line. Format: `nh,1=你好` (nh = pinyin, 1 = order, optional) or just Chinese text (pinyin auto-filled). Lines starting with # are comments.</string>
+    <string name="import_custom_phrase_empty">Please paste at least one line</string>
+    <string name="import_custom_phrase_preview">Import preview</string>
+    <string name="import_custom_phrase_summary">Added: %1$d   Duplicates skipped: %2$d   Failed: %3$d</string>
+    <string name="import_custom_phrase_preview_head">Preview (first 30):</string>
+    <string name="import_custom_phrase_errors_head">Failed lines (first 20):</string>
+    <string name="import_custom_phrase_no_valid">No valid entries found. Check the format.</string>
+    <string name="back">Back</string>
 </resources>

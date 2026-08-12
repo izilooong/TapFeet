@@ -19,6 +19,8 @@ interface OnItemChangedListener<T> {
 
     fun onItemRemovedBatch(indexed: List<Pair<Int, T>>) {}
 
+    fun onItemAddedBatch(indexed: List<Pair<Int, T>>) {}
+
     // only on multiselect
     fun batchRemove(indexed: List<Pair<Int, T>>) {
         indexed.forEach { onItemRemoved(it.first, it.second) }
@@ -48,6 +50,11 @@ interface OnItemChangedListener<T> {
                 override fun onItemRemovedBatch(indexed: List<Pair<Int, T>>) {
                     l1.onItemRemovedBatch(indexed)
                     l2.onItemRemovedBatch(indexed)
+                }
+
+                override fun onItemAddedBatch(indexed: List<Pair<Int, T>>) {
+                    l1.onItemAddedBatch(indexed)
+                    l2.onItemAddedBatch(indexed)
                 }
 
                 override fun onItemUpdated(idx: Int, old: T, new: T) {

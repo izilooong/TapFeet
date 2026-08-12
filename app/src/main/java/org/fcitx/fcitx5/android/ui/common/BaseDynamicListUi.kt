@@ -163,6 +163,15 @@ abstract class BaseDynamicListUi<T>(
                     }
                 }
             }
+
+            override fun onItemAddedBatch(indexed: List<Pair<Int, T>>) {
+                updateFAB()
+                showSnackbar(ctx.getString(R.string.added_n_items, indexed.size)) {
+                    indexed.sortedByDescending { it.first }.forEach {
+                        removeItem(it.first)
+                    }
+                }
+            }
         })
     }
 
