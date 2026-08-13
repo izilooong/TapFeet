@@ -32,7 +32,7 @@
     <string name="candidate_page_prev">上一页</string>
     <string name="hw_symbol_picker">符号窗口</string>
     <string name="hw_alt_latch">Alt 锁定</string>
-    <string name="hw_alt_latch_summary">双击锁定键以锁定 Alt 修饰符。</string>
+    <string name="hw_alt_latch_summary">双击 Alt 锁定键可保持 Alt 修饰符为按下状态。</string>
     <string name="hw_alt_latch_key">Alt 锁定键（双击）</string>
     <string name="hw_alt_delete_line">Alt + Del 删除整行</string>
     <string name="hw_alt_delete_line_summary">开启后，Alt+Del / Alt+退格 删除整行（终端式 kill-line）；关闭时只删除单个字符。</string>
@@ -62,8 +62,8 @@
     <string name="add">添加</string>
     <string name="edit">编辑</string>
     <string name="undo">撤销</string>
-    <string name="delete_and_sync_data">删除并同步运行数据</string>
-    <string name="delete_and_sync_data_message">删除当前的数据目录，并从应用附带的资源中同步</string>
+    <string name="delete_and_sync_data">删除并重新同步运行数据</string>
+    <string name="delete_and_sync_data_message">删除当前的运行数据目录，并从应用内置资源重新同步。</string>
     <string name="enable_ime">启用输入法</string>
     <string name="enable_ime_hint">在“语言和输入法设置”中启用&lt;b>%1$s&lt;/b></string>
     <string name="select_ime">选择输入法</string>
@@ -88,7 +88,7 @@
     <string name="clipboard_enable">启用剪贴板</string>
     <string name="expanded_candidate_style">展开候选词样式</string>
     <string name="expanded_candidate_style_grid">表格</string>
-    <string name="expanded_candidate_style_flexbox">弹性盒</string>
+    <string name="expanded_candidate_style_flexbox">流式</string>
     <string name="no_more_input_methods">没有输入法可供切换</string>
     <string name="add_more_input_methods">您想添加更多输入法吗？</string>
     <string name="about">关于</string>
@@ -126,7 +126,7 @@
     <string name="app_crash">应用崩溃</string>
     <string name="app_crash_message">抱歉，但我们提供了日志以供调查。</string>
     <string name="crash_logs">崩溃日志</string>
-    <string name="verbose_log">详细记录日志</string>
+    <string name="verbose_log">详细日志</string>
     <string name="verbose_log_summary">需要重启</string>
     <string name="removed_x">已移除 %1$s</string>
     <string name="added_x">已添加 %1$s</string>
@@ -211,7 +211,7 @@
     <string name="swipe_up">上划</string>
     <string name="disabled">禁用</string>
     <string name="system_default">系统默认</string>
-    <string name="editor_info_inspector">编辑器信息 (EditorInfo) 检查器</string>
+    <string name="editor_info_inspector">编辑器信息 (EditorInfo) 查看器</string>
     <string name="default_">默认</string>
     <string name="saving">保存中</string>
     <string name="delete_all_pinned_items">要删除所有置顶条目吗？</string>
@@ -241,7 +241,7 @@
     <string name="space_long_press_behavior">空格键长按行为</string>
     <string name="space_behavior_none">无</string>
     <string name="space_behavior_enumerate">轮换输入法</string>
-    <string name="space_behavior_activate">在当前输入法和第一个输入法之间切换</string>
+    <string name="space_behavior_activate">切换输入法启用状态</string>
     <string name="space_behavior_picker">显示输入法选择对话框</string>
     <string name="show_lang_switch_key">显示语言切换键</string>
     <string name="horizontal_candidate_style">横向候选词样式</string>
@@ -276,7 +276,7 @@
     <string name="following_system_settings">跟随系统设置</string>
     <string name="button_sound">按键音</string>
     <string name="button_sound_volume">按键音音量</string>
-    <string name="clipboard_return_after_paste">粘贴后返回</string>
+    <string name="clipboard_return_after_paste">粘贴后返回键盘</string>
     <string name="theme_message_follow_system_day_night_mode_enabled">“跟随系统夜间模式”已启用，不能手动更换主题。</string>
     <string name="disable_it">禁用它</string>
     <string name="reset_keyboard_on_focus_change">焦点改变时切换回键盘</string>
@@ -299,10 +299,10 @@
     <string name="lang_switch_behavior_next_ime_app">切换至下一个输入法应用</string>
     <string name="cannot_be_empty">不能为空</string>
     <string name="_cannot_be_empty">%1$s不能为空</string>
-    <string name="action_forget_candidate_word">忘记词汇</string>
+    <string name="action_forget_candidate_word">删除该词</string>
     <string name="clipboard_mask_sensitive">隐藏敏感信息（如密码）</string>
     <string name="open_rime_user_data_dir">即将打开应用数据目录。 RIME 用户数据目录位于“data/rime”。</string>
-    <string name="restart_to_apply_settings">应用将重启以应用新设置。继续吗？</string>
+    <string name="restart_to_apply_settings">需要重启应用才能使新设置生效。继续吗？</string>
     <string name="space_swipe_move_cursor">划动空格键以移动光标</string>
     <string name="please_wait">请稍候…</string>
     <string name="rotate">旋转</string>
@@ -334,11 +334,11 @@
     <string name="candidates_window_padding">候选窗口边距</string>
     <string name="restart_fcitx_instance">重启 Fcitx 实例</string>
     <string name="restart_fcitx_instance_confirm">Fcitx 实例将被销毁并重新初始化。继续吗？</string>
-    <string name="ignore_system_window_insets">忽略系统窗口边衬区 (WindowInsets)</string>
+    <string name="ignore_system_window_insets">忽略系统窗口边距</string>
     <string name="browse_user_data_dir">浏览用户数据目录</string>
     <string name="haptic_on_repeat">重复按键时的振动反馈</string>
     <string name="redo">重做</string>
-    <string name="status_area">状态区域</string>
+    <string name="status_area">状态图标区</string>
     <string name="expand_candidates_list">展开候选词列表</string>
     <string name="hide_candidates_list">隐藏</string>
     <string name="switch_to_voice_input">切换到语音输入</string>
@@ -381,7 +381,7 @@
     <string name="update_downloading">已开始下载，可在通知栏查看进度</string>
     <string name="update_check_failed">检查更新失败</string>
     <string name="network_unavailable">网络不可用</string>
-    <string name="grant_install_permission">请允许本应用安装应用以完成更新</string>
+    <string name="grant_install_permission">请允许本应用安装更新包以完成更新</string>
     <string name="install_permission_denied">未授予安装权限。请为「大脚输入法」开启“安装未知应用”，然后重新点击下载更新。</string>
     <string name="open_settings">去设置</string>
     <string name="about_app">关于大脚输入法</string>
