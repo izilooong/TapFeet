@@ -419,4 +419,5 @@
     <string name="cat_hw_alt">Alt 行为</string>
     <string name="cat_hw_sound_symbol">声音与符号</string>
     <string name="cat_hw_keybindings">物理键绑定</string>
+    <string name="dictionary">词库</string>
 </resources>

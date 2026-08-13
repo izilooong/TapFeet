@@ -97,6 +97,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     R.drawable.ic_baseline_extension_24,
                     SettingsRoute.AddonList
                 )
+                addDestinationPreference(
+                    R.string.dictionary,
+                    R.drawable.ic_baseline_library_books_24,
+                    SettingsRoute.Dictionary
+                )
             }
             addCategory("Android") {
                 addDestinationPreference(

@@ -18,9 +18,11 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
+import androidx.preference.PreferenceGroup
 import androidx.preference.isEmpty
 import arrow.core.getOrElse
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.core.RawConfig
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -127,11 +129,163 @@ object PreferenceScreenFactory {
         return tabs
     }
 
+    /**
+     * One config source (either an IM config or a same-named addon config) belonging to a
+     * [DictionarySource]. The bound [raw] holds the source's *full* config (`cfg` + `desc`), and
+     * [save] writes the full config back. The rendering layer only shows dictionary-related
+     * entries, but saving never drops unrelated settings.
+     */
+    data class DictionaryEntry(
+        val raw: RawConfig,
+        val sourceId: String,
+        val addonId: String,
+        val save: suspend (FcitxAPI) -> Unit
+    )
+
+    /**
+     * One input method. Aggregates every dictionary-related config source ([entries]) that the IM
+     * provides — typically its IM config and its same-named addon config. Each entry keeps its own
+     * full config and is written back independently.
+     */
+    data class DictionarySource(
+        val sourceId: String,
+        val title: String,
+        val entries: List<DictionaryEntry>
+    )
+
+    /** Scalar option names (by source unique id) that are dictionary-related. */
+    private val DICT_ALLOWLIST: Map<String, Set<String>> = mapOf(
+        "pinyin" to setOf(
+            "CloudPinyinEnabled", "CloudPinyinIndex", "CloudPinyinAnimation",
+            "KeepCloudPinyinPlaceHolder"
+        ),
+        "table" to setOf(
+            "Learning", "ModifyDictionaryKey"
+        ),
+        "chewing" to setOf("AddPhraseForward"),
+        "anthy" to setOf("learnOnManualCommit", "learnOnAutoCommit", "AddWord", "DictAdmin")
+    )
+
+    /**
+     * External (navigation-link) option types that are dictionary-related, mapped to the set of
+     * source ids (addon unique names) under which they may appear. A table-global or pinyin-global
+     * external (e.g. "码表全局选项" / TableGlobal) is owned by the *addon*, not by any individual
+     * input method, so it must only render inside the addon's own tab — never inside wubi / ziranma
+     * / shuangpin tabs, whose IM configs merely reference the same global external.
+     */
+    private val DICT_EXTERNAL_SOURCES: Map<ConfigExternal.ETy, Set<String>> = mapOf(
+        ConfigExternal.ETy.PinyinDict to setOf("pinyin"),         // pinyin DictManager -> PinyinDict page
+        ConfigExternal.ETy.PinyinCustomPhrase to setOf("pinyin"), // pinyin CustomPhrase -> Custom Phrase page
+        ConfigExternal.ETy.QuickPhrase to setOf("pinyin"),        // pinyin / quickphrase editor -> Quick Phrase page
+        ConfigExternal.ETy.TableGlobal to setOf("table"),        // table global config
+        ConfigExternal.ETy.AndroidTable to setOf("table"),       // table manage input methods
+        ConfigExternal.ETy.RimeUserDataDir to setOf("rime")      // rime user data dir
+    )
+
+    /**
+     * Aggregate dictionary-related options from multiple fcitx config sources (addon configs and
+     * input method configs) into one tabbed [PreferenceScreen] list. Each source becomes a tab;
+     * within a tab only options listed in [DICT_ALLOWLIST] / [DICT_EXTERNAL_SOURCES] are rendered,
+     * everything else stays untouched in the full config. The bound [FcitxRawConfigStore] always
+     * wraps the source's *full* cfg, so saving writes back the complete config.
+     */
+    fun createDictionaryTabs(
+        sources: List<DictionarySource>,
+        preferenceManager: PreferenceManager,
+        fragmentManager: FragmentManager,
+        save: () -> Unit
+    ): List<ConfigTab> {
+        val context = preferenceManager.context
+        val tabs = mutableListOf<ConfigTab>()
+        for (source in sources) {
+            val screen = preferenceManager.createPreferenceScreen(context)
+            val seen = mutableSetOf<String>()
+            for (entry in source.entries) {
+                val cfg = entry.raw.findByName("cfg") ?: continue
+                val desc = entry.raw.findByName("desc") ?: continue
+                val store = FcitxRawConfigStore(cfg)
+                val topLevelDesc = ConfigDescriptor.parseTopLevel(desc).getOrElse { continue }
+                renderDictItems(
+                    context, fragmentManager, cfg, screen,
+                    topLevelDesc.values, store, entry.sourceId, entry.addonId, save, seen
+                )
+            }
+            if (!screen.isEmpty()) {
+                tabs.add(ConfigTab(source.title, screen))
+            }
+        }
+        return tabs
+    }
+
+    private fun renderDictItems(
+        context: Context,
+        fragmentManager: FragmentManager,
+        cfg: RawConfig,
+        screen: PreferenceGroup,
+        descriptors: List<ConfigDescriptor<*, *>>,
+        store: PreferenceDataStore,
+        sourceId: String,
+        addonId: String,
+        save: () -> Unit,
+        seen: MutableSet<String>
+    ) {
+        descriptors.forEach { d ->
+            // Skip an option name already rendered by another config source in this same tab
+            // (e.g. pinyin's IM config and its addon config both carry the dictionary options).
+            if (d.name in seen) return@forEach
+            when {
+                d is ConfigExternal -> {
+                    if (DICT_EXTERNAL_SOURCES[d.knownType]?.contains(sourceId) == true) {
+                        seen.add(d.name)
+                        general(context, fragmentManager, cfg.findByName(d.name), screen, d, store, save)
+                    }
+                }
+                d is ConfigCustom -> {
+                    val children = d.customTypeDef?.values ?: emptyList()
+                    if (children.any { isDictRelated(sourceId, addonId, it) }) {
+                        seen.add(d.name)
+                        val subCfg = cfg.findByName(d.name) ?: RawConfig()
+                        val subStore = FcitxRawConfigStore(subCfg)
+                        val cat = PreferenceCategory(context).apply {
+                            key = d.name
+                            title = d.description ?: d.name
+                            isSingleLineTitle = false
+                            isIconSpaceReserved = false
+                        }
+                        screen.addPreference(cat)
+                        renderDictItems(
+                            context, fragmentManager, subCfg, cat,
+                            children, subStore, sourceId, addonId, save, seen
+                        )
+                    }
+                }
+                else -> {
+                    if (isDictRelated(sourceId, addonId, d)) {
+                        seen.add(d.name)
+                        general(context, fragmentManager, cfg.findByName(d.name), screen, d, store, save)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isDictRelated(sourceId: String, addonId: String, d: ConfigDescriptor<*, *>): Boolean {
+        // Look up the allowlist by the precise source id first; if that source has no dedicated
+        // entry (e.g. a concrete table IM like wubi / ziranma whose config reuses the table addon's
+        // schema), fall back to its backing addon id so per-IM dictionary options (e.g. Learning)
+        // still surface in that IM's own tab.
+        val allowlist = DICT_ALLOWLIST[sourceId] ?: DICT_ALLOWLIST[addonId] ?: emptySet()
+        return when (d) {
+            is ConfigExternal -> DICT_EXTERNAL_SOURCES[d.knownType]?.contains(sourceId) == true
+            else -> d.name in allowlist
+        }
+    }
+
     private fun general(
         context: Context,
         fragmentManager: FragmentManager,
         cfg: RawConfig?,
-        screen: PreferenceScreen,
+        screen: PreferenceGroup,
         descriptor: ConfigDescriptor<*, *>,
         store: PreferenceDataStore,
         save: () -> Unit
@@ -340,7 +494,7 @@ object PreferenceScreenFactory {
         context: Context,
         fragmentManager: FragmentManager,
         cfg: RawConfig?,
-        screen: PreferenceScreen,
+        screen: PreferenceGroup,
         descriptor: ConfigCustom,
         save: () -> Unit
     ) {

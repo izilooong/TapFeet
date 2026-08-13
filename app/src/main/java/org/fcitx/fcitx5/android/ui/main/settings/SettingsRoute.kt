@@ -110,6 +110,9 @@ sealed class SettingsRoute : Parcelable {
     /* ========== External ========== */
 
     @Serializable
+    data object Dictionary : SettingsRoute()
+
+    @Serializable
     data class ListConfig(val params: Params) : SettingsRoute() {
         @Parcelize
         @Serializable
@@ -258,6 +261,9 @@ sealed class SettingsRoute : Parcelable {
 
             /* ========== External ========== */
 
+            fragment<DictionaryFragment, Dictionary> {
+                label = ctx.getString(R.string.dictionary)
+            }
             fragment<ListFragment, ListConfig>(
                 typeMap = mapOf(typeOf<ListConfig.Params>() to ListConfig.Params.NavType)
             )

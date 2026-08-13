@@ -425,4 +425,5 @@
     <string name="cat_hw_alt">Alt Behavior</string>
     <string name="cat_hw_sound_symbol">Sound &amp; Symbols</string>
     <string name="cat_hw_keybindings">Key Bindings</string>
+    <string name="dictionary">Dictionaries</string>
 </resources>
