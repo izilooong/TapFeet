@@ -115,6 +115,7 @@
     <string name="github_repo">GitHub 仓库</string>
     <string name="expanded_candidate_grid_span_count">表格样式展开候选词列数</string>
     <string name="no_config_options">目前没有可用的配置选项</string>
+    <string name="general">通用</string>
     <string name="unimplemented_type">⛔ 未实现类型</string>
     <string name="select">选择</string>
     <string name="text_editing">文本编辑</string>
@@ -401,4 +402,21 @@
     <string name="import_custom_phrase_errors_head">失败行（前 20 条）：</string>
     <string name="import_custom_phrase_no_valid">没有可导入的有效条目，请检查格式。</string>
     <string name="back">返回</string>
+    <string name="cat_keyboard_feedback_vibration">振动反馈</string>
+    <string name="cat_keyboard_feedback_sound">声音反馈</string>
+    <string name="cat_keyboard_layout">键盘布局</string>
+    <string name="cat_keyboard_voice_swipe">语音与滑动</string>
+    <string name="cat_keyboard_space_lang">空格与语言切换</string>
+    <string name="cat_keyboard_size">键盘尺寸</string>
+    <string name="cat_keyboard_candidate">候选样式</string>
+    <string name="cat_candidates_window">窗口外观</string>
+    <string name="cat_candidates_spacing">间距与尺寸</string>
+    <string name="cat_candidate_bar_arrangement">排列</string>
+    <string name="cat_candidate_bar_style">样式</string>
+    <string name="cat_clipboard_listening">监听与历史</string>
+    <string name="cat_clipboard_suggestion">建议与超时</string>
+    <string name="cat_hw_profile">配置文件</string>
+    <string name="cat_hw_alt">Alt 行为</string>
+    <string name="cat_hw_sound_symbol">声音与符号</string>
+    <string name="cat_hw_keybindings">物理键绑定</string>
 </resources>

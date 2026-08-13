@@ -5,9 +5,13 @@
 package org.fcitx.fcitx5.android.ui.main.settings.behavior
 
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
+import com.google.android.material.tabs.TabLayout
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
@@ -28,9 +32,19 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
      */
     private val candidateShortcutPrefs = mutableListOf<KeyCapturePreference>()
 
+    private var tabLayout: TabLayout? = null
+    private var screens: List<Pair<String, PreferenceScreen>> = emptyList()
+    private var selectedTab = 0
+
+    private companion object {
+        const val KEY_SELECTED_TAB = "hw_selected_tab"
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
-        val screen = preferenceManager.createPreferenceScreen(context)
+        val profileScreen = preferenceManager.createPreferenceScreen(context)
+        val altScreen = preferenceManager.createPreferenceScreen(context)
+        val soundScreen = preferenceManager.createPreferenceScreen(context)
 
         hw = AppPrefs.getInstance().hardwareKeyboard
 
@@ -56,7 +70,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             applyProfile(newValue as String)
             true
         }
-        screen.addPreference(profileList)
+        profileScreen.addPreference(profileList)
 
         // 底排物理键快速选字开关：仅控制"物理键是否选词"，与候选栏排列顺序无关
         // （排列顺序在"候选栏选项 → Candidate arrangement"中设置）。
@@ -72,7 +86,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             applyQuickPick(newValue as Boolean)
             true
         }
-        screen.addPreference(quickPickSwitch)
+        profileScreen.addPreference(quickPickSwitch)
 
         // Master toggle: double-tap left Alt to latch the Alt modifier.
         val altLatchSwitch = SwitchPreference(context).apply {
@@ -83,7 +97,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isChecked = hw.altLatchEnabled.getValue()
             isIconSpaceReserved = false
         }
-        screen.addPreference(altLatchSwitch)
+        altScreen.addPreference(altLatchSwitch)
 
         // Which key double-tap latches Alt (only relevant while the master toggle is on).
         // NOTE: we cannot use Preference.dependency here — when the screen is built dynamically
@@ -102,7 +116,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             altLatchKeyPref.isEnabled = newValue as Boolean
             true
         }
-        screen.addPreference(altLatchKeyPref)
+        altScreen.addPreference(altLatchKeyPref)
         keyPrefs.add(altLatchKeyPref)
 
         // Alt+Delete / Alt+Backspace deletes the whole line (terminal kill-line) instead of a
@@ -115,7 +129,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isChecked = hw.altDeleteLineEnabled.getValue()
             isIconSpaceReserved = false
         }
-        screen.addPreference(altDeleteLineSwitch)
+        altScreen.addPreference(altDeleteLineSwitch)
 
         // Long-press a physical key to input its keycap symbol (BlackBerry-style). Default ON.
         val longPressSymbolSwitch = SwitchPreference(context).apply {
@@ -126,7 +140,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isChecked = hw.longPressSymbolEnabled.getValue()
             isIconSpaceReserved = false
         }
-        screen.addPreference(longPressSymbolSwitch)
+        soundScreen.addPreference(longPressSymbolSwitch)
 
         // Play the on-screen keyboard's click sound for physical key presses too. Default ON;
         // the sound mode (following-system / on / off) is shared with the virtual keyboard, but
@@ -139,7 +153,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isChecked = hw.keySoundEnabled.getValue()
             isIconSpaceReserved = false
         }
-        screen.addPreference(keySoundSwitch)
+        soundScreen.addPreference(keySoundSwitch)
 
         // Physical key sound volume (0 = system default). Same manual enable/disable wiring as
         // altLatchKeyPref — Preference.dependency cannot be used while building the screen here.
@@ -167,7 +181,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             keySoundVolumePref.isEnabled = newValue as Boolean
             true
         }
-        screen.addPreference(keySoundVolumePref)
+        soundScreen.addPreference(keySoundVolumePref)
 
         // Build the per-key preferences. candidate2-5 are remembered separately so the display-mode
         // handler can flip their visibility without disturbing candidate1 (first-pick, always shown).
@@ -194,7 +208,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 setDefaultValue(pref.getValue())
                 summaryProvider = KeyCapturePreference.KeySummaryProvider
             }
-            screen.addPreference(capture)
+            profileScreen.addPreference(capture)
             keyPrefs.add(capture)
             if (pref.key == hw.candidate2Key.key || pref.key == hw.candidate3Key.key ||
                 pref.key == hw.candidate4Key.key || pref.key == hw.candidate5Key.key) {
@@ -206,7 +220,13 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         // the screen never briefly shows rows that the current state says should be hidden.
         setCandidateShortcutVisibility(hw.enableCandidateQuickPick.getValue())
 
-        preferenceScreen = screen
+        screens = listOf(
+            getString(R.string.cat_hw_profile) to profileScreen,
+            getString(R.string.cat_hw_alt) to altScreen,
+            getString(R.string.cat_hw_sound_symbol) to soundScreen
+        )
+        selectedTab = (savedInstanceState?.getInt(KEY_SELECTED_TAB) ?: 0).coerceIn(0, screens.lastIndex)
+        preferenceScreen = screens[selectedTab].second
     }
 
     /** Override all individual key bindings with the selected preset, then refresh the summaries. */
@@ -243,5 +263,43 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         // adapter's visible-preferences list and calls notifyDataSetChanged. So setting
         // isVisible is enough — no extra notifyChanged() is needed (and that method is
         // package-private anyway, not callable from the fragment).
+    }
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        val root = super.onCreateView(inflater, container, savedInstanceState)
+        tabLayout = TabLayout(requireContext()).apply {
+            tabMode = TabLayout.MODE_AUTO
+            tabGravity = TabLayout.GRAVITY_FILL
+        }
+        (root as? ViewGroup)?.addView(tabLayout, 0)
+        return root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        setupTabLayout()
+    }
+
+    private fun setupTabLayout() {
+        val tl = tabLayout ?: return
+        tl.visibility = View.VISIBLE
+        tl.removeAllTabs()
+        screens.forEach { (title, _) -> tl.addTab(tl.newTab().setText(title)) }
+        tl.selectTab(tl.getTabAt(selectedTab))
+        tl.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                val pos = tab?.position ?: return
+                selectedTab = pos
+                preferenceScreen = screens[pos].second
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_SELECTED_TAB, selectedTab)
     }
 }

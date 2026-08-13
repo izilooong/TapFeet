@@ -18,6 +18,7 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
+import androidx.preference.isEmpty
 import arrow.core.getOrElse
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.Key
@@ -65,6 +66,65 @@ object PreferenceScreenFactory {
             general(context, fragmentManager, cfg.findByName(it.name), screen, it, store, save)
         }
         return screen
+    }
+
+    /**
+     * A single tab grouping config items. [title] is the tab label, [screen] holds the
+     * preferences rendered for that group (one top-level fcitx5 `[Section]`, or the
+     * "General" bucket for top-level scalar items not belonging to any section).
+     */
+    data class ConfigTab(val title: String, val screen: PreferenceScreen)
+
+    /**
+     * Like [create], but splits the top-level config into multiple [ConfigTab]s so the
+     * caller can present them with a tab switcher instead of one long flat list.
+     *
+     * - Each top-level [ConfigCustom] (a fcitx5 `[Section]`) becomes its own tab; its
+     *   section title is expressed by the tab, so we do NOT render the outer
+     *   [PreferenceCategory] (that would duplicate the title).
+     * - Top-level scalar items (not inside any section) are collected into a "General" tab.
+     * - Sections whose items are all hidden (e.g. by [hideKeyConfig]) are skipped.
+     * - A single result means no meaningful grouping: callers should hide the tab UI.
+     */
+    fun createTabbed(
+        preferenceManager: PreferenceManager,
+        fragmentManager: FragmentManager,
+        raw: RawConfig,
+        save: () -> Unit
+    ): List<ConfigTab> {
+        val context = preferenceManager.context
+        val cfg = raw["cfg"]
+        val desc = raw["desc"]
+        val store = FcitxRawConfigStore(cfg)
+        // TODO: needs some error handling
+        val topLevelDesc = ConfigDescriptor.parseTopLevel(desc).getOrElse { throw it }
+        val tabs = mutableListOf<ConfigTab>()
+        val generalScreen = preferenceManager.createPreferenceScreen(context)
+        topLevelDesc.values.forEach { item ->
+            if (item is ConfigCustom) {
+                val sectionCfg = cfg.findByName(item.name)
+                val subStore = FcitxRawConfigStore(sectionCfg ?: RawConfig())
+                val values = item.customTypeDef?.values
+                if (!values.isNullOrEmpty()) {
+                    val tabScreen = preferenceManager.createPreferenceScreen(context)
+                    values.forEach { child ->
+                        general(
+                            context, fragmentManager, sectionCfg?.findByName(child.name),
+                            tabScreen, child, subStore, save
+                        )
+                    }
+                    if (!tabScreen.isEmpty()) {
+                        tabs.add(ConfigTab(item.description ?: item.name, tabScreen))
+                    }
+                }
+            } else {
+                general(context, fragmentManager, cfg.findByName(item.name), generalScreen, item, store, save)
+            }
+        }
+        if (!generalScreen.isEmpty()) {
+            tabs.add(0, ConfigTab(context.getString(R.string.general), generalScreen))
+        }
+        return tabs
     }
 
     private fun general(

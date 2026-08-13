@@ -5,12 +5,15 @@
 package org.fcitx.fcitx5.android.ui.main.settings
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.preference.isEmpty
+import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -22,6 +25,7 @@ import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.common.withLoadingDialog
 import org.fcitx.fcitx5.android.ui.main.MainViewModel
+import org.fcitx.fcitx5.android.ui.main.settings.PreferenceScreenFactory
 import org.fcitx.fcitx5.android.utils.addPreference
 
 abstract class FcitxPreferenceFragment : PaddingPreferenceFragment() {
@@ -39,6 +43,14 @@ abstract class FcitxPreferenceFragment : PaddingPreferenceFragment() {
 
     private val fcitx: FcitxConnection
         get() = viewModel.fcitx
+
+    private var tabs: List<PreferenceScreenFactory.ConfigTab> = emptyList()
+    private var tabLayout: TabLayout? = null
+    private var selectedTab = 0
+
+    private companion object {
+        const val KEY_SELECTED_TAB = "selected_tab"
+    }
 
     private fun save() {
         if (!configLoaded) return
@@ -87,29 +99,96 @@ abstract class FcitxPreferenceFragment : PaddingPreferenceFragment() {
     final override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
     }
 
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val root = super.onCreateView(inflater, container, savedInstanceState)
+        tabLayout = TabLayout(requireContext()).apply {
+            tabMode = TabLayout.MODE_AUTO
+            visibility = View.GONE
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        // The root of a PreferenceFragmentCompat is a (non-scrolling) LinearLayout whose
+        // child RecyclerView does the scrolling, so pinning the TabLayout at index 0 keeps
+        // it fixed above the preference list.
+        (root as? ViewGroup)?.addView(tabLayout, 0)
+        return root
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         // make sure to create preference only once since `onViewCreated` is also called on Fragment resume
-        if (preferenceScreen?.isEmpty() == false) return
+        if (preferenceScreen?.isEmpty() == false) {
+            // same Fragment instance resumed (e.g. returned via back stack): tabs already built,
+            // just re-bind the tab switcher — never re-run obtainConfig.
+            setupTabLayout()
+            return
+        }
         val context = requireContext()
         lifecycleScope.withLoadingDialog(context) {
             raw = fcitx.runOnReady { obtainConfig(this) }
             configLoaded = raw.findByName("cfg") != null && raw.findByName("desc") != null
-            preferenceScreen = if (configLoaded) {
-                PreferenceScreenFactory.create(
+            if (configLoaded) {
+                tabs = PreferenceScreenFactory.createTabbed(
                     preferenceManager, parentFragmentManager, raw, ::save
-                ).apply {
-                    if (isEmpty()) {
+                )
+                if (tabs.isEmpty()) {
+                    preferenceScreen = preferenceManager.createPreferenceScreen(context).apply {
                         addPreference(R.string.no_config_options)
                     }
+                } else {
+                    if (savedInstanceState != null) {
+                        selectedTab = savedInstanceState.getInt(KEY_SELECTED_TAB, 0)
+                            .coerceIn(0, tabs.lastIndex)
+                    }
+                    preferenceScreen = tabs[selectedTab].screen
                 }
             } else {
-                preferenceManager.createPreferenceScreen(context).apply {
+                tabs = emptyList()
+                preferenceScreen = preferenceManager.createPreferenceScreen(context).apply {
                     addPreference(R.string.config_addon_not_loaded)
                 }
             }
+            setupTabLayout()
             viewModel.disableAboutButton()
         }
+    }
+
+    private fun setupTabLayout() {
+        val tabLayout = tabLayout ?: return
+        // Rebuild the tab strip from scratch so it is correct after a config (re)load.
+        tabLayout.removeAllTabs()
+        tabs.forEach { tabLayout.addTab(tabLayout.newTab().setText(it.title)) }
+        // Single group has nothing to switch between — hide the strip entirely (keeps the
+        // old flat-list behaviour).
+        tabLayout.visibility = if (tabs.size > 1) View.VISIBLE else View.GONE
+        tabLayout.clearOnTabSelectedListeners()
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                val pos = tab?.position ?: return
+                if (pos !in tabs.indices) return
+                // Only swap which PreferenceScreen is displayed; the shared `raw`/`store` is
+                // untouched, so edits in any tab are preserved and saved together.
+                selectedTab = pos
+                preferenceScreen = tabs[pos].screen
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+        if (tabs.isNotEmpty()) {
+            tabLayout.selectTab(tabLayout.getTabAt(selectedTab.coerceIn(0, tabs.lastIndex)))
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_SELECTED_TAB, selectedTab)
     }
 
     override fun onStart() {

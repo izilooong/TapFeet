@@ -64,6 +64,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     }
 
     inner class Keyboard : ManagedPreferenceCategory(R.string.virtual_keyboard, sharedPreferences) {
+        init { category(R.string.cat_keyboard_feedback_vibration) }
         val hapticOnKeyPress =
             enumList(
                 R.string.button_haptic_feedback,
@@ -123,6 +124,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             buttonLongPressVibrationAmplitude = secondary
         }
 
+        init { category(R.string.cat_keyboard_feedback_sound) }
         val soundOnKeyPress = enumList(
             R.string.button_sound,
             "sound_on_keypress",
@@ -139,6 +141,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         ) {
             soundOnKeyPress.getValue() != InputFeedbackMode.Disabled
         }
+        init { category(R.string.cat_keyboard_layout) }
         val focusChangeResetKeyboard =
             switch(R.string.reset_keyboard_on_focus_change, "reset_keyboard_on_focus_change", true)
         val expandToolbarByDefault =
@@ -153,6 +156,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             false
         )
 
+        init { category(R.string.cat_keyboard_voice_swipe) }
         val showVoiceInputButton =
             switch(R.string.show_voice_input_button, "show_voice_input_button", false)
         val preferredVoiceInput = voiceInputPreference(
@@ -175,6 +179,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             "ms",
             10
         )
+        init { category(R.string.cat_keyboard_space_lang) }
         val spaceKeyLongPressBehavior = enumList(
             R.string.space_long_press_behavior,
             "space_long_press_behavior",
@@ -190,6 +195,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             LangSwitchBehavior.Enumerate
         ) { showLangSwitchKey.getValue() }
 
+        init { category(R.string.cat_keyboard_size) }
         val keyboardHeightPercent: ManagedPreference.PInt
         val keyboardHeightPercentLandscape: ManagedPreference.PInt
 
@@ -250,6 +256,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             keyboardBottomPaddingLandscape = secondary
         }
 
+        init { category(R.string.cat_keyboard_candidate) }
         val expandedCandidateStyle = enumList(
             R.string.expanded_candidate_style,
             "expanded_candidate_style",
@@ -279,6 +286,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class Candidates :
         ManagedPreferenceCategory(R.string.candidates_window, sharedPreferences) {
+        init { category(R.string.cat_candidates_window) }
         val mode = enumList(
             R.string.show_candidates_window,
             "show_candidates_window",
@@ -327,6 +335,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             R.string.candidates_show_preedit_summary
         )
 
+        init { category(R.string.cat_candidates_spacing) }
         val itemPaddingVertical: ManagedPreference.PInt
         val itemPaddingHorizontal: ManagedPreference.PInt
 
@@ -356,6 +365,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         //   Macrohard 巨硬 [4-2-1-3-5]（首选字居中向两侧展开）
         //   Linear    普通 [1-2-3-4-5]（从左到右线性）
         // 物理键快速选字的开关在 HardwareKeyboard.enableCandidateQuickPick。
+        init { category(R.string.cat_candidate_bar_arrangement) }
         val arrangementMode = enumList(
             R.string.candidate_arrangement_mode,
             "candidate_arrangement_mode",
@@ -371,6 +381,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             HorizontalCandidateMode.AutoFillWidth
         )
 
+        init { category(R.string.cat_candidate_bar_style) }
         val showCandidateIndex = switch(
             R.string.show_candidate_index,
             "show_candidate_index",
@@ -404,12 +415,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     }
 
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {
+        init { category(R.string.cat_clipboard_listening) }
         val clipboardListening = switch(R.string.clipboard_listening, "clipboard_enable", true)
         val clipboardHistoryLimit = int(
             R.string.clipboard_limit,
             "clipboard_limit",
             10,
         ) { clipboardListening.getValue() }
+        init { category(R.string.cat_clipboard_suggestion) }
         val clipboardSuggestion = switch(
             R.string.clipboard_suggestion, "clipboard_suggestion", true
         ) { clipboardListening.getValue() }

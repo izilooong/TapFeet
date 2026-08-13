@@ -118,6 +118,7 @@
     <string name="github_repo">GitHub repository</string>
     <string name="expanded_candidate_grid_span_count">Number of expanded candidate spans in grid style</string>
     <string name="no_config_options">Currently no configuration options are available</string>
+    <string name="general">General</string>
     <string name="unimplemented_type">⛔ Unimplemented type</string>
     <string name="select">Select</string>
     <string name="text_editing">Text Editing</string>
@@ -407,4 +408,21 @@
     <string name="import_custom_phrase_errors_head">Failed lines (first 20):</string>
     <string name="import_custom_phrase_no_valid">No valid entries found. Check the format.</string>
     <string name="back">Back</string>
+    <string name="cat_keyboard_feedback_vibration">Vibration</string>
+    <string name="cat_keyboard_feedback_sound">Sound</string>
+    <string name="cat_keyboard_layout">Layout</string>
+    <string name="cat_keyboard_voice_swipe">Voice &amp; Swipe</string>
+    <string name="cat_keyboard_space_lang">Space &amp; Language</string>
+    <string name="cat_keyboard_size">Size</string>
+    <string name="cat_keyboard_candidate">Candidate Style</string>
+    <string name="cat_candidates_window">Window</string>
+    <string name="cat_candidates_spacing">Spacing &amp; Size</string>
+    <string name="cat_candidate_bar_arrangement">Arrangement</string>
+    <string name="cat_candidate_bar_style">Style</string>
+    <string name="cat_clipboard_listening">Listening &amp; History</string>
+    <string name="cat_clipboard_suggestion">Suggestion &amp; Timeout</string>
+    <string name="cat_hw_profile">Profile</string>
+    <string name="cat_hw_alt">Alt Behavior</string>
+    <string name="cat_hw_sound_symbol">Sound &amp; Symbols</string>
+    <string name="cat_hw_keybindings">Key Bindings</string>
 </resources>
