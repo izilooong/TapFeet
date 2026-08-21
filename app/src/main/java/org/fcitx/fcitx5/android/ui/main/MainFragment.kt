@@ -149,6 +149,13 @@ class MainFragment : PaddingPreferenceFragment() {
                     R.drawable.ic_baseline_more_horiz_24,
                     SettingsRoute.Advanced
                 )
+                if (AppPrefs.getInstance().internal.appDisplayNameUnlocked.getValue()) {
+                    addDestinationPreference(
+                        R.string.app_display_name,
+                        R.drawable.ic_baseline_text_format_24,
+                        SettingsRoute.AppDisplayName
+                    )
+                }
                 addDestinationPreference(
                     R.string.lab,
                     R.drawable.ic_baseline_science_24,

@@ -46,6 +46,11 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val lastUpdateCheckTime = string("last_update_check_time", "0")
         // Optional user-overridden update metadata URL (advanced setting). Empty = built-in default.
         val updateInfoUrlOverride = string("update_info_url_override", "")
+        // Launcher display-name selection. Stores the chosen alias key ("default" = app_name).
+        // Applied at runtime via LauncherAliasManager (activity-alias + PackageManager toggle).
+        val appDisplayName = string("app_display_name", "default")
+        // Gates the "App display name" settings entry behind a tap-5-times-on-About unlock.
+        val appDisplayNameUnlocked = bool("app_display_name_unlocked", false)
     }
 
     inner class Advanced : ManagedPreferenceCategory(R.string.advanced, sharedPreferences) {

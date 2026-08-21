@@ -2,6 +2,14 @@
 <resources>
     <string name="app_name_release">TapFeet IME</string>
     <string name="app_name_debug">TapFeet IME (Debug)</string>
+    <string name="app_display_name">App display name</string>
+    <string name="app_display_name_summary">Change the name shown under the home-screen icon (preset choices).</string>
+    <string name="app_display_name_unlocked_toast">Unlocked: you can now rename the input method under Settings → App display name.</string>
+    <string name="app_name_alias_tapfeet">TapFeet</string>
+    <string name="app_name_alias_happy">快乐大脚输入法</string>
+    <string name="app_name_alias_im">输入法</string>
+    <string name="app_name_alias_bb">黑莓输入法</string>
+    <string name="app_name_alias_zilong">子龍输入法</string>
     <string name="save">Save</string>
     <string name="input_methods">Input Methods</string>
     <string name="add_input_method">Add Input Method</string>

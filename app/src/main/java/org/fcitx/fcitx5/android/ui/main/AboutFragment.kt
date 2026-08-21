@@ -16,6 +16,8 @@ import org.fcitx.fcitx5.android.utils.addCategory
 import org.fcitx.fcitx5.android.utils.addPreference
 import org.fcitx.fcitx5.android.utils.formatDateTime
 import org.fcitx.fcitx5.android.utils.navigateWithAnim
+import android.widget.Toast
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 
 class AboutFragment : PaddingPreferenceFragment() {
 
@@ -38,7 +40,9 @@ class AboutFragment : PaddingPreferenceFragment() {
             }
             addCategory(R.string.version) {
                 isIconSpaceReserved = false
-                addPreference(R.string.current_version, Const.versionName)
+                addPreference(R.string.current_version, Const.versionName) {
+                    onAboutSecretTap()
+                }
                 addPreference(R.string.build_git_hash, BuildConfig.BUILD_GIT_HASH) {
                     val commit = BuildConfig.BUILD_GIT_HASH.substringBefore('-')
                     val uri = Uri.parse("${Const.githubRepo}/commit/${commit}")
@@ -47,5 +51,28 @@ class AboutFragment : PaddingPreferenceFragment() {
                 addPreference(R.string.build_time, formatDateTime(BuildConfig.BUILD_TIME))
             }
         }
+    }
+
+    private var secretTapCount = 0
+    private var lastSecretTapTime = 0L
+
+    // Tap the "current version" row 5 times (within ~2s windows) to reveal the
+    // "App display name" settings entry. Mirrors Android's developer-options unlock.
+    private fun onAboutSecretTap() {
+        val now = System.currentTimeMillis()
+        if (now - lastSecretTapTime > 2000L) secretTapCount = 0
+        lastSecretTapTime = now
+        secretTapCount++
+        if (secretTapCount < 5) return
+        val internal = AppPrefs.getInstance().internal
+        if (internal.appDisplayNameUnlocked.getValue()) return
+        internal.appDisplayNameUnlocked.setValue(true)
+        Toast.makeText(
+            requireContext().applicationContext,
+            R.string.app_display_name_unlocked_toast,
+            Toast.LENGTH_LONG
+        ).show()
+        // Rebuild so the main settings page shows the newly unlocked entry.
+        requireActivity().recreate()
     }
 }

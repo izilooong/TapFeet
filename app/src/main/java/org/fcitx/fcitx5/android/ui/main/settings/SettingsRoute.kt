@@ -26,6 +26,7 @@ import org.fcitx.fcitx5.android.ui.main.PluginFragment
 import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonListFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.AdvancedSettingsFragment
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.AppDisplayNameSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidateBarSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.HardwareKeyboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.InputMethodTestFragment
@@ -106,6 +107,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object About : SettingsRoute()
+
+    @Serializable
+    data object AppDisplayName : SettingsRoute()
 
     /* ========== External ========== */
 
@@ -257,6 +261,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<AboutFragment, About> {
                 label = ctx.getString(R.string.about)
+            }
+            fragment<AppDisplayNameSettingsFragment, AppDisplayName> {
+                label = ctx.getString(R.string.app_display_name)
             }
 
             /* ========== External ========== */

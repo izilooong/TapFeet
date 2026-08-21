@@ -2,6 +2,14 @@
 <resources>
     <string name="app_name_release">大脚输入法</string>
     <string name="app_name_debug">大脚输入法 (调试)</string>
+    <string name="app_display_name">App 显示名称</string>
+    <string name="app_display_name_summary">更改桌面启动器图标下方显示的名称（预设候选）。</string>
+    <string name="app_display_name_unlocked_toast">已解锁：可在「设置 → App 显示名称」中修改输入法名称。</string>
+    <string name="app_name_alias_tapfeet">TapFeet</string>
+    <string name="app_name_alias_happy">快乐大脚输入法</string>
+    <string name="app_name_alias_im">输入法</string>
+    <string name="app_name_alias_bb">黑莓输入法</string>
+    <string name="app_name_alias_zilong">子龍输入法</string>
     <string name="save">保存</string>
     <string name="input_methods">输入法</string>
     <string name="add_input_method">添加输入法</string>
