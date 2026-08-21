@@ -43,10 +43,12 @@ import androidx.autofill.inline.v1.InlineSuggestionUi
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxAPI
@@ -776,54 +778,49 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     // single slot) is required because fast typing can have several letter keys down inside the
     // 400ms window at once; one shared slot would let the second key overwrite the first, dropping
     // the first key's character (its key-down was consumed and never replayed on key-up).
-    private data class PendingSymbolPress(var runnable: Runnable, var fired: Boolean)
+    // Tracks an in-flight long-press-to-symbol gesture for a single physical key.
+    // `textLenBefore` snapshots the length of the text before the cursor (INCLUDING any preedit) right
+    // before this key's down is forwarded, so the long-press handler can measure how many characters
+    // the keystroke added — needed to retract them (whether committed or still in preedit) when the
+    // long-press fires.
+    private data class PendingSymbolPress(
+        var runnable: Runnable,
+        var fired: Boolean,
+        var textLenBefore: Int = 0
+    )
     private val symbolLongPressPending = mutableMapOf<Int, PendingSymbolPress>()
 
     private fun longPressSymbolEnabled(): Boolean =
         AppPrefs.getInstance().hardwareKeyboard.longPressSymbolEnabled.getValue()
+
+    // Length of the text immediately before the cursor INCLUDING the composing (preedit) region.
+    // Used by the long-press-to-symbol retraction to measure how many characters a keystroke added to
+    // the editor, by comparing this value captured at key-down with the value captured when the
+    // long-press fires. The retraction then collapses any preedit into plain text and deletes exactly
+    // that many characters via InputConnection — robust across every input method, because the count
+    // covers BOTH the committed case (wubi / ziranma / plain text) and the preedit case (pinyin, or an
+    // unfinished wubi code still in composing), so we no longer depend on guessing the IME's internal
+    // state (which is what broke the previous boolean `composing.isEmpty()` and fcitx-DEL approaches).
+    private fun textLengthBeforeCursor(): Int {
+        val ic = currentInputConnection ?: return 0
+        val before = ic.getTextBeforeCursor(1024, 0) ?: return 0
+        return before.toString().codePointCount(0, before.length)
+    }
 
     private fun cancelSymbolLongPress() {
         symbolLongPressPending.values.forEach { mainHandler.removeCallbacks(it.runnable) }
         symbolLongPressPending.clear()
     }
 
-    // Build a BackSpace key event routed through the fcitx pipeline (the same path a physical
-    // Delete key takes), used to retract the just-committed character when a long-press swaps it
-    // for the keycap symbol. KEYCODE_DEL is resolved to the fcitx BackSpace sym by KeySym, so the
-    // scancode is irrelevant (passed as 0).
-    private fun delKeyEvent(action: Int, ref: KeyEvent) = KeyEvent(
-        ref.downTime, ref.eventTime, action, KeyEvent.KEYCODE_DEL, 0,
-        0, ref.deviceId, 0, ref.flags, ref.source
-    )
+    // Table-engine input methods (wubi / ziranma / cangjie / erbi / …) commit the pending preedit
+    // when the engine is reset — TableEngine::reset runs commitBuffer(true) when
+    // commitWhenDeactivate is enabled (its default) — so their preedit must be backspaced out
+    // BEFORE reset(). Pinyin / English engines reset cleanly (PinyinEngine::doReset only clears
+    // the panel), so they take the simple reset+commit path.
+    private fun isTableIme(): Boolean =
+        fcitx.runImmediately { inputMethodEntryCached.addon }
+            .equals("Table", ignoreCase = true)
 
-    /**
-     * Send a keycap symbol through the fcitx pipeline (the same path virtual keyboard symbol keys
-     * use) instead of committing the raw text to the editor. Going through the engine is what lets
-     * addons apply their rules: full-width/half-width punctuation conversion, punctuation mapping,
-     * and committing any pending preedit first.
-     *
-     * When the input panel is not empty (candidates shown and/or preedit pending) it is reset
-     * before the symbol is sent, so the symbol always lands in the editor instead of being
-     * consumed by the in-flight input sequence.
-     *
-     * Multi-character entries cannot be expressed as a single key, so they fall back to a plain
-     * commit.
-     */
-    private fun sendSymbolToFcitx(symbol: String) {
-        if (symbol.isEmpty()) return
-        if (symbol.length > 1) {
-            commitText(symbol)
-            return
-        }
-        val code = ScancodeMapping.charToScancode(symbol[0])
-        postFcitxJob {
-            // Clear the input panel first when candidates / preedit are pending, so the symbol is
-            // never swallowed by the running input sequence nor interleaved with candidate state.
-            // Both calls run inside the same serial fcitx job, so the ordering is guaranteed.
-            if (!isEmpty()) reset()
-            sendKey(symbol, KeyStates.Virtual.states, code)
-        }
-    }
 
     // ===== Physical key press sound =====
     /**
@@ -1205,28 +1202,83 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             !physicalAltDown && !altLatched && !systemAltSticky &&
             HardwareKeySymbolMap.contains(keyCode)
         ) {
-            // 不吞掉 down：字母在按下即上屏（下方 forwardKeyEvent 路径处理），消除“抬起才上屏”的
-            // 输入延迟，并把 fcitx 候选计算的负载均摊回 down/up 两时刻、避免抬起时双倍密度导致掉帧。
-            // 这里只登记 pending 并启动 400ms 长按定时器；到阈值仍按住才把刚上屏的字母替换为键帽符号。
+            // 按下即上屏（下方 fall-through forwardKeyEvent 处理），消除"抬起才上屏"的慢半拍；
+            // 这里只登记 pending 并启动长按定时器，到阈值仍按住才把刚上屏的字母替换为键帽符号。
             val runnable = Runnable {
                 symbolLongPressPending[keyCode]?.let { pending ->
                     if (!pending.fired) {
                         pending.fired = true
                         HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { sym ->
-                            postFcitxJob {
-                                // 撤销按下时已上屏的字母：拼音 preedit 由 sendSymbolToFcitx 内部
-                                // reset() 清空；已上屏为文本时先退格删掉刚输入的那个字符，再上符号。
-                                if (isEmpty()) {
-                                    forwardKeyEvent(delKeyEvent(KeyEvent.ACTION_DOWN, event))
-                                    forwardKeyEvent(delKeyEvent(KeyEvent.ACTION_UP, event))
+                            mainHandler.post {
+                                // ① 英文/纯文本直上屏(composing 空):字母已 commit 进正文,
+                                //    按按下前后的正文长度差删除。
+                                val delta = if (composing.isEmpty()) {
+                                    val text = currentInputConnection?.getTextBeforeCursor(1024, 0)
+                                    val now = text?.let { it.toString().codePointCount(0, it.length) }
+                                        ?: pending.textLenBefore
+                                    (now - pending.textLenBefore).coerceIn(0, 8)
+                                } else {
+                                    0
                                 }
-                                sendSymbolToFcitx(sym)
+                                Timber.d("LongPressSymbol: key=$keyCode delta=$delta")
+                                if (delta > 0) {
+                                    currentInputConnection?.deleteSurroundingText(delta, 0)
+                                }
+                                // ② 长按替换的引擎清理,按输入法分流:
+                                //    - table 引擎(五笔/自然码/仓颉等):reset() 会把 preedit commit 上屏
+                                //      (TableEngine::reset + commitWhenDeactivate),必须先 BackSpace
+                                //      清空 preedit(数量=clientPreeditCached 长度,该缓存是引擎在
+                                //      客户端声明 CapabilityFlag::Preedit 时写入的 clientPreedit),
+                                //      再 reset、再 commit。
+                                //    - 非 table(拼音/英文/纯文本):引擎 reset 只清面板不 commit
+                                //      (PinyinEngine::doReset 只 reset panel + updatePreedit),直接
+                                //      reset + commit 即可。**绝不能用 BackSpace**——数量不准会转发
+                                //      客户端吞掉正文(拼音吞符号回归的根因)。
+                                if (isTableIme()) {
+                                    val (clientPre, panelPre) = fcitx.runImmediately {
+                                        clientPreeditCached.toString() to
+                                                inputPanelCached.preedit.toString()
+                                    }
+                                    val clientLen =
+                                        clientPre.codePointCount(0, clientPre.length)
+                                    val panelLen =
+                                        panelPre.codePointCount(0, panelPre.length)
+                                    val preeditStr =
+                                        if (clientLen >= panelLen) clientPre else panelPre
+                                    val preeditLen =
+                                        preeditStr.codePointCount(0, preeditStr.length)
+                                    Timber.d(
+                                        "LongPressSymbol: key=$keyCode table-ime delta=$delta " +
+                                                "preedit='$preeditStr' len=$preeditLen"
+                                    )
+                                    postFcitxJob {
+                                        repeat(preeditLen.coerceIn(0, 8)) {
+                                            sendKey(
+                                                KeySym(FcitxKeyMapping.FcitxKey_BackSpace),
+                                                KeyStates.Virtual,
+                                                0
+                                            )
+                                        }
+                                        if (!isEmpty()) reset()
+                                        withContext(Dispatchers.Main) { commitText(sym) }
+                                    }
+                                } else {
+                                    Timber.d("LongPressSymbol: key=$keyCode non-table delta=$delta")
+                                    postFcitxJob {
+                                        if (!isEmpty()) reset()
+                                        withContext(Dispatchers.Main) { commitText(sym) }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-            symbolLongPressPending[keyCode] = PendingSymbolPress(runnable, false)
+            symbolLongPressPending[keyCode] = PendingSymbolPress(
+                runnable,
+                false,
+                textLengthBeforeCursor()
+            )
             mainHandler.postDelayed(runnable, longPressSymbolThresholdMs())
             // fall through → 正常 forwardKeyEvent(down) 上屏字母
         }
@@ -1306,7 +1358,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         updatePhysicalModifiers(keyCode, false)
 
         // 长按符号 pending 解析：取出并清理本键的 pending。
-        // - 已长按（fired）：符号已在 down 后 400ms 发出，吞掉 up 避免字母再上屏一次。
+        // - 已长按（fired）：符号已发出（替换完成），吞掉 up 避免字母再上屏一次。
         // - 短按（未 fired）：down 已在 onKeyDown 上屏，这里 fall through 让 up 正常发出即可。
         symbolLongPressPending.remove(keyCode)?.let { pending ->
             mainHandler.removeCallbacks(pending.runnable)
