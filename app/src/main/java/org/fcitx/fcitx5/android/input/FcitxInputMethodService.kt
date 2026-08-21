@@ -1088,9 +1088,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, true)
 
-        // Swallow auto-repeat of a key that is pending / has fired long-press-to-symbol, so
-        // holding the key doesn't spam the underlying character before/after the symbol commits.
-        if (event.repeatCount > 0 && symbolLongPressPending.containsKey(keyCode)) {
+        // Swallow auto-repeat of a key whose long-press-to-symbol is pending, so holding it doesn't
+        // spam the underlying character. Skip in non-text apps (games/emulators): they hold keys for
+        // movement/action and must keep receiving every repeat — the long-press feature isn't active
+        // there anyway, so swallowing repeats would just make held keys dead.
+        if (event.repeatCount > 0 && !inputDeviceMgr.isNullInputType() &&
+            symbolLongPressPending.containsKey(keyCode)
+        ) {
             return true
         }
 
@@ -1192,8 +1196,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Long-press a physical key to input its keycap symbol (BlackBerry-style).
         // Skip while Alt is active so Alt+number keeps selecting candidates; keys bound to other
         // jobs (0, Shift, SYM/Alt_R, Space) are absent from the map and fall through naturally.
+        // Skip in non-text apps (TYPE_NULL: games / emulators) — they hold keys for movement or
+        // action and must keep receiving every event; hijacking their physical keys would make
+        // held buttons dead (e.g. GBA emulator). The feature is meaningless there anyway.
         if (event.repeatCount == 0 &&
             longPressSymbolEnabled() &&
+            !inputDeviceMgr.isNullInputType() &&
             !physicalAltDown && !altLatched && !systemAltSticky &&
             HardwareKeySymbolMap.contains(keyCode)
         ) {

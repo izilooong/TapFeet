@@ -68,6 +68,10 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
 
     private var startedInputView = false
     private var isNullInputType = true
+    /** True when the current editor does not accept text input (e.g. TYPE_NULL, typical of games /
+     *  emulators). Callers use it to skip IME features — like long-press-to-symbol — that must not
+     *  hijack physical keys from non-text apps. */
+    internal fun isNullInputType() = isNullInputType
 
     private var candidatesViewMode by AppPrefs.getInstance().candidates.mode
 

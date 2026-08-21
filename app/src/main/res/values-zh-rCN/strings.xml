@@ -37,7 +37,7 @@
     <string name="hw_alt_delete_line">Alt + Del 删除整行</string>
     <string name="hw_alt_delete_line_summary">开启后，Alt+Del / Alt+退格 删除整行（终端式 kill-line）；关闭时只删除单个字符。</string>
     <string name="hw_long_press_symbol">长按按键输入符号</string>
-    <string name="hw_long_press_symbol_summary">按住字母/数字键约 0.4 秒输入键帽上的符号；轻点仍正常输入字符。</string>
+    <string name="hw_long_press_symbol_summary">长按按键快速输入键帽上的符号。</string>
     <string name="hw_long_press_symbol_threshold">长按输入符号时长</string>
     <string name="hw_long_press_symbol_threshold_summary">长按多久（300–1000 毫秒）后，按键输入键帽上的符号而非字符。</string>
     <string name="hw_key_sound">物理按键音</string>
