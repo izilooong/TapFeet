@@ -1220,7 +1220,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                                 } else {
                                     0
                                 }
-                                Timber.d("LongPressSymbol: key=$keyCode delta=$delta")
+                                
                                 if (delta > 0) {
                                     currentInputConnection?.deleteSurroundingText(delta, 0)
                                 }
@@ -1247,10 +1247,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                                         if (clientLen >= panelLen) clientPre else panelPre
                                     val preeditLen =
                                         preeditStr.codePointCount(0, preeditStr.length)
-                                    Timber.d(
-                                        "LongPressSymbol: key=$keyCode table-ime delta=$delta " +
-                                                "preedit='$preeditStr' len=$preeditLen"
-                                    )
+                                    
                                     postFcitxJob {
                                         repeat(preeditLen.coerceIn(0, 8)) {
                                             sendKey(
@@ -1263,7 +1260,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                                         withContext(Dispatchers.Main) { commitText(sym) }
                                     }
                                 } else {
-                                    Timber.d("LongPressSymbol: key=$keyCode non-table delta=$delta")
+                                    
                                     postFcitxJob {
                                         if (!isEmpty()) reset()
                                         withContext(Dispatchers.Main) { commitText(sym) }
