@@ -142,6 +142,28 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         soundScreen.addPreference(longPressSymbolSwitch)
 
+        // Long-press duration (ms) before a held key commits its keycap symbol. Only meaningful
+        // while the switch above is on, so disable it unless the switch is checked.
+        val longPressSymbolThresholdPref = DialogSeekBarPreference(context).apply {
+            key = hw.longPressSymbolThreshold.key
+            title = getString(R.string.hw_long_press_symbol_threshold)
+            dialogTitle = getString(R.string.hw_long_press_symbol_threshold)
+            setDefaultValue(hw.longPressSymbolThreshold.defaultValue)
+            min = 300
+            max = 1000
+            step = 50
+            unit = "ms"
+            summaryProvider = DialogSeekBarPreference.SimpleSummaryProvider
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+        }
+        longPressSymbolThresholdPref.isEnabled = longPressSymbolSwitch.isChecked
+        longPressSymbolSwitch.setOnPreferenceChangeListener { _, newValue ->
+            longPressSymbolThresholdPref.isEnabled = newValue as Boolean
+            true
+        }
+        soundScreen.addPreference(longPressSymbolThresholdPref)
+
         // Play the on-screen keyboard's click sound for physical key presses too. Default ON;
         // the sound mode (following-system / on / off) is shared with the virtual keyboard, but
         // the volume below is physical-keyboard specific.

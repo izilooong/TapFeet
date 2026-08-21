@@ -495,6 +495,17 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             R.string.hw_long_press_symbol_summary
         )
 
+        // Long-press duration (ms) before a held physical key commits its keycap symbol instead of
+        // the character. Tunable 300–1000ms per the user's typing speed; default 400ms.
+        val longPressSymbolThreshold = int(
+            R.string.hw_long_press_symbol_threshold,
+            "hw_long_press_symbol_threshold",
+            400,
+            300,
+            1000,
+            "ms"
+        )
+
         // Play the keyboard click sound when a physical key is pressed, mirroring the on-screen
         // keyboard. This is only the "physical keys too" gate: the sound mode
         // (following-system / enabled / disabled) is still shared with the virtual keyboard via

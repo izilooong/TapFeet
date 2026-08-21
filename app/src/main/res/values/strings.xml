@@ -38,6 +38,8 @@
     <string name="hw_alt_delete_line_summary">When on, Alt+Delete / Alt+Backspace deletes the whole line (terminal kill-line). When off, they delete a single character.</string>
     <string name="hw_long_press_symbol">Long-press key for symbol</string>
     <string name="hw_long_press_symbol_summary">Hold a letter/number key ~0.4s to input its keycap symbol; a quick tap types the character as usual.</string>
+    <string name="hw_long_press_symbol_threshold">Long-press symbol duration</string>
+    <string name="hw_long_press_symbol_threshold_summary">How long (300–1000 ms) a key must be held before it inputs its keycap symbol instead of the character.</string>
     <string name="hw_key_sound">Physical key sound</string>
     <string name="hw_key_sound_summary">Play the keyboard click sound when a physical key is pressed. The sound mode (following system / on / off) follows the on-screen keyboard settings.</string>
     <string name="hw_key_sound_volume">Physical key sound volume</string>

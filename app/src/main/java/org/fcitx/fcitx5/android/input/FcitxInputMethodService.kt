@@ -766,20 +766,35 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     // instead of the normal character. A quick tap falls through to the normal key on key-up,
     // so existing typing is unchanged. See also [onKeyDown]/[onKeyUp].
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var symbolLongPressRunnable: Runnable? = null
-    private var symbolLongPressKeyCode = -1
-    private var symbolLongPressFired = false
-    private val hardwareSymbolLongPressMs = 400L
+
+    // Long-press duration (ms) before a held key commits its keycap symbol. User-tunable via
+    // [AppPrefs.HardwareKeyboard.longPressSymbolThreshold] (300–1000ms, default 400).
+    private fun longPressSymbolThresholdMs(): Long =
+        AppPrefs.getInstance().hardwareKeyboard.longPressSymbolThreshold.getValue().toLong()
+
+    // Per-key tracking of an in-flight long-press-to-symbol gesture. A Map keyed by keyCode (not a
+    // single slot) is required because fast typing can have several letter keys down inside the
+    // 400ms window at once; one shared slot would let the second key overwrite the first, dropping
+    // the first key's character (its key-down was consumed and never replayed on key-up).
+    private data class PendingSymbolPress(var runnable: Runnable, var fired: Boolean)
+    private val symbolLongPressPending = mutableMapOf<Int, PendingSymbolPress>()
 
     private fun longPressSymbolEnabled(): Boolean =
         AppPrefs.getInstance().hardwareKeyboard.longPressSymbolEnabled.getValue()
 
     private fun cancelSymbolLongPress() {
-        symbolLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
-        symbolLongPressRunnable = null
-        symbolLongPressKeyCode = -1
-        symbolLongPressFired = false
+        symbolLongPressPending.values.forEach { mainHandler.removeCallbacks(it.runnable) }
+        symbolLongPressPending.clear()
     }
+
+    // Build a BackSpace key event routed through the fcitx pipeline (the same path a physical
+    // Delete key takes), used to retract the just-committed character when a long-press swaps it
+    // for the keycap symbol. KEYCODE_DEL is resolved to the fcitx BackSpace sym by KeySym, so the
+    // scancode is irrelevant (passed as 0).
+    private fun delKeyEvent(action: Int, ref: KeyEvent) = KeyEvent(
+        ref.downTime, ref.eventTime, action, KeyEvent.KEYCODE_DEL, 0,
+        0, ref.deviceId, 0, ref.flags, ref.source
+    )
 
     /**
      * Send a keycap symbol through the fcitx pipeline (the same path virtual keyboard symbol keys
@@ -1075,7 +1090,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
         // Swallow auto-repeat of a key that is pending / has fired long-press-to-symbol, so
         // holding the key doesn't spam the underlying character before/after the symbol commits.
-        if (event.repeatCount > 0 && symbolLongPressKeyCode == keyCode) {
+        if (event.repeatCount > 0 && symbolLongPressPending.containsKey(keyCode)) {
             return true
         }
 
@@ -1182,24 +1197,30 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             !physicalAltDown && !altLatched && !systemAltSticky &&
             HardwareKeySymbolMap.contains(keyCode)
         ) {
-            // Show the floating candidate window exactly like a normal physical-key press would.
-            val effectiveForShow = withInjectedModifiers(event)
-            if (inputDeviceMgr.evaluateOnKeyDown(effectiveForShow, this)) {
-                postFcitxJob { focus(true) }
-                forceShowSelf()
-            }
-            // Consume the down; the normal character is forwarded on key-up for a short press,
-            // or replaced by the symbol if the long-press timer fires first.
-            symbolLongPressKeyCode = keyCode
-            symbolLongPressFired = false
-            symbolLongPressRunnable = Runnable {
-                if (symbolLongPressKeyCode == keyCode && !symbolLongPressFired) {
-                    symbolLongPressFired = true
-                    HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { sendSymbolToFcitx(it) }
+            // 不吞掉 down：字母在按下即上屏（下方 forwardKeyEvent 路径处理），消除“抬起才上屏”的
+            // 输入延迟，并把 fcitx 候选计算的负载均摊回 down/up 两时刻、避免抬起时双倍密度导致掉帧。
+            // 这里只登记 pending 并启动 400ms 长按定时器；到阈值仍按住才把刚上屏的字母替换为键帽符号。
+            val runnable = Runnable {
+                symbolLongPressPending[keyCode]?.let { pending ->
+                    if (!pending.fired) {
+                        pending.fired = true
+                        HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { sym ->
+                            postFcitxJob {
+                                // 撤销按下时已上屏的字母：拼音 preedit 由 sendSymbolToFcitx 内部
+                                // reset() 清空；已上屏为文本时先退格删掉刚输入的那个字符，再上符号。
+                                if (isEmpty()) {
+                                    forwardKeyEvent(delKeyEvent(KeyEvent.ACTION_DOWN, event))
+                                    forwardKeyEvent(delKeyEvent(KeyEvent.ACTION_UP, event))
+                                }
+                                sendSymbolToFcitx(sym)
+                            }
+                        }
+                    }
                 }
             }
-            mainHandler.postDelayed(symbolLongPressRunnable!!, hardwareSymbolLongPressMs)
-            return true
+            symbolLongPressPending[keyCode] = PendingSymbolPress(runnable, false)
+            mainHandler.postDelayed(runnable, longPressSymbolThresholdMs())
+            // fall through → 正常 forwardKeyEvent(down) 上屏字母
         }
 
         val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
@@ -1276,34 +1297,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, false)
 
-        // Resolve a pending long-press-to-symbol gesture for this key.
-        if (symbolLongPressKeyCode == keyCode) {
-            symbolLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
-            symbolLongPressRunnable = null
-            val wasLongPress = symbolLongPressFired
-            symbolLongPressKeyCode = -1
-            symbolLongPressFired = false
-            if (wasLongPress) {
-                // Symbol already committed on long-press; swallow the key-up.
+        // 长按符号 pending 解析：取出并清理本键的 pending。
+        // - 已长按（fired）：符号已在 down 后 400ms 发出，吞掉 up 避免字母再上屏一次。
+        // - 短按（未 fired）：down 已在 onKeyDown 上屏，这里 fall through 让 up 正常发出即可。
+        symbolLongPressPending.remove(keyCode)?.let { pending ->
+            mainHandler.removeCallbacks(pending.runnable)
+            if (pending.fired) {
                 return true
             }
-            // Short press: replay down+up so fcitx sees the full gesture (it needs both edges to
-            // register the character). Mirrors what the normal onKeyDown/onKeyUp flow would send.
-            val effectiveEvent = withInjectedModifiers(event)
-            val downEvent = KeyEvent(
-                effectiveEvent.downTime,
-                effectiveEvent.eventTime,
-                KeyEvent.ACTION_DOWN,
-                effectiveEvent.keyCode,
-                0,
-                effectiveEvent.metaState,
-                effectiveEvent.deviceId,
-                effectiveEvent.scanCode,
-                effectiveEvent.flags,
-                effectiveEvent.source
-            )
-            forwardKeyEvent(downEvent)
-            return forwardKeyEvent(effectiveEvent) || super.onKeyUp(keyCode, effectiveEvent)
         }
 
         // Long-press heuristic for system Alt sticky detection.
