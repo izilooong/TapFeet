@@ -571,7 +571,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // Sym（符号）键三态循环（自定义一行键盘 → 符号选择器 → 隐藏键盘）的「首选」目标：
         // 自定义键盘 or 符号选择器。此项只决定循环起点（谁先出现），三态必然依次经过，
         // 不会因首选而跳过某一态。取值见 [SymFirstTarget]。
-        val symFirst = string("hw_sym_first", SymFirstTarget.CUSTOM)
+        val symFirst = string("hw_sym_first", SymFirstTarget.SYMBOL)
         // Global key actions (extracted from candidate1's Alt/Shift combos so they can be rebound).
         // Empty string means "not bound".
         val toggleImeKey = string("hw_toggle_ime_key", "")
