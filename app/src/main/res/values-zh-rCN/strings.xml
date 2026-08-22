@@ -39,6 +39,9 @@
     <string name="candidate_page_next">下一页</string>
     <string name="candidate_page_prev">上一页</string>
     <string name="hw_symbol_picker">符号窗口</string>
+    <string name="hw_sym_first">Sym 键首选面板</string>
+    <string name="hw_sym_first_custom">自定义键盘</string>
+    <string name="hw_sym_first_symbol">符号键盘</string>
     <string name="hw_alt_latch">Alt 锁定</string>
     <string name="hw_alt_latch_summary">双击 Alt 锁定键可保持 Alt 修饰符为按下状态。</string>
     <string name="hw_alt_latch_key">Alt 锁定键（双击）</string>
@@ -113,6 +116,10 @@
     <string name="clipboard">剪贴板</string>
     <string name="keyboard_height">键盘高度</string>
     <string name="virtual_keyboard">虚拟键盘</string>
+    <string name="custom_keyboard">自定义键盘</string>
+    <string name="custom_keyboard_key_title">按键 %1$d</string>
+    <string name="custom_keyboard_edit_hint">每行一个字符，第一行为单击输入，其余为长按选项。</string>
+    <string name="custom_keyboard_empty">（空）</string>
     <string name="clipboard_suggestion_timeout">剪贴板提示超时</string>
     <string name="version">版本</string>
     <string name="build_time">构建时间</string>

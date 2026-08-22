@@ -25,6 +25,7 @@ import org.fcitx.fcitx5.android.input.bar.ui.idle.InlineSuggestionsUi
 import org.fcitx.fcitx5.android.input.bar.ui.idle.NumberRow
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
+import org.fcitx.fcitx5.android.utils.borderlessRippleDrawable
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.after
 import splitties.views.dsl.constraintlayout.before
@@ -36,9 +37,10 @@ import splitties.views.dsl.constraintlayout.matchConstraints
 import splitties.views.dsl.constraintlayout.startOfParent
 import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.add
-import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.frameLayout
+import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
+import splitties.views.dsl.core.textView
 import splitties.views.imageResource
 import timber.log.Timber
 
@@ -76,6 +78,15 @@ class IdleUi(
     }
 
     val keyboardToggleButton = ToolButton(ctx, R.drawable.ic_baseline_keyboard_24, theme)
+
+    /** 「⑩」自定义键盘开关：单击打开/关闭自定义一行键盘（样式对齐 [ToolButton]） */
+    val customKeyboardButton = textView {
+        text = "⑩"
+        textSize = 18f
+        setTextColor(theme.altKeyTextColor)
+        gravity = Gravity.CENTER
+        background = borderlessRippleDrawable(theme.keyPressHighlightColor, dp(20))
+    }
 
     val inputMethodButton = ToolButton(ctx, R.drawable.ic_status_pinyin, theme)
 
@@ -134,6 +145,10 @@ class IdleUi(
             centerVertically()
         })
         add(inputMethodButton, lParams(size, size) {
+            before(customKeyboardButton)
+            centerVertically()
+        })
+        add(customKeyboardButton, lParams(size, size) {
             before(keyboardToggleButton)
             centerVertically()
         })

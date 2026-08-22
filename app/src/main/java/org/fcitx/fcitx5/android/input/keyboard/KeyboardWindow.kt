@@ -9,12 +9,15 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
+import androidx.annotation.Keep
 import androidx.core.content.ContextCompat
 import androidx.transition.Slide
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.InputMethodEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.CustomKeyConfig
+import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcastReceiver
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
@@ -76,6 +79,39 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
 
     private val currentKeyboard: BaseKeyboard? get() = keyboards[currentKeyboardName]
 
+    /** 当前布局名（TextKeyboard.Name / NumberKeyboard.Name / CustomKeyboard.Name 等），供上层判断状态 */
+    val currentLayoutName: String get() = currentKeyboardName
+
+    /**
+     * 记忆上一次 Sym 三态（自定义/符号/隐藏），用于重新进入输入状态时恢复，
+     * 避免被 [onStartInput] 强制重置回主键盘。进程内有效（同一会话）。
+     */
+    internal enum class SymMode { NONE, CUSTOM, SYMBOL }
+    internal var symMode: SymMode = SymMode.NONE
+
+    /** 符号选择器窗口引用，由 InputView 注入，供 [onStartInput] 恢复符号态 */
+    internal var symbolPickerWindow: InputWindow? = null
+
+    /**
+     * 自定义一行键盘是否激活（激活时窗口高度需压到单行，见 InputView.keyboardWindowHeightPx）。
+     * 附加窗口 attach 判断：KeyboardWindow detach（如切到符号选择器）后布局名残留不算激活，
+     * 避免高度误判为单行。
+     */
+    val isCustomKeyboardActive: Boolean
+        get() = currentKeyboardName == CustomKeyboard.Name && windowManager.isAttached(this)
+
+    /** 布局切换通知（InputView 用它刷新键盘窗口高度与触摸区域） */
+    var onLayoutSwitched: (() -> Unit)? = null
+
+    /** 自定义键盘配置保存后自动重建（当前正显示自定义键盘时立即生效） */
+    @Keep
+    private val customKeyboardKeysListener =
+        ManagedPreference.OnChangeListener<List<CustomKeyConfig>> { _, _ ->
+            if (currentKeyboardName == CustomKeyboard.Name) {
+                doSwitchLayout(CustomKeyboard.Name, remember = false)
+            }
+        }
+
     private val keyActionListener = KeyActionListener { it, source ->
         if (it is KeyAction.LayoutSwitchAction) {
             switchLayout(it.act)
@@ -91,7 +127,11 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     // This will be called EXACTLY ONCE
     override fun onCreateView(): View {
         keyboardView = context.frameLayout(R.id.keyboard_view)
-        attachLayout(TextKeyboard.Name)
+        // 首帧布局跟随 [currentKeyboardName]（由 onStartInput / switchLayoutSync 预置），
+        // 避免「先全高主键盘、后单行自定义」的闪烁
+        attachLayout(currentKeyboardName.ifEmpty { TextKeyboard.Name })
+        // 监听自定义键盘配置变化：保存后若正在显示自定义键盘，立即重建生效
+        AppPrefs.getInstance().customKeyboard.keys.registerOnChangeListener(customKeyboardKeysListener)
         return keyboardView
     }
 
@@ -118,33 +158,75 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
 
     fun switchLayout(to: String, remember: Boolean = true) {
         val target = to.ifEmpty { lastSymbolType }
-        ContextCompat.getMainExecutor(service).execute {
-            if (keyboards.containsKey(target)) {
-                if (remember && target != TextKeyboard.Name) {
-                    lastSymbolType = target
-                }
-                if (target == currentKeyboardName) return@execute
-                detachCurrentLayout()
-                attachLayout(target)
-                if (windowManager.isAttached(this)) {
-                    notifyBarLayoutChanged()
-                }
-            } else {
-                if (remember) {
-                    lastSymbolType = PickerWindow.Key.Symbol.name
-                }
-                windowManager.attachWindow(PickerWindow.Key.Symbol)
+        ContextCompat.getMainExecutor(service).execute { doSwitchLayout(target, remember) }
+    }
+
+    /**
+     * 同步版 [switchLayout]：在主线程直接执行布局切换（不 post 到 MainExecutor）。
+     * 供上层在窗口 attach / 显示之前预置布局，避免「先全高键盘、后单行」的闪烁——
+     * 配合 [onCreateView] 以 [currentKeyboardName] 作为首帧布局，attach 出来即单行。
+     * 仅可在主线程调用（键盘事件、输入状态切换均为主线程）。
+     */
+    internal fun switchLayoutSync(to: String, remember: Boolean = true) {
+        doSwitchLayout(to.ifEmpty { lastSymbolType }, remember)
+    }
+
+    private fun doSwitchLayout(target: String, remember: Boolean) {
+        if (keyboards.containsKey(target) || target == CustomKeyboard.Name) {
+            // 自定义键盘不进 lastSymbolType，保证 ?123 始终回符号选择器
+            if (remember && target != TextKeyboard.Name && target != CustomKeyboard.Name) {
+                lastSymbolType = target
             }
+            // 自定义键盘每次进入都重建（构造时读配置），同布局 toggle（收起再开）也要拿到最新配置
+            if (target == currentKeyboardName && target != CustomKeyboard.Name) return
+            // 切换布局时清掉可能残留的长按弹出层
+            popup.dismissAll()
+            detachCurrentLayout()
+            if (target == CustomKeyboard.Name) {
+                // 用户配置在构造时读取，每次切换重建即拿到最新配置
+                keyboards[CustomKeyboard.Name] = CustomKeyboard(context, theme)
+            }
+            attachLayout(target)
+            // 记录当前 Sym 三态：自定义键盘 → CUSTOM；主键盘 / 数字键盘 → NONE
+            symMode = if (target == CustomKeyboard.Name) SymMode.CUSTOM else SymMode.NONE
+            if (windowManager.isAttached(this)) {
+                notifyBarLayoutChanged()
+            }
+        } else {
+            if (remember) {
+                lastSymbolType = PickerWindow.Key.Symbol.name
+            }
+            windowManager.attachWindow(PickerWindow.Key.Symbol)
         }
     }
 
+    /** 标记符号选择器激活（符号态不走 switchLayout，需单独记录） */
+    internal fun markSymbolPickerActive() {
+        symMode = SymMode.SYMBOL
+    }
+
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {
-        val targetLayout = when (info.inputType and InputType.TYPE_MASK_CLASS) {
-            InputType.TYPE_CLASS_NUMBER -> NumberKeyboard.Name
-            InputType.TYPE_CLASS_PHONE -> NumberKeyboard.Name
-            else -> TextKeyboard.Name
+        when (symMode) {
+            // 上次停在自定义一行键盘 → 重新进入时恢复它（不再被强制重置回主键盘）。
+            // 同步切换，确保首帧即单行，避免恢复时闪一下全高键盘。
+            SymMode.CUSTOM -> switchLayoutSync(CustomKeyboard.Name, remember = false)
+            // 上次停在符号选择器 → 重新进入时恢复符号键盘
+            SymMode.SYMBOL -> {
+                val sp = symbolPickerWindow
+                if (sp != null && !windowManager.isAttached(sp)) {
+                    windowManager.attachWindow(sp)
+                }
+            }
+            // 主键盘 / 隐藏态 / 未打开过 → 按字段类型（数字/电话→数字键盘，否则主键盘），保持原行为
+            SymMode.NONE -> {
+                val targetLayout = when (info.inputType and InputType.TYPE_MASK_CLASS) {
+                    InputType.TYPE_CLASS_NUMBER -> NumberKeyboard.Name
+                    InputType.TYPE_CLASS_PHONE -> NumberKeyboard.Name
+                    else -> TextKeyboard.Name
+                }
+                switchLayout(targetLayout, remember = false)
+            }
         }
-        switchLayout(targetLayout, remember = false)
     }
 
     override fun onImeUpdate(ime: InputMethodEntry) {
@@ -182,5 +264,6 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     // 2) currently keyboard window is attached and switchLayout was used
     private fun notifyBarLayoutChanged() {
         bar.onKeyboardLayoutSwitched(currentKeyboardName == NumberKeyboard.Name)
+        onLayoutSwitched?.invoke()
     }
 }

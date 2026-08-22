@@ -219,7 +219,10 @@ class PopupKeyboardUi(
 
     override fun onTrigger(): KeyAction? {
         val key = keys.getOrNull(focusedIndex) ?: return null
-        return KeyAction.FcitxKeyAction(key)
+        // 单码点走 fcitx sendKey；多码点字符串（如 "1."、带肤色的 emoji）无法用单个 key 表达，
+        // 走 CommitAction 直接 commit，避免 FcitxKeyAction 被 sendKey 静默丢弃。
+        return if (key.codePointCount(0, key.length) == 1) KeyAction.FcitxKeyAction(key)
+        else KeyAction.CommitAction(key)
     }
 
 }

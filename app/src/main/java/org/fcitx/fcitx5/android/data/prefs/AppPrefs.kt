@@ -26,6 +26,12 @@ import org.fcitx.fcitx5.android.utils.DeviceUtil
 import org.fcitx.fcitx5.android.utils.appContext
 import org.fcitx.fcitx5.android.utils.vibrator
 
+/** Sym 键循环切换时「优先出现」的目标取值，须与 [AppPrefs.HardwareKeyboard.symFirst] 的存储值一致 */
+internal object SymFirstTarget {
+    const val CUSTOM = "custom"
+    const val SYMBOL = "symbol"
+}
+
 class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class Internal : ManagedPreferenceInternal(sharedPreferences) {
@@ -461,6 +467,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         )
     }
 
+    /**
+     * 「自定义一行键盘」的 10 键配置（每键一个字符列表，JSON 持久化）。
+     * 纯数据、无自动 UI，编辑页为 [org.fcitx.fcitx5.android.ui.main.settings.behavior.CustomKeyboardSettingsFragment]。
+     */
+    inner class CustomKeyboard : ManagedPreferenceInternal(sharedPreferences) {
+        val keys = stringLike("custom_keyboard_keys", CustomKeyboardCodec, CustomKeyboardDefaults.keys)
+    }
+
     inner class HardwareKeyboard :
         ManagedPreferenceCategory(R.string.hardware_keyboard, sharedPreferences) {
         // Selected key-layout preset: "blackberry" or "tt2". Choosing a preset in the settings
@@ -554,6 +568,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val pageNextKey = string("hw_candidate_page_next_key", "")
         val pagePrevKey = string("hw_candidate_page_prev_key", "")
         val symbolPickerKey = string("hw_symbol_picker_key", "")
+        // Sym（符号）键三态循环（自定义一行键盘 → 符号选择器 → 隐藏键盘）的「首选」目标：
+        // 自定义键盘 or 符号选择器。此项只决定循环起点（谁先出现），三态必然依次经过，
+        // 不会因首选而跳过某一态。取值见 [SymFirstTarget]。
+        val symFirst = string("hw_sym_first", SymFirstTarget.CUSTOM)
         // Global key actions (extracted from candidate1's Alt/Shift combos so they can be rebound).
         // Empty string means "not bound".
         val toggleImeKey = string("hw_toggle_ime_key", "")
@@ -605,6 +623,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     val candidateBar = CandidateBar().register()
     val clipboard = Clipboard().register()
     val symbols = Symbols().register()
+    val customKeyboard = CustomKeyboard().register()
     val advanced = Advanced().register()
    
 

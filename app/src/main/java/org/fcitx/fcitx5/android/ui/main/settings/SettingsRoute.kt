@@ -28,6 +28,7 @@ import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonListFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.AdvancedSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.AppDisplayNameSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidateBarSettingsFragment
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.CustomKeyboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.HardwareKeyboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.InputMethodTestFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidatesSettingsFragment
@@ -74,6 +75,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object VirtualKeyboard : SettingsRoute()
+
+    @Serializable
+    data object CustomKeyboard : SettingsRoute()
 
     @Serializable
     data object CandidatesWindow : SettingsRoute()
@@ -228,6 +232,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<KeyboardSettingsFragment, VirtualKeyboard> {
                 label = ctx.getString(R.string.virtual_keyboard)
+            }
+            fragment<CustomKeyboardSettingsFragment, CustomKeyboard> {
+                label = ctx.getString(R.string.custom_keyboard)
             }
             fragment<CandidatesSettingsFragment, CandidatesWindow> {
                 label = ctx.getString(R.string.candidates_window)

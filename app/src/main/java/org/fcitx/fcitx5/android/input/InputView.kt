@@ -28,6 +28,7 @@ import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
+import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
@@ -43,7 +44,9 @@ import org.fcitx.fcitx5.android.input.candidates.CandidateViewHolder
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateComponent
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.HiddenKeyboardWindow
+import org.fcitx.fcitx5.android.input.keyboard.CustomKeyboard
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
+import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
@@ -188,7 +191,10 @@ class InputView(
         }
 
     private fun keyboardWindowHeightPx(): Int {
-        return if (windowManager.isKeyboardWindowVisible()) keyboardHeightPx else 0
+        if (!windowManager.isKeyboardWindowVisible()) return 0
+        // 自定义一行键盘：窗口高度压到单行（主键盘 TextKeyboard 共 4 行，取 1/4）
+        return if (keyboardWindow.isCustomKeyboardActive) keyboardHeightPx / TextKeyboard.Layout.size
+        else keyboardHeightPx
     }
 
     @Keep
@@ -279,6 +285,18 @@ class InputView(
 
         // make sure KeyboardWindow's view has been created before it receives any broadcast
         windowManager.addEssentialWindow(keyboardWindow, createView = true)
+        // 布局切换（如进出自定义一行键盘）后刷新键盘窗口高度与 IME 触摸区域
+        keyboardWindow.onLayoutSwitched = {
+            updateKeyboardSize()
+            service.requestInsetsUpdate()
+            // 物理键盘模式下，从符号/自定义会话返回主键盘（TextKeyboard）时收起虚拟键盘。
+            // 自 Sym 改为「符号↔自定义」二态循环后，Sym 不再回主键盘，故在此兜底收起，
+            // 覆盖符号面板 ABC 键、自定义键盘下滑返回等回主键盘路径。
+            if (physicalKeyboardMode && isInputViewRevealed() &&
+                keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                visibility = View.GONE
+            }
+        }
         windowManager.addEssentialWindow(hiddenKeyboardWindow, createView = true)
         windowManager.registerKeyboardVisibilityWindows(
             KeyboardWindow,
@@ -293,6 +311,8 @@ class InputView(
             }
         }
         windowManager.addEssentialWindow(symbolPicker)
+        // 让 KeyboardWindow 持有符号选择器引用，以便在重新进入输入状态时恢复符号态
+        keyboardWindow.symbolPickerWindow = symbolPicker
         windowManager.addEssentialWindow(emojiPicker)
         windowManager.addEssentialWindow(emoticonPicker)
         // keep the toolbar visible and collapse the button area by default
@@ -301,7 +321,11 @@ class InputView(
         // Whenever a window is (re)attached inside this InputView — the symbol picker, or the
         // number/letter keyboard switched to from within the picker — the IME's touchable insets
         // may need to be recomputed (see FcitxInputMethodService.onComputeInsets). Force it.
-        windowManager.onWindowAttached = { service.requestInsetsUpdate() }
+        // 同时刷新键盘窗口高度：窗口切换（如自定义一行键盘 ↔ 符号选择器）后高度必须随之变化。
+        windowManager.onWindowAttached = {
+            updateKeyboardSize()
+            service.requestInsetsUpdate()
+        }
 
         broadcaster.onImeUpdate(fcitx.runImmediately { inputMethodEntryCached })
 
@@ -750,18 +774,67 @@ class InputView(
     }
 
     /**
-     * Toggle the symbol picker window. Triggered by the configurable symbol key
-     * ([AppPrefs.HardwareKeyboard.symbolPickerKey], e.g. Alt_R on BlackBerry-style keyboards where
-     * the SYM key reports as [KeyEvent.KEYCODE_ALT_RIGHT]).
+     * Sym（符号）键三态循环：自定义一行键盘 → 符号选择器 → 隐藏键盘（回主键盘）→ 再回到自定义 …
+     * 循环顺序由 [AppPrefs.HardwareKeyboard.symFirst] 决定「首选」（自定义 or 符号）作为首选项，
+     * 但三态必然依次经过，**不会**因首选而跳过某一态（修复：设符号优先后自定义键盘打不开的 bug）。
+     * 键盘窗口高度随状态自动切换：符号选择器/主键盘为全高，自定义键盘为单行。
      */
-    private fun toggleSymbolWindow() {
-        if (windowManager.isKeyboardWindowVisible() && windowManager.isAttached(symbolPicker)) {
-            windowManager.setKeyboardWindowVisible(false)
-            windowManager.attachWindow(KeyboardWindow)
-        } else {
-            windowManager.setKeyboardWindowVisible(true)
-            windowManager.attachWindow(PickerWindow.Key.Symbol)
+    private enum class SymState { CUSTOM, SYMBOL, HIDDEN }
+
+    /** 当前 Sym 状态；主键盘（NONE）或已隐藏均视为循环起点（null） */
+    private fun currentSymState(): SymState? =
+        when {
+            keyboardWindow.isCustomKeyboardActive -> SymState.CUSTOM
+            windowManager.isAttached(symbolPicker) -> SymState.SYMBOL
+            else -> null
         }
+
+    /** 按 [AppPrefs.HardwareKeyboard.symFirst] 排出循环顺序，首选项排在最前 */
+    private fun symCycleOrder(): List<SymState> {
+        val custom = SymState.CUSTOM
+        val symbol = SymState.SYMBOL
+        val hidden = SymState.HIDDEN
+        return if (hardwareKeyboardPrefs.symFirst.getValue() == SymFirstTarget.CUSTOM)
+            listOf(custom, symbol, hidden)
+        else
+            listOf(symbol, custom, hidden)
+    }
+
+    private fun applySymState(state: SymState) {
+        when (state) {
+            SymState.CUSTOM -> {
+                // 先同步切到自定义布局（KeyboardWindow 的 view 已在启动时建好，见 createView=true），
+                // 再 attach / 显示，保证 attach 出来的首帧就是单行，避免「先全高后单行」闪烁。
+                keyboardWindow.switchLayoutSync(CustomKeyboard.Name)
+                windowManager.setKeyboardWindowVisible(true)
+                if (!windowManager.isAttached(keyboardWindow)) {
+                    // attach 会自动 detach 当前窗口（如符号面板），无需手动摘
+                    windowManager.attachWindow(KeyboardWindow)
+                }
+            }
+            SymState.SYMBOL -> {
+                windowManager.setKeyboardWindowVisible(true)
+                windowManager.attachWindow(PickerWindow.Key.Symbol)
+                keyboardWindow.markSymbolPickerActive()
+            }
+            SymState.HIDDEN -> {
+                // 隐藏键盘：收起键盘窗口（物理模式由 onLayoutSwitched 顺带收起 InputView）
+                windowManager.setKeyboardWindowVisible(false)
+                if (!windowManager.isAttached(keyboardWindow)) {
+                    windowManager.attachWindow(KeyboardWindow)
+                }
+                keyboardWindow.switchLayout(TextKeyboard.Name)
+                keyboardWindow.symMode = KeyboardWindow.SymMode.NONE
+            }
+        }
+    }
+
+    private fun toggleSymbolWindow() {
+        val order = symCycleOrder()
+        val current = currentSymState()
+        val next = if (current == null) order.first()
+        else order[(order.indexOf(current) + 1) % order.size]
+        applySymState(next)
     }
 
     /**
@@ -800,18 +873,22 @@ class InputView(
      * CandidatesView state, not against InputView's frozen state.
      *
      * Because the symbol window attaches onto the (hidden) keyboard window in physical mode, we
-     * reveal this [InputView] before opening it and hide it again after closing — i.e. show the
-     * virtual keyboard first, then the symbol window on top of it.
+     * reveal this [InputView] before opening it — i.e. show the virtual keyboard first, then the
+     * symbol window / custom keyboard on top of it. The Sym key cycles three states — custom
+     * keyboard → symbol picker → hidden (back to the main keyboard, which hides this [InputView]
+     * again in physical mode via [keyboardWindow.onLayoutSwitched]) — so the third press hides the
+     * keyboard.
      */
     fun handleHardwareSymKey(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
         val symKey = hardwareKeyboardPrefs.symbolPickerKey.getValue()
         if (!matchesParsedKey(event, parseKeyString(symKey))) return false
 
-        if (windowManager.isAttached(symbolPicker)) {
-            // Symbol window is currently open → close it.
+        val symbolPickerOpen = windowManager.isAttached(symbolPicker)
+        val customActive = keyboardWindow.isCustomKeyboardActive
+        if (symbolPickerOpen || customActive) {
+            // 符号窗口 / 自定义键盘打开中 → 在两者间切换（不再回主键盘，见 toggleSymbolWindow）
             toggleSymbolWindow()
-            if (physicalKeyboardMode) visibility = View.GONE
         } else {
             // Open the symbol window: in physical mode the keyboard window (its base) is hidden,
             // so reveal this InputView first.

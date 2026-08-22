@@ -120,6 +120,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     SettingsRoute.HardwareKeyboard
                 )
                 addDestinationPreference(
+                    R.string.custom_keyboard,
+                    R.drawable.ic_baseline_keyboard_24,
+                    SettingsRoute.CustomKeyboard
+                )
+                addDestinationPreference(
                     R.string.candidates_window,
                     R.drawable.ic_baseline_list_alt_24,
                     SettingsRoute.CandidatesWindow

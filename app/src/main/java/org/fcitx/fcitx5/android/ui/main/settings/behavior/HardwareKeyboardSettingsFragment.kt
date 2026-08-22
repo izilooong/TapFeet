@@ -15,6 +15,7 @@ import com.google.android.material.tabs.TabLayout
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
+import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
@@ -218,7 +219,6 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             hw.candidate5Key to R.string.candidate_key_5,
             hw.pageNextKey to R.string.candidate_page_next,
             hw.pagePrevKey to R.string.candidate_page_prev,
-            hw.symbolPickerKey to R.string.hw_symbol_picker,
             hw.toggleImeKey to R.string.hw_toggle_ime,
             hw.pickerKey to R.string.hw_show_picker,
         ).forEach { (pref, titleRes) ->
@@ -237,6 +237,36 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 candidateShortcutPrefs.add(capture)
             }
         }
+
+        // 符号键盘快捷键（Sym 键绑定）：从上面的按键循环里单独提出来，
+        // 以便把「Sym 键首选面板」直接挂在它下方，两者配套更直观。
+        val symbolPickerPref = KeyCapturePreference(context).apply {
+            key = hw.symbolPickerKey.key
+            title = getString(R.string.hw_symbol_picker)
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+            setDefaultValue(hw.symbolPickerKey.getValue())
+            summaryProvider = KeyCapturePreference.KeySummaryProvider
+        }
+        profileScreen.addPreference(symbolPickerPref)
+        keyPrefs.add(symbolPickerPref)
+
+        // Sym 键首选面板：与上方「符号键盘快捷键」配套，决定 Sym 键首先打开哪一个
+        // （自定义一行键盘 / 符号键盘）。仅影响循环起点，三态必然依次经过。
+        val symFirstList = ListPreference(context).apply {
+            key = hw.symFirst.key
+            title = getString(R.string.hw_sym_first)
+            entries = arrayOf(
+                getString(R.string.hw_sym_first_custom),
+                getString(R.string.hw_sym_first_symbol)
+            )
+            entryValues = arrayOf(SymFirstTarget.CUSTOM, SymFirstTarget.SYMBOL)
+            setDefaultValue(hw.symFirst.getValue())
+            value = hw.symFirst.getValue()
+            summary = "%s"
+            isIconSpaceReserved = false
+        }
+        profileScreen.addPreference(symFirstList)
 
         // Apply the persisted quick-pick state's visibility to candidate2-5 BEFORE returning, so
         // the screen never briefly shows rows that the current state says should be hidden.

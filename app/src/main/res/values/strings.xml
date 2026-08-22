@@ -39,6 +39,9 @@
     <string name="candidate_page_next">Page next</string>
     <string name="candidate_page_prev">Page previous</string>
     <string name="hw_symbol_picker">Symbol picker</string>
+    <string name="hw_sym_first">Sym key preferred panel</string>
+    <string name="hw_sym_first_custom">Custom keyboard</string>
+    <string name="hw_sym_first_symbol">Symbol keyboard</string>
     <string name="hw_alt_latch">Alt lock</string>
     <string name="hw_alt_latch_summary">Double-tap the latch key to latch (lock) Alt.</string>
     <string name="hw_alt_latch_key">Alt lock key (double-tap)</string>
@@ -116,6 +119,10 @@
     <string name="clipboard">Clipboard</string>
     <string name="keyboard_height">Keyboard height</string>
     <string name="virtual_keyboard">Virtual Keyboard</string>
+    <string name="custom_keyboard">Custom Keyboard</string>
+    <string name="custom_keyboard_key_title">Key %1$d</string>
+    <string name="custom_keyboard_edit_hint">Enter characters, one per line.\nThe first line is typed on tap; the rest appear on long press.</string>
+    <string name="custom_keyboard_empty">(empty)</string>
     <string name="clipboard_suggestion_timeout">Clipboard suggestion timeout</string>
     <string name="version">Version</string>
     <string name="build_time">Build time</string>

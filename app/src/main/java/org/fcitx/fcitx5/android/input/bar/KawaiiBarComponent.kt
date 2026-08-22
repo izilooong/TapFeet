@@ -66,7 +66,9 @@ import org.fcitx.fcitx5.android.input.dependency.theme
 import org.fcitx.fcitx5.android.input.editing.TextEditingWindow
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
+import org.fcitx.fcitx5.android.input.keyboard.CustomKeyboard
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
+import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.status.StatusAreaWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
@@ -103,6 +105,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val horizontalCandidate: HorizontalCandidateComponent by manager.must()
     private val commonKeyActionListener: CommonKeyActionListener by manager.must()
     private val popup: PopupComponent by manager.must()
+    /** 键盘布局窗口（essential window，已由 InputView 注册，交互时必然存在） */
+    private val keyboardWindow: KeyboardWindow
+        get() = windowManager.getEssentialWindow(KeyboardWindow) as KeyboardWindow
 
     private val prefs = AppPrefs.getInstance()
 
@@ -211,6 +216,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     }
 
     private fun updateKeyboardToggleButton() {
+        // 键盘开关按钮按面板显隐切换图标：隐藏时显示键盘图标（打开主键盘），显示时显示收起图标（关闭）
         val visible = windowManager.isKeyboardWindowVisible()
         val icon = if (visible) {
             R.drawable.ic_baseline_keyboard_arrow_down_24
@@ -350,7 +356,23 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 onGestureListener = swipeHideKeyboardCallback
             }
             keyboardToggleButton.setOnClickListener {
-                windowManager.setKeyboardWindowVisible(!windowManager.isKeyboardWindowVisible())
+                // 主键盘开关：显示中且是主键盘 → 关闭；否则 → 打开主键盘
+                if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                    windowManager.setKeyboardWindowVisible(false)
+                } else {
+                    windowManager.setKeyboardWindowVisible(true)
+                    keyboardWindow.switchLayoutSync(TextKeyboard.Name)
+                }
+                updateKeyboardToggleButton()
+            }
+            customKeyboardButton.setOnClickListener {
+                // 「⑩」自定义键盘开关：显示中且是自定义键盘 → 关闭；否则 → 打开自定义键盘
+                if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == CustomKeyboard.Name) {
+                    windowManager.setKeyboardWindowVisible(false)
+                } else {
+                    windowManager.setKeyboardWindowVisible(true)
+                    keyboardWindow.switchLayoutSync(CustomKeyboard.Name)
+                }
                 updateKeyboardToggleButton()
             }
             altLockButton.setOnClickListener {
@@ -418,7 +440,13 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 horizontalCandidate.page(1)
             }
             keyboardToggleButton.setOnClickListener {
-                windowManager.setKeyboardWindowVisible(!windowManager.isKeyboardWindowVisible())
+                // 主键盘开关：显示中且是主键盘 → 关闭；否则 → 打开主键盘
+                if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                    windowManager.setKeyboardWindowVisible(false)
+                } else {
+                    windowManager.setKeyboardWindowVisible(true)
+                    keyboardWindow.switchLayoutSync(TextKeyboard.Name)
+                }
                 updateKeyboardToggleButton()
             }
             expandButton.apply {
