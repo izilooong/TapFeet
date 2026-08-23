@@ -911,6 +911,56 @@ class InputView(
         return true
     }
 
+    /**
+     * 符号/表情/颜文字窗口（PickerWindow）打开时的物理键盘路由（BlackBerry SYM 面板）：
+     * - 无任何 picker 窗口为当前窗口 → false（不消费，正常打字）。
+     * - 命中 symbolPickerKey（SYM 键）→ false，交给 handleHardwareSymKey 关闭/切换窗口。
+     * - 其余键一律吞掉（return true）：26 字母键按物理行映射网格位置选符号并上屏；
+     *   auto-repeat（长按）吞掉防 spam；非字母键（数字/标点/Space/Enter/DEL/修饰键）吞掉防误触。
+     */
+    fun handleHardwarePickerSelection(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        val picker = currentPickerWindow() ?: return false
+        val hw = hardwareKeyboardPrefs
+        val symKey = hw.symbolPickerKey.getValue()
+        if (matchesParsedKey(event, parseKeyString(symKey))) return false
+        // 翻页：复用候选分页快捷键（pageNextKey / pagePrevKey）。
+        // 组合键（带 modifier）优先于同物理键的纯键绑定，
+        // 例如 "Alt+grave"(上一页) 不被纯 "grave"(下一页) 抢走。
+        val nextParsed = parseKeyString(hw.pageNextKey.getValue())
+        val prevParsed = parseKeyString(hw.pagePrevKey.getValue())
+        val nextMatches = matchesParsedKey(event, nextParsed)
+        val prevMatches = matchesParsedKey(event, prevParsed)
+        if (nextMatches || prevMatches) {
+            val prevHasModifier = (prevParsed as? ParsedKey.Ref)?.key?.states != 0
+            val nextHasModifier = (nextParsed as? ParsedKey.Ref)?.key?.states != 0
+            val direction = when {
+                prevMatches && prevHasModifier -> -1
+                nextMatches && nextHasModifier -> 1
+                prevMatches -> -1
+                else -> 1
+            }
+            picker.page(direction)
+            return true
+        }
+        // 仅 26 字母键消费（按位置选符号并吞掉，避免面板打开时误打字）；
+        // 其余键（退格/数字/标点/空格/回车/修饰键等）一律放行，走原有按键路径。
+        val pos = HardwarePickerLetterMap.positionOfKeyCode(event.keyCode) ?: return false
+        if (event.repeatCount == 0) {
+            picker.selectByLetter(pos.row, pos.col)
+        }
+        return true
+    }
+
+    /** 当前处于输入窗口的 picker（symbol / emoji / emoticon 三选一，windowManager 任意时刻至多一个）。 */
+    private fun currentPickerWindow(): PickerWindow? =
+        when {
+            windowManager.isAttached(symbolPicker) -> symbolPicker
+            windowManager.isAttached(emojiPicker) -> emojiPicker
+            windowManager.isAttached(emoticonPicker) -> emoticonPicker
+            else -> null
+        }
+
     // 物理键 → 候选位置的映射已重构为数据驱动表，见上方 preciseShortcuts() / wideShortcuts() / resolveShortcutPosition()。
 
     private fun handleHardwareCandidatePaging(event: KeyEvent): Boolean {

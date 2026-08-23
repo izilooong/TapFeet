@@ -40,6 +40,8 @@ class PickerPagesAdapter(
     private fun buildCategories(data: List<Pair<PickerData.Category, Array<String>>>) {
         data.forEach { (cat, arr) ->
             val list = arr.filter(policy::filter)
+            // 每页容量 = density.pageSize（26）：每页 26 个符号正好落在与物理字母键一一对应的键位
+            // （见 HardwarePickerLetterMap / PickerWindow.selectByLetter），多余符号自动翻到下一页。
             val chunks = list.chunked(density.pageSize)
             categories.add(cat to IntRange(pages.size, pages.size + chunks.size - 1))
             pages.addAll(chunks)
@@ -77,6 +79,8 @@ class PickerPagesAdapter(
     fun insertRecent(text: String) {
         if (text.length == 1 && text[0].code.let { it in Digit || it in FullWidthDigit }) return
         recentlyUsed.insert(text)
+        // 最近使用页恒为 position 0；更新后通知重绑，否则该页缓存旧内容、选符号后不同步刷新。
+        notifyItemChanged(0)
     }
 
     fun getCategoryList(): List<PickerData.Category> {
@@ -94,6 +98,13 @@ class PickerPagesAdapter(
     fun getRangeOfCategoryIndex(cat: Int): IntRange {
         return categories[cat].second
     }
+
+    /**
+     * 第 [position] 页的符号列表：position 0 为最近使用页（原样 items），其余为按 pageSize 切分的分类页（原始未 transform 项）。
+     * 供物理键盘在符号窗口打开时按网格位置选符号（BlackBerry SYM 面板）。
+     */
+    fun pageItems(position: Int): List<String> =
+        if (position == 0) recentlyUsed.items else pages.getOrElse(position) { emptyList() }
 
     override fun getItemCount() = pages.size
 

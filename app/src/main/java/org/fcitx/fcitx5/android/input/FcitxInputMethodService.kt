@@ -1173,6 +1173,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (isAnyAltKeyCode(keyCode)) return true
         }
 
+        // ===== 符号窗口打开时：物理键盘直接选符号（BlackBerry SYM 面板） =====
+        // 必须在下方长按键帽符号检测之前拦截：符号窗口打开时按字母键应选符号，
+        // 不能打字 / 触发长按替换。SYM 键除外——留给下方的候选/符号键分发处理。
+        // 本分支消费的键经 consumedHardwareCandidateShortcutKeys 在 onKeyUp 一并吞掉。
+        if (inputView?.handleHardwarePickerSelection(event) == true) {
+            consumedHardwareCandidateShortcutKeys.add(keyCode)
+            return true
+        }
+
         // Long-press a physical key to input its keycap symbol (BlackBerry-style).
         // Skip only when Alt is *physically held* (physicalAltDown) or *app-level latched*
         // (altLatched, double-tap Alt) so Alt+number keeps selecting candidates and intentional

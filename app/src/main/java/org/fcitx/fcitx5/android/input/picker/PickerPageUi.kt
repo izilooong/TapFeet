@@ -31,7 +31,6 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyView
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyView
 import org.fcitx.fcitx5.android.input.popup.PopupAction
 import org.fcitx.fcitx5.android.input.popup.PopupActionListener
-import splitties.views.dsl.constraintlayout.below
 import splitties.views.dsl.constraintlayout.bottomOfParent
 import splitties.views.dsl.constraintlayout.bottomToTopOf
 import splitties.views.dsl.constraintlayout.constraintLayout
@@ -53,22 +52,24 @@ class PickerPageUi(
     bordered: Boolean = false
 ) : Ui {
 
+    /**
+     * 所有页签统一渲染为物理键盘形状：第一行 10 键、第二行 9 键、第三行 7 字母键 + 退格（右下角），
+     * 共 26 个与物理字母键一一对应的键位（见 HardwarePickerLetterMap）。
+     * 每页正好 26 个符号，多余的符号由 PickerPagesAdapter 按 26 一页翻页显示，不占用额外按钮。
+     */
     enum class Density(
         val pageSize: Int,
-        val columnCount: Int,
-        val rowCount: Int,
         val textSize: Float,
-        val autoScale: Boolean,
-        val showBackspace: Boolean
+        val autoScale: Boolean
     ) {
-        // symbol: 10/10/8, backspace on bottom right
-        High(28, 10, 3, 19f, false, true),
+        // symbol: 26 个物理键位（每页正好 26，多余翻页）
+        High(26, 19f, false),
 
-        // emoji: 7/7/6, backspace on bottom right
-        Medium(20, 7, 3, 23.7f, false, true),
+        // emoji: 26 个物理键位（每页正好 26，多余翻页）
+        Medium(26, 23.7f, false),
 
-        // emoticon: 4/4/4, no backspace
-        Low(12, 4, 3, 19f, true, false)
+        // emoticon: 26 个物理键位（颜文字较长，按键宽自动缩放）
+        Low(26, 19f, autoScale = true)
     }
 
     private val popupOnKeyPress by AppPrefs.getInstance().keyboard.popupOnKeyPress
@@ -115,60 +116,53 @@ class PickerPageUi(
     }
 
     override val root = constraintLayout {
-        val columnCount = density.columnCount
-        val rowCount = density.rowCount
-        val keyWidth = 1f / columnCount
-        keyViews.forEachIndexed { i, keyView ->
-            val row = i / columnCount
-            val column = i % columnCount
-            add(keyView, lParams {
-                // layout_constraintTop_to
-                if (row == 0) {
-                    // first row, align top to top of parent
-                    topOfParent()
-                } else {
-                    // not first row, align top to bottom of first view in last row
-                    topToBottomOf(keyViews[(row - 1) * columnCount])
-                }
-                // layout_constraintBottom_to
-                if (row == rowCount - 1) {
-                    // last row, align bottom to bottom of parent
-                    bottomOfParent()
-                } else {
-                    // not last row, align bottom to top of first view in next row
-                    bottomToTopOf(keyViews[(row + 1) * columnCount])
-                }
-                // layout_constraintLeft_to
-                if (column == 0) {
-                    // first column, align start to start of parent
-                    leftOfParent()
-                } else {
-                    // not first column, align start to end of last column
-                    leftToRightOf(keyViews[i - 1])
-                }
-                matchConstraintPercentWidth = keyWidth
-            })
-        }
-        if (density.showBackspace) {
-            add(backspaceKey, lParams {
-                // top to bottom of first view of second-last row
-                below(keyViews[(rowCount - 2) * columnCount])
-                // bottom/right corner
-                bottomOfParent()
-                rightOfParent()
-                matchConstraintPercentWidth = 0.15f
-            })
-            keyViews.last().updateLayoutParams<ConstraintLayout.LayoutParams> {
-                // align right of last key to left of backspace
-                rightToLeftOf(backspaceKey)
-            }
-            keyViews[(rowCount - 1) * columnCount].updateLayoutParams<ConstraintLayout.LayoutParams> {
-                // first key of last row, align its right to the left of its next sibling
-                rightToLeftOf(keyViews[(rowCount - 1) * columnCount + 1])
-                // pack the entire last row together, towards the backspace
-                horizontalChainStyle = ConstraintLayout.LayoutParams.CHAIN_PACKED
+        // 物理键盘形状（所有页签统一）：R0=10、R1=9、R2=7 字母 + 退格（右下角）。
+        // keyViews[0..25] 按物理键位线性序连续排布（R0:0-9, R1:10-18, R2:19-25），
+        // 与 PickerWindow.selectByLetter 的线性序及 PickerPagesAdapter 的页内顺序逐位对齐。
+        // 每页正好 26 个键位（= 26 字母键），多余符号由 PickerPagesAdapter 翻页；符号填充顺序 keyViews[i] = items[i] 不变。
+        val rows = listOf(
+            keyViews.sliceArray(0..9),
+            keyViews.sliceArray(10..18),
+            keyViews.sliceArray(19..25)
+        )
+        rows.forEachIndexed { r, rowKeys ->
+            rowKeys.forEachIndexed { c, kv ->
+                add(kv, lParams {
+                    if (r == 0) topOfParent() else topToBottomOf(rows[r - 1][0])
+                    if (r == rows.lastIndex) bottomOfParent() else bottomToTopOf(rows[r + 1][0])
+                    if (c == 0) leftOfParent() else leftToRightOf(rowKeys[c - 1])
+                    if (c == rowKeys.lastIndex) {
+                        // 末行最后一格（R2 第 7 个字母）让出右侧给退格键
+                        if (r == rows.lastIndex) rightToLeftOf(backspaceKey) else rightOfParent()
+                    } else {
+                        rightToLeftOf(rowKeys[c + 1])
+                    }
+                    // 统一键宽（1/10 屏宽）+ 整行 PACKED 链，配合下方 bias 实现行缩进
+                    matchConstraintPercentWidth = 0.1f
+                    horizontalChainStyle = ConstraintLayout.LayoutParams.CHAIN_PACKED
+                })
             }
         }
+        // 行缩进完全对齐主键盘 TextKeyboard.Layout（见 BaseKeyboard init 的行内 PACKED 链）：
+        //   R0 = 10 × 0.1                       → 铺满，Q 从 0%
+        //   R1 = 9 × 0.1 = 0.9，居中             → A 从 5%
+        //   R2 = Caps(0.15) + 7 × 0.1 + BackSpace(0.15) → Z 从 15%，退格 85%~100%
+        rows[1][0].updateLayoutParams<ConstraintLayout.LayoutParams> {
+            // 链宽 0.9，剩余 0.1 平分 → A 落在 5%，与主键盘第二行一致
+            horizontalBias = 0.5f
+        }
+        rows[2][0].updateLayoutParams<ConstraintLayout.LayoutParams> {
+            // 链右端锚在退格键左侧（85%），链宽 0.7 → bias = 1 使字母右对齐，Z 落在 15%，
+            // 恰好让出主键盘 CapsKey 的 0.15 宽度位
+            horizontalBias = 1f
+        }
+        add(backspaceKey, lParams {
+            topToBottomOf(rows[1][0])
+            bottomOfParent()
+            rightOfParent()
+            // 与主键盘 BackspaceKey 同宽（0.15）：85%~100%
+            matchConstraintPercentWidth = 0.15f
+        })
         layoutParams = ViewGroup.LayoutParams(matchParent, matchParent)
     }
 
@@ -282,4 +276,6 @@ class PickerPageUi(
         return true
     }
 
+    companion object {
+    }
 }

@@ -24,14 +24,18 @@ import splitties.views.dsl.core.view
 import splitties.views.imageResource
 
 @SuppressLint("ViewConstructor")
-class PickerLayout(context: Context, theme: Theme, switchKey: KeyDef) :
-    ConstraintLayout(context) {
+class PickerLayout(
+    context: Context,
+    theme: Theme,
+    switchKey: KeyDef,
+    commaKey: KeyDef = Keyboard.PunctuationKey(",")
+) : ConstraintLayout(context) {
 
-    class Keyboard(context: Context, theme: Theme, switchKey: KeyDef) : BaseKeyboard(
+    class Keyboard(context: Context, theme: Theme, switchKey: KeyDef, commaKey: KeyDef) : BaseKeyboard(
         context, theme,         listOf(
             listOf(
                 LayoutSwitchKey("ABC", TextKeyboard.Name),
-                PunctuationKey(","),
+                commaKey,
                 switchKey,
                 LayoutSwitchKey("⑩", CustomKeyboard.Name, percentWidth = 0.1f),
                 SpaceKey(),
@@ -60,7 +64,7 @@ class PickerLayout(context: Context, theme: Theme, switchKey: KeyDef) :
         }
     }
 
-    val embeddedKeyboard = Keyboard(context, theme, switchKey)
+    val embeddedKeyboard = Keyboard(context, theme, switchKey, commaKey)
 
     val pager = view(::ViewPager2) { }
 
