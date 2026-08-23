@@ -728,18 +728,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var systemAltSticky = false
 
     /**
-     * 长按 Alt 启发式检测用的状态。
-     *
-     * 单纯靠非 Alt 键的 metaState 检测有一个盲区：用户长按 Alt → 松开 → 直接短按 Alt
-     * （没按任何其他键），整个流程走的是 first-tap 分支，metaState 检测根本没机会跑。
-     * 这时用"按住时长 + 期间是否按过其他键"做启发式补救：
-     * - [altDownStartTime]: Alt 按下时的事件时间
-     * - [altHadOtherKeysDuringHold]: Alt 按住期间是否按过非 Alt 键（用来排除"按住 Alt 输
-     *   入组合键"的正常用法，避免误判）
+     * Alt 按下时的事件时间，用于判断一次 Alt 按压是否为长按（>= [altLongPressThresholdMs]），
+     * 以便在抬起时清掉框架层 sticky meta。[systemAltSticky] 不再由框架锁置位（见
+     * [withInjectedModifiers]），这里仅服务于长按 Alt 的 meta 清理。
      */
     private var altDownStartTime = 0L
     private val altLongPressThresholdMs = 500L
-    private var altHadOtherKeysDuringHold = false
 
     /**
      * Physical modifier state tracked from the raw key-down/key-up stream.
@@ -1008,7 +1002,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     KeyEvent.META_ALT_LEFT_ON or
                     KeyEvent.META_ALT_RIGHT_ON).inv()
         } else if (physicalAltDown || altLatched) {
+            // Alt is genuinely intended (physically held, or app-level latched via double-tap
+            // Alt): (re)inject it so combos like Alt+grave carry Alt even when the OS failed to.
             meta = meta or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
+        } else {
+            // The framework may report META_ALT_ON on its own (e.g. Q25 locks Alt after a
+            // long-press of the Alt key, and some ROMs keep a sticky Alt across the next key).
+            // That is NOT a deliberate Alt+key combo, so strip it — otherwise a long-pressed Alt
+            // would leak Alt onto every following key (Alt+letter, Alt+number...) and re-trigger a
+            // lock. Only physicalAltDown / altLatched count as "Alt is meant to be active".
+            meta = meta and (KeyEvent.META_ALT_ON or
+                    KeyEvent.META_ALT_LEFT_ON or
+                    KeyEvent.META_ALT_RIGHT_ON).inv()
         }
         if (physicalCtrlDown) {
             meta = meta or KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
@@ -1064,26 +1069,30 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             playHardwareKeySound(keyCode)
         }
 
-        // ========== Earliest metaState probe ==========
-        // 在任何处理（包括 updatePhysicalModifiers）之前检查 keyEvent 自带的 metaState。
-        // 此时 physicalAltDown 仍反映"本次按键之前"的状态。
-        // 如果 metaState 已经有 META_ALT_ON 但 physicalAltDown 是 false，说明 Alt
-        // 不是用户刚按的，是系统层早就 active（sticky/latched/locked）。
-        //
-        // 关键限制：只检测**非 Alt 键**。BlackBerry SYM 键在 Android 里走
-        // KEYCODE_ALT_RIGHT，按下时 metaState 自带 META_ALT_ON（系统把它当 Alt），
-        // 但 SYM 不是真 Alt，不应该触发 sticky 判定。同理物理按 ALT_L/ALT_R
-        // 也会让 metaState 带 META_ALT_ON，但不是"系统早就 active"。
-        if (!isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
-            val rawAltMeta = (event.metaState and KeyEvent.META_ALT_ON) != 0
-            if (rawAltMeta && !physicalAltDown && !systemAltSticky) {
-                setSystemAltSticky(true)
-                Timber.d("Earliest metaState probe: key=$keyCode metaState=0x${event.metaState.toString(16)} → system Alt sticky")
-            }
-        }
+        // ========== Earliest metaState probe (deprecated) ==========
+        // We used to flag a framework-level Alt sticky/lock here (set systemAltSticky) so a
+        // long-pressed Alt wouldn't leak Alt onto following keys. That is now handled
+        // authoritatively in [withInjectedModifiers]: any META_ALT_ON the framework attaches on
+        // its own is stripped unless Alt is physically held (physicalAltDown) or app-latched
+        // (altLatched). No bookkeeping needed here.
+
+        // Snapshot physicalAltDown BEFORE updatePhysicalModifiers mutates it, so we can tell a
+        // *genuine* new Alt press apart from a *spurious duplicate* Alt down. Some ROMs/firmwares
+        // (notably Q25) fire a second KEYCODE_ALT down with repeatCount==0 during a long-press of
+        // Alt — that synthetic down is what was flipping the app-level Alt latch (KawaiiBar lock
+        // button) on a long-press. A genuine press always arrives after an up, so physicalAltDown
+        // is false at that moment; a duplicate during a hold has it true.
+        val wasAltDown = physicalAltDown
 
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, true)
+
+        // Swallow a redundant Alt down that arrives while Alt is already physically held
+        // (e.g. the Q25 firmware's synthetic second KEYCODE_ALT down during a long-press, or
+        // Alt auto-repeat). The genuine down was already forwarded; re-forwarding it would
+        // mismatched an up and can leave fcitx5 thinking Alt is still down. A genuine double-tap
+        // is never swallowed here because its second press arrives after an up (wasAltDown=false).
+        if (isAnyAltKeyCode(keyCode) && wasAltDown) return true
 
         // Swallow auto-repeat of a key whose long-press-to-symbol is pending, so holding it doesn't
         // spam the underlying character. Skip in non-text apps (games/emulators): they hold keys for
@@ -1095,44 +1104,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             return true
         }
 
-        // Track long-press heuristic: record Alt press start time and reset the
-        // "other keys during hold" flag. Also flag any non-Alt key pressed while Alt
-        // is physically held (so the heuristic won't fire for normal Alt-combo usage).
+        // Track Alt press start time (used by the long-press Alt release logic in onKeyUp).
         if (isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
             altDownStartTime = event.eventTime
-            altHadOtherKeysDuringHold = false
-        } else if (!isAnyAltKeyCode(keyCode) && physicalAltDown && event.repeatCount == 0) {
-            altHadOtherKeysDuringHold = true
         }
 
-        // Detect system-level Alt sticky state (independent of our app-level altLatched).
-        // POSITIVE-ONLY: only use metaState to detect sticky state (set true), never to
-        // clear it (set false). Some ROMs (notably the Q25 / certain Android builds) keep
-        // the system-level Alt sticky in a native input-dispatcher state that is NOT
-        // reflected in the metaState of subsequent regular key events. If we used the
-        // absence of META_ALT_ON to clear the flag, the lock icon would disappear the
-        // moment the user typed any character — even though the system was still sticky.
-        // Clearing must go through explicit [clearSystemAltSticky] (user action).
-        //
-        // Trigger conditions (any of):
-        //   1) Non-Alt key with META_ALT_ON in metaState while Alt NOT physically held
-        //      (post-release sticky detection — the normal case)
-        //   2) Non-Alt key with META_ALT_ON in metaState while Alt IS physically held
-        //      for >= altLongPressThresholdMs (during-hold detection — some ROMs
-        //      latch/lock the modifier while the user is still holding it, e.g. the Q25
-        //      when the user does "hold Alt + type several symbols then release")
-        if (!isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
-            val rawAltMeta = (event.metaState and KeyEvent.META_ALT_ON) != 0
-            if (rawAltMeta && !systemAltSticky) {
-                val postReleaseSticky = !physicalAltDown
-                val duringHoldSticky = physicalAltDown &&
-                        (event.eventTime - altDownStartTime >= altLongPressThresholdMs)
-                if (postReleaseSticky || duringHoldSticky) {
-                    setSystemAltSticky(true)
-                    Timber.d("Detected system Alt sticky (postRelease=$postReleaseSticky, duringHold=$duringHoldSticky) from metaState=0x${event.metaState.toString(16)}")
-                }
-            }
-        }
+        // System-level Alt sticky detection (deprecated):
+        // We no longer flag a framework Alt-lock here. Whether the framework has Alt "stuck"
+        // is irrelevant now — [withInjectedModifiers] strips any META_ALT_ON the OS attaches on
+        // its own (long-press Alt, sticky ROM behavior) unless Alt is physically held or
+        // app-latched, so a locked Alt can no longer leak onto following keys or re-trigger a
+        // lock. The Alt-lock button is now driven solely by the app-level [altLatched] (double-tap
+        // Alt), which is genuine user intent.
 
         // When Alt latch is disabled, clear any latched state and let Alt behave as a normal modifier.
         if (!altLatchEnabled() && altLatched) {
@@ -1140,7 +1123,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
 
         if (altLatchEnabled() && isAltLatchKey(event)) {
-            if (event.repeatCount == 0) {
+            if (event.repeatCount == 0 && !wasAltDown) {
                 val now = event.eventTime
                 if (altLatched) {
                     // Already latched: pressing the latch key again unlocks it (pure unlock, consume).
@@ -1191,15 +1174,21 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
 
         // Long-press a physical key to input its keycap symbol (BlackBerry-style).
-        // Skip while Alt is active so Alt+number keeps selecting candidates; keys bound to other
-        // jobs (0, Shift, SYM/Alt_R, Space) are absent from the map and fall through naturally.
+        // Skip only when Alt is *physically held* (physicalAltDown) or *app-level latched*
+        // (altLatched, double-tap Alt) so Alt+number keeps selecting candidates and intentional
+        // Alt mode is preserved. We deliberately do NOT check systemAltSticky here: that flag is
+        // the framework's own Alt-lock artifact (e.g. Q25 locks Alt on a long-press of the Alt
+        // key itself), not a deliberate Alt+key combo — the user still expects keycap symbols when
+        // they long-press a letter after such a lock, so it must not block symbol input.
+        // Keys bound to other jobs (0, Shift, SYM/Alt_R, Space) are absent from the map and fall
+        // through naturally.
         // Skip in non-text apps (TYPE_NULL: games / emulators) — they hold keys for movement or
         // action and must keep receiving every event; hijacking their physical keys would make
         // held buttons dead (e.g. GBA emulator). The feature is meaningless there anyway.
         if (event.repeatCount == 0 &&
             longPressSymbolEnabled() &&
             !inputDeviceMgr.isNullInputType() &&
-            !physicalAltDown && !altLatched && !systemAltSticky &&
+            !physicalAltDown && !altLatched &&
             HardwareKeySymbolMap.contains(keyCode)
         ) {
             // 按下即上屏（下方 fall-through forwardKeyEvent 处理），消除"抬起才上屏"的慢半拍；
@@ -1364,44 +1353,23 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
         }
 
-        // Long-press heuristic for system Alt sticky detection.
-        // When Alt is released: if it was held for >= altLongPressThresholdMs, the framework
-        // has likely entered sticky/locked state on this device. We do NOT require that no
-        // other keys were pressed during the hold — on the Q25 / some Android builds the
-        // sticky state is entered even when the user holds Alt and types numbers/symbols
-        // (e.g. Alt+number combos held long enough), so excluding that case would miss
-        // the real bug. The cost of the occasional false positive is minor: the user just
-        // sees a lock icon and can press Alt to clear it.
-        //
-        // Also: check the metaState of the Alt key-up event itself. On some ROMs the system
-        // injects META_ALT_ON into the modifier's own key-up metaState when it has entered
-        // sticky/locked state. If we see that (with physicalAltDown now false), it's a
-        // strong positive signal even when the duration is short.
+        // Long-press Alt → clear the framework's native sticky/locked Alt meta.
+        // On the Q25 / some ROMs, holding Alt past a threshold makes the framework enter a native
+        // Alt-lock that it keeps across the next key. We do NOT surface that as a sticky-lock state
+        // anymore (the Alt-lock button is now driven only by the app-level double-tap latch). We
+        // just proactively clear the framework's sticky meta on a long-press Alt release so the
+        // following key starts clean. [withInjectedModifiers] is the real guarantee that a framework
+        // Alt-lock can't leak onto following keys (it strips META_ALT_ON unless Alt is physically
+        // held or app-latched), so this clear is belt-and-suspenders.
         if (isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
             val duration = event.eventTime - altDownStartTime
-            val rawAltMeta = (event.metaState and KeyEvent.META_ALT_ON) != 0
-            if (!systemAltSticky) {
-                if (duration >= altLongPressThresholdMs) {
-                    setSystemAltSticky(true)
-                    // Synchronously clear the editor's metaState so the next key (especially
-                    // Backspace/Delete) doesn't get forwarded with a stale META_ALT_ON from
-                    // the InputConnection's perspective, even after we strip it from the
-                    // event itself. Belt-and-suspenders against long-press-induced line-kill.
-                    currentInputConnection?.clearMetaKeyStates(
-                        KeyEvent.META_ALT_ON or
-                                KeyEvent.META_ALT_LEFT_ON or
-                                KeyEvent.META_ALT_RIGHT_ON
-                    )
-                    Timber.d("Heuristic: long-press Alt duration=$duration ms (otherKeys=$altHadOtherKeysDuringHold) → system Alt sticky")
-                } else if (rawAltMeta) {
-                    setSystemAltSticky(true)
-                    currentInputConnection?.clearMetaKeyStates(
-                        KeyEvent.META_ALT_ON or
-                                KeyEvent.META_ALT_LEFT_ON or
-                                KeyEvent.META_ALT_RIGHT_ON
-                    )
-                    Timber.d("Heuristic: Alt key-up metaState carries META_ALT_ON → system Alt sticky")
-                }
+            if (duration >= altLongPressThresholdMs) {
+                currentInputConnection?.clearMetaKeyStates(
+                    KeyEvent.META_ALT_ON or
+                            KeyEvent.META_ALT_LEFT_ON or
+                            KeyEvent.META_ALT_RIGHT_ON
+                )
+                Timber.d("Long-press Alt released (${duration}ms): cleared framework sticky Alt meta")
             }
         }
 
