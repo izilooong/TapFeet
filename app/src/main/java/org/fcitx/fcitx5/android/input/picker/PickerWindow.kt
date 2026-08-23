@@ -110,9 +110,16 @@ class PickerWindow(
 
     override fun onCreateView() = PickerLayout(
         context, theme, switchKey,
-        commaKey = if (key == Key.Symbol)
-            ImagePickerSwitchKey(R.drawable.ic_baseline_tag_faces_24, Key.Emoji)
-        else PickerLayout.Keyboard.PunctuationKey(",")
+        commaKey = when (key) {
+            // 符号窗口第 2 格：emoji 触发键（逗号移到句号左边，见 periodLeftKey）
+            Key.Symbol -> ImagePickerSwitchKey(R.drawable.ic_baseline_tag_faces_24, Key.Emoji)
+            // emoji 窗口第 2 格：符号触发键（逗号移到句号左边，见 periodLeftKey）
+            Key.Emoji -> ImagePickerSwitchKey(R.drawable.ic_baseline_emoji_symbols_24, Key.Symbol)
+            else -> PickerLayout.Keyboard.PunctuationKey(",")
+        },
+        periodLeftKey = if (key == Key.Symbol || key == Key.Emoji)
+            PickerLayout.Keyboard.PunctuationKey(",")
+        else null
     ).apply {
         pickerLayout = this
         embeddedKeyboardEnabledState = AppPrefs.getInstance().customKeyboard.enabled.getValue()

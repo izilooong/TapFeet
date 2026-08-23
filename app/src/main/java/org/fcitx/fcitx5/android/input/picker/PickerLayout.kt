@@ -30,10 +30,17 @@ class PickerLayout(
     context: Context,
     theme: Theme,
     switchKey: KeyDef,
-    commaKey: KeyDef = Keyboard.PunctuationKey(",")
+    commaKey: KeyDef = Keyboard.PunctuationKey(","),
+    periodLeftKey: KeyDef? = null
 ) : ConstraintLayout(context) {
 
-    class Keyboard(context: Context, theme: Theme, switchKey: KeyDef, commaKey: KeyDef) : BaseKeyboard(
+    class Keyboard(
+        context: Context,
+        theme: Theme,
+        switchKey: KeyDef,
+        commaKey: KeyDef,
+        periodLeftKey: KeyDef? = null
+    ) : BaseKeyboard(
         context, theme,
         listOf(
             buildList {
@@ -45,6 +52,7 @@ class PickerLayout(
                     add(LayoutSwitchKey("⑩", CustomKeyboard.Name, percentWidth = 0.1f))
                 }
                 add(SpaceKey())
+                if (periodLeftKey != null) add(periodLeftKey)
                 add(PunctuationKey("."))
                 add(ReturnKey())
             }
@@ -72,9 +80,10 @@ class PickerLayout(
 
     private val switchKeyDef = switchKey
     private val commaKeyDef = commaKey
+    private val periodLeftKeyDef = periodLeftKey
     private val themeDef = theme
 
-    var embeddedKeyboard = Keyboard(context, themeDef, switchKeyDef, commaKeyDef)
+    var embeddedKeyboard = Keyboard(context, themeDef, switchKeyDef, commaKeyDef, periodLeftKeyDef)
 
     val pager = view(::ViewPager2) { }
 
@@ -104,7 +113,7 @@ class PickerLayout(
     fun rebuildEmbeddedKeyboard() {
         val old = embeddedKeyboard
         removeView(old)
-        embeddedKeyboard = Keyboard(context, themeDef, switchKeyDef, commaKeyDef)
+        embeddedKeyboard = Keyboard(context, themeDef, switchKeyDef, commaKeyDef, periodLeftKeyDef)
         add(embeddedKeyboard, lParams {
             below(pager)
             centerHorizontally()
