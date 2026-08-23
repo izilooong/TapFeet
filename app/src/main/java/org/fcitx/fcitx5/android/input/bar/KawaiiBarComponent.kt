@@ -183,6 +183,14 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             }
         }
 
+    /** 自定义键盘总开关：关闭时隐藏状态栏⑩按钮 */
+    @Keep
+    private val onCustomKeyboardEnabledListener =
+        ManagedPreference.OnChangeListener<Boolean> { _, enabled ->
+            idleUi.customKeyboardButton.visibility =
+                if (enabled) View.VISIBLE else View.GONE
+        }
+
     private fun launchClipboardTimeoutJob() {
         clipboardTimeoutJob?.cancel()
         val timeout = clipboardItemTimeout.getValue() * 1000L
@@ -366,6 +374,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 updateKeyboardToggleButton()
             }
             customKeyboardButton.setOnClickListener {
+                // 总开关守卫（按钮正常情况下已隐藏，双保险）
+                if (!prefs.customKeyboard.enabled.getValue()) return@setOnClickListener
                 // 「⑩」自定义键盘开关：显示中且是自定义键盘 → 关闭；否则 → 打开自定义键盘
                 if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == CustomKeyboard.Name) {
                     windowManager.setKeyboardWindowVisible(false)
@@ -580,6 +590,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         ClipboardManager.addOnUpdateListener(onClipboardUpdateListener)
         clipboardSuggestion.registerOnChangeListener(onClipboardSuggestionUpdateListener)
         clipboardItemTimeout.registerOnChangeListener(onClipboardTimeoutUpdateListener)
+        prefs.customKeyboard.enabled.registerOnChangeListener(onCustomKeyboardEnabledListener)
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {

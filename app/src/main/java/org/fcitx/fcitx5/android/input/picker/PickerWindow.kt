@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 import androidx.transition.Transition
 import androidx.viewpager2.widget.ViewPager2
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
 import org.fcitx.fcitx5.android.input.dependency.theme
@@ -51,6 +52,9 @@ class PickerWindow(
 
     private lateinit var pickerLayout: PickerLayout
     private lateinit var pickerPagesAdapter: PickerPagesAdapter
+
+    /** 底排键盘构建时的自定义键盘开关状态，onAttached 时不一致则重建（⑩ 键随开关出现/隐藏） */
+    private var embeddedKeyboardEnabledState: Boolean? = null
 
     override fun enterAnimation(lastWindow: InputWindow): Transition? = null
 
@@ -111,6 +115,7 @@ class PickerWindow(
         else PickerLayout.Keyboard.PunctuationKey(",")
     ).apply {
         pickerLayout = this
+        embeddedKeyboardEnabledState = AppPrefs.getInstance().customKeyboard.enabled.getValue()
         val bordered = followKeyBorder && keyBorder
         pickerPagesAdapter = PickerPagesAdapter(
             theme, keyActionListener, popupActionListener, data,
@@ -153,6 +158,12 @@ class PickerWindow(
     override fun onCreateBarExtension() = pickerLayout.tabsUi.root
 
     override fun onAttached() {
+        // 自定义键盘开关在窗口创建后变化过 → 重建底排键盘（⑩ 键随 enabled 出现/隐藏）
+        val enabled = AppPrefs.getInstance().customKeyboard.enabled.getValue()
+        if (embeddedKeyboardEnabledState != enabled) {
+            embeddedKeyboardEnabledState = enabled
+            pickerLayout.rebuildEmbeddedKeyboard()
+        }
         pickerLayout.embeddedKeyboard.also {
             pickerPagesAdapter.refreshIfNeeded()
             it.onReturnDrawableUpdate(returnKeyDrawable.resourceId)

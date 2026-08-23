@@ -13,6 +13,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.CustomKeyConfig
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
+import org.fcitx.fcitx5.android.ui.main.modified.MySwitchPreference
 
 /**
  * 「自定义一行键盘」配置页：固定 10 个键，每个键一个条目，
@@ -29,6 +30,16 @@ class CustomKeyboardSettingsFragment : PaddingPreferenceFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
         preferenceScreen = preferenceManager.createPreferenceScreen(context).apply {
+            // 总开关：与 AppPrefs.CustomKeyboard.enabled 同 key，切换即时生效（状态栏⑩/符号键盘⑩/Sym 循环响应）
+            val enableSwitch = MySwitchPreference(context).apply {
+                key = "custom_keyboard_enabled"
+                title = getString(R.string.custom_keyboard_enabled)
+                summary = getString(R.string.custom_keyboard_enabled_summary)
+                setDefaultValue(true)
+                isIconSpaceReserved = false
+                isSingleLineTitle = false
+            }
+            addPreference(enableSwitch)
             customKeyboard.keys.getValue().forEachIndexed { index, keyConfig ->
                 val pref = Preference(context).apply {
                     title = getString(R.string.custom_keyboard_key_title, index + 1)
@@ -41,6 +52,13 @@ class CustomKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 }
                 addPreference(pref)
                 keyPrefs.add(pref)
+            }
+            // 开关关闭时禁用下方按键条目
+            keyPrefs.forEach { it.isEnabled = customKeyboard.enabled.getValue() }
+            enableSwitch.setOnPreferenceChangeListener { _, newValue ->
+                val enabled = newValue as Boolean
+                keyPrefs.forEach { it.isEnabled = enabled }
+                true
             }
         }
     }

@@ -79,13 +79,16 @@ class IdleUi(
 
     val keyboardToggleButton = ToolButton(ctx, R.drawable.ic_baseline_keyboard_24, theme)
 
-    /** 「⑩」自定义键盘开关：单击打开/关闭自定义一行键盘（样式对齐 [ToolButton]） */
+    /** 「⑩」自定义键盘开关：单击打开/关闭自定义一行键盘（样式对齐 [ToolButton]）。
+     *  总开关（[AppPrefs.CustomKeyboard.enabled]）关闭时隐藏，由 KawaiiBarComponent 监听实时切换。 */
     val customKeyboardButton = textView {
         text = "⑩"
         textSize = 18f
         setTextColor(theme.altKeyTextColor)
         gravity = Gravity.CENTER
         background = borderlessRippleDrawable(theme.keyPressHighlightColor, dp(20))
+    }.apply {
+        visibility = if (AppPrefs.getInstance().customKeyboard.enabled.getValue()) View.VISIBLE else View.GONE
     }
 
     val inputMethodButton = ToolButton(ctx, R.drawable.ic_status_pinyin, theme)

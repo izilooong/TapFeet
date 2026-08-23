@@ -472,6 +472,8 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
      * 纯数据、无自动 UI，编辑页为 [org.fcitx.fcitx5.android.ui.main.settings.behavior.CustomKeyboardSettingsFragment]。
      */
     inner class CustomKeyboard : ManagedPreferenceInternal(sharedPreferences) {
+        // 总开关：关闭后自定义键盘不可打开（状态栏⑩按钮、符号键盘⑩键隐藏，Sym 循环剔除自定义态）
+        val enabled = bool("custom_keyboard_enabled", true)
         val keys = stringLike("custom_keyboard_keys", CustomKeyboardCodec, CustomKeyboardDefaults.keys)
     }
 

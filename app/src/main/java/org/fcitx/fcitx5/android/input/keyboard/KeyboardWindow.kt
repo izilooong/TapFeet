@@ -112,6 +112,16 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             }
         }
 
+    /** 总开关关闭时：若正显示自定义键盘则立即切回主键盘（并重置 Sym 记忆态） */
+    @Keep
+    private val customKeyboardEnabledListener =
+        ManagedPreference.OnChangeListener<Boolean> { _, enabled ->
+            if (!enabled && currentKeyboardName == CustomKeyboard.Name) {
+                symMode = SymMode.NONE
+                switchLayoutSync(TextKeyboard.Name, remember = false)
+            }
+        }
+
     private val keyActionListener = KeyActionListener { it, source ->
         if (it is KeyAction.LayoutSwitchAction) {
             switchLayout(it.act)
@@ -132,6 +142,8 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         attachLayout(currentKeyboardName.ifEmpty { TextKeyboard.Name })
         // 监听自定义键盘配置变化：保存后若正在显示自定义键盘，立即重建生效
         AppPrefs.getInstance().customKeyboard.keys.registerOnChangeListener(customKeyboardKeysListener)
+        // 监听总开关：关闭时若正显示自定义键盘，立即切回主键盘
+        AppPrefs.getInstance().customKeyboard.enabled.registerOnChangeListener(customKeyboardEnabledListener)
         return keyboardView
     }
 
@@ -172,6 +184,11 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     }
 
     private fun doSwitchLayout(target: String, remember: Boolean) {
+        // 总开关兜底：关闭后任何入口（Sym 循环 / 状态栏⑩ / 符号键盘⑩ / 恢复上次态）都打不开自定义键盘
+        if (target == CustomKeyboard.Name && !AppPrefs.getInstance().customKeyboard.enabled.getValue()) {
+            if (symMode == SymMode.CUSTOM) symMode = SymMode.NONE
+            return
+        }
         if (keyboards.containsKey(target) || target == CustomKeyboard.Name) {
             // 自定义键盘不进 lastSymbolType，保证 ?123 始终回符号选择器
             if (remember && target != TextKeyboard.Name && target != CustomKeyboard.Name) {

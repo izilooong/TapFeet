@@ -117,6 +117,8 @@
     <string name="keyboard_height">键盘高度</string>
     <string name="virtual_keyboard">虚拟键盘</string>
     <string name="custom_keyboard">自定义键盘</string>
+    <string name="custom_keyboard_enabled">启用自定义键盘</string>
+    <string name="custom_keyboard_enabled_summary">关闭后自定义键盘在所有入口隐藏。</string>
     <string name="custom_keyboard_key_title">按键 %1$d</string>
     <string name="custom_keyboard_edit_hint">每行一个字符，第一行为单击输入，其余为长按选项。</string>
     <string name="custom_keyboard_empty">（空）</string>

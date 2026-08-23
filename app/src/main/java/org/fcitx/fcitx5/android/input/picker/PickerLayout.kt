@@ -7,8 +7,10 @@ package org.fcitx.fcitx5.android.input.picker
 import android.annotation.SuppressLint
 import android.content.Context
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.updateLayoutParams
 import androidx.viewpager2.widget.ViewPager2
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.keyboard.*
 import splitties.dimensions.dp
@@ -32,16 +34,20 @@ class PickerLayout(
 ) : ConstraintLayout(context) {
 
     class Keyboard(context: Context, theme: Theme, switchKey: KeyDef, commaKey: KeyDef) : BaseKeyboard(
-        context, theme,         listOf(
-            listOf(
-                LayoutSwitchKey("ABC", TextKeyboard.Name),
-                commaKey,
-                switchKey,
-                LayoutSwitchKey("⑩", CustomKeyboard.Name, percentWidth = 0.1f),
-                SpaceKey(),
-                PunctuationKey("."),
-                ReturnKey()
-            )
+        context, theme,
+        listOf(
+            buildList {
+                add(LayoutSwitchKey("ABC", TextKeyboard.Name))
+                add(commaKey)
+                add(switchKey)
+                // 总开关（AppPrefs.CustomKeyboard.enabled）关闭时不放⑩键；SpaceKey(0f) 自动吸收余宽，底排无空隙
+                if (AppPrefs.getInstance().customKeyboard.enabled.getValue()) {
+                    add(LayoutSwitchKey("⑩", CustomKeyboard.Name, percentWidth = 0.1f))
+                }
+                add(SpaceKey())
+                add(PunctuationKey("."))
+                add(ReturnKey())
+            }
         )
     ) {
 
@@ -64,7 +70,11 @@ class PickerLayout(
         }
     }
 
-    val embeddedKeyboard = Keyboard(context, theme, switchKey, commaKey)
+    private val switchKeyDef = switchKey
+    private val commaKeyDef = commaKey
+    private val themeDef = theme
+
+    var embeddedKeyboard = Keyboard(context, themeDef, switchKeyDef, commaKeyDef)
 
     val pager = view(::ViewPager2) { }
 
@@ -88,5 +98,19 @@ class PickerLayout(
             centerHorizontally()
             below(pager, dp(-1))
         })
+    }
+
+    /** 自定义键盘总开关变化时重建底排键盘（⑩ 键随 enabled 出现/隐藏），并重指 pager 的 above 约束 */
+    fun rebuildEmbeddedKeyboard() {
+        val old = embeddedKeyboard
+        removeView(old)
+        embeddedKeyboard = Keyboard(context, themeDef, switchKeyDef, commaKeyDef)
+        add(embeddedKeyboard, lParams {
+            below(pager)
+            centerHorizontally()
+            bottomOfParent()
+            matchConstraintPercentHeight = 0.25f
+        })
+        pager.updateLayoutParams<ConstraintLayout.LayoutParams> { above(embeddedKeyboard) }
     }
 }

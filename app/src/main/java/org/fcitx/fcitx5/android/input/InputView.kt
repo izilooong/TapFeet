@@ -789,15 +789,18 @@ class InputView(
             else -> null
         }
 
-    /** 按 [AppPrefs.HardwareKeyboard.symFirst] 排出循环顺序，首选项排在最前 */
+    /** 按 [AppPrefs.HardwareKeyboard.symFirst] 排出循环顺序，首选项排在最前；
+     *  自定义键盘总开关（[AppPrefs.CustomKeyboard.enabled]）关闭时剔除 CUSTOM 态，Sym 键仅在符号选择器与隐藏间循环 */
     private fun symCycleOrder(): List<SymState> {
         val custom = SymState.CUSTOM
         val symbol = SymState.SYMBOL
         val hidden = SymState.HIDDEN
-        return if (hardwareKeyboardPrefs.symFirst.getValue() == SymFirstTarget.CUSTOM)
+        val base = if (hardwareKeyboardPrefs.symFirst.getValue() == SymFirstTarget.CUSTOM)
             listOf(custom, symbol, hidden)
         else
             listOf(symbol, custom, hidden)
+        return if (AppPrefs.getInstance().customKeyboard.enabled.getValue()) base
+        else base.filter { it != SymState.CUSTOM }
     }
 
     private fun applySymState(state: SymState) {
