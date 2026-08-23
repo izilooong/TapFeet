@@ -1,8 +1,8 @@
 {
     "versionCode": 152,
-    "versionName": "V1.0.6",
-    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.6/tapfeet.ime-v1.0.6.apk",
-    "releaseNotes": "- 增加自定义键盘\n- 优化长按快速输入符号\n-O",
+    "versionName": "V1.0.7",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.7/tapfeet.ime-v1.0.7.apk",
+    "releaseNotes": "- 物理键盘映射符号窗口\n- 自定义键盘开关\n- 优化长按快速输入符号\n-O",
     "minVersionCode": 0,
-    "publishDate": "2026-08-22"
+    "publishDate": "2026-08-23"
 }
