@@ -445,4 +445,35 @@
     <string name="cat_hw_sound_symbol">Sound &amp; Symbols</string>
     <string name="cat_hw_keybindings">Key Bindings</string>
     <string name="dictionary">Dictionaries</string>
+    <!-- Custom theme color editor -->
+    <string name="theme_colors">Theme colors</string>
+    <string name="blank_color_theme">Blank color theme</string>
+    <string name="background_color">Background color</string>
+    <string name="bar_color">Bar color</string>
+    <string name="keyboard_color">Keyboard color</string>
+    <string name="key_background_color">Key background</string>
+    <string name="key_text_color">Key text</string>
+    <string name="candidate_text_color">Candidate text</string>
+    <string name="candidate_label_color">Candidate label</string>
+    <string name="candidate_comment_color">Candidate comment</string>
+    <string name="alt_key_background_color">Alt key background</string>
+    <string name="alt_key_text_color">Alt key text</string>
+    <string name="accent_key_background_color">Accent key background</string>
+    <string name="accent_key_text_color">Accent key text</string>
+    <string name="key_press_highlight_color">Key press highlight</string>
+    <string name="key_shadow_color">Key shadow</string>
+    <string name="popup_background_color">Popup background</string>
+    <string name="popup_text_color">Popup text</string>
+    <string name="spacebar_color">Spacebar color</string>
+    <string name="divider_color">Divider color</string>
+    <string name="clipboard_entry_color">Clipboard entry</string>
+    <string name="generic_active_background_color">Generic active background</string>
+    <string name="generic_active_foreground_color">Generic active foreground</string>
+    <!-- Color groups -->
+    <string name="color_group_overall">Overall &amp; keyboard</string>
+    <string name="color_group_candidate">Candidate bar</string>
+    <string name="color_group_key">Keys</string>
+    <string name="color_group_special_key">Special keys</string>
+    <string name="color_group_popup">Candidate popup</string>
+    <string name="color_group_generic">Generic active</string>
 </resources>

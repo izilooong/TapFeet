@@ -36,8 +36,13 @@ import splitties.views.dsl.core.add
 import splitties.views.dsl.core.horizontalMargin
 import splitties.views.dsl.core.imageView
 import splitties.views.dsl.core.lParams
-import splitties.views.dsl.core.view
 import splitties.views.imageDrawable
+import android.graphics.Typeface
+import android.view.Gravity
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.TextView
+import splitties.views.dsl.constraintlayout.topOfParent
 
 class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
 
@@ -84,8 +89,49 @@ class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
         scaleType = ImageView.ScaleType.CENTER_CROP
     }
 
-    private val barHeight = ctx.dp(40)
-    private val fakeKawaiiBar = view(::View)
+    private val barHeight = ctx.dp(52)
+
+    private val candidateDemoData = listOf(
+        Triple("1", "你好", "nǐ hǎo"),
+        Triple("2", "世界", "shì jiè"),
+        Triple("3", "中文", "zhōng wén"),
+        Triple("4", "输入法", "shū rù fǎ"),
+        Triple("5", "键盘", "jiàn pán")
+    )
+    private val candidateLabelViews = mutableListOf<TextView>()
+    private val candidateTextViews = mutableListOf<TextView>()
+    private val candidateCommentViews = mutableListOf<TextView>()
+
+    private val fakeKawaiiBar = HorizontalScrollView(ctx).apply {
+        isHorizontalScrollBarEnabled = false
+        val inner = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(ctx.dp(12), 0, ctx.dp(12), 0)
+            candidateDemoData.forEach { (label, text, comment) ->
+                val labelView = TextView(ctx).apply {
+                    this.text = label
+                    textSize = 14f
+                    typeface = Typeface.defaultFromStyle(Typeface.BOLD)
+                }
+                val wordView = TextView(ctx).apply {
+                    this.text = " $text "
+                    textSize = 16f
+                }
+                val commentView = TextView(ctx).apply {
+                    this.text = comment
+                    textSize = 12f
+                }
+                candidateLabelViews.add(labelView)
+                candidateTextViews.add(wordView)
+                candidateCommentViews.add(commentView)
+                addView(labelView)
+                addView(wordView)
+                addView(commentView)
+            }
+        }
+        addView(inner)
+    }
 
     private var keyboardWidth = -1
     private var keyboardHeight = -1
@@ -95,8 +141,9 @@ class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
         add(bkg, lParams {
             centerInParent()
         })
-        add(fakeKawaiiBar, lParams(height = dp(40)) {
-            centerHorizontally()
+        add(fakeKawaiiBar, lParams(matchConstraints, barHeight) {
+            topOfParent()
+            centerHorizontally(keyboardSidePaddingPx)
         })
     }
 
@@ -185,6 +232,9 @@ class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
             fakeInputView.removeView(fakeKeyboardWindow)
         }
         fakeKawaiiBar.backgroundColor = if (keyBorder) Color.TRANSPARENT else theme.barColor
+        candidateLabelViews.forEach { it.setTextColor(theme.candidateLabelColor) }
+        candidateTextViews.forEach { it.setTextColor(theme.candidateTextColor) }
+        candidateCommentViews.forEach { it.setTextColor(theme.candidateCommentColor) }
         fakeKeyboardWindow = TextKeyboard(ctx, theme).also {
             it.onAttach()
         }

@@ -31,7 +31,7 @@ import java.util.UUID
 
 class ThemeListFragment : Fragment() {
 
-    private lateinit var imageLauncher: ActivityResultLauncher<Theme.Custom?>
+    private lateinit var imageLauncher: ActivityResultLauncher<Pair<Theme.Custom?, Boolean>>
 
     private lateinit var importLauncher: ActivityResultLauncher<String>
 
@@ -162,6 +162,7 @@ class ThemeListFragment : Fragment() {
         val ctx = requireContext()
         val actions = arrayOf(
             getString(R.string.choose_image),
+            getString(R.string.blank_color_theme),
             getString(R.string.import_from_file),
             getString(R.string.duplicate_builtin_theme)
         )
@@ -170,9 +171,10 @@ class ThemeListFragment : Fragment() {
             .setNegativeButton(android.R.string.cancel, null)
             .setItems(actions) { _, i ->
                 when (i) {
-                    0 -> imageLauncher.launch(null)
-                    1 -> importLauncher.launch("application/zip")
-                    2 -> {
+                    0 -> imageLauncher.launch(Pair(null, false))
+                    1 -> imageLauncher.launch(Pair(null, true))
+                    2 -> importLauncher.launch("application/zip")
+                    3 -> {
                         val view = ResponsiveThemeListView(ctx).apply {
                             // force AlertDialog's customPanel to grow
                             minimumHeight = Int.MAX_VALUE
@@ -221,7 +223,7 @@ class ThemeListFragment : Fragment() {
     }
 
     private fun editTheme(theme: Theme.Custom) {
-        imageLauncher.launch(theme)
+        imageLauncher.launch(Pair(theme, false))
     }
 
     private fun exportTheme(theme: Theme.Custom) {

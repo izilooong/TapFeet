@@ -439,4 +439,34 @@
     <string name="cat_hw_sound_symbol">声音与符号</string>
     <string name="cat_hw_keybindings">物理键绑定</string>
     <string name="dictionary">词库</string>
+    <!-- Custom theme color editor (Chinese) -->
+    <string name="theme_colors">主题颜色</string>
+    <string name="blank_color_theme">纯色主题</string>
+    <string name="color_group_overall">整体与键盘</string>
+    <string name="color_group_candidate">候选栏</string>
+    <string name="color_group_key">普通按键</string>
+    <string name="color_group_special_key">特殊按键</string>
+    <string name="color_group_popup">候选弹窗</string>
+    <string name="color_group_generic">通用状态</string>
+    <string name="background_color">背景色</string>
+    <string name="bar_color">候选栏底色</string>
+    <string name="keyboard_color">键盘底色</string>
+    <string name="key_background_color">按键背景</string>
+    <string name="key_text_color">按键文字</string>
+    <string name="candidate_text_color">候选文字</string>
+    <string name="candidate_label_color">候选序号</string>
+    <string name="candidate_comment_color">候选注释</string>
+    <string name="alt_key_background_color">Alt键背景</string>
+    <string name="alt_key_text_color">Alt键文字</string>
+    <string name="accent_key_background_color">强调键背景</string>
+    <string name="accent_key_text_color">强调键文字</string>
+    <string name="key_press_highlight_color">按下高亮</string>
+    <string name="key_shadow_color">按键阴影</string>
+    <string name="popup_background_color">弹窗背景</string>
+    <string name="popup_text_color">弹窗文字</string>
+    <string name="spacebar_color">空格键</string>
+    <string name="divider_color">分隔线</string>
+    <string name="clipboard_entry_color">剪贴板条目</string>
+    <string name="generic_active_background_color">激活背景</string>
+    <string name="generic_active_foreground_color">激活前景</string>
 </resources>
