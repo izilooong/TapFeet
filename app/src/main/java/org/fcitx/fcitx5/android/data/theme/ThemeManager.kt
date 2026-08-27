@@ -24,6 +24,8 @@ object ThemeManager {
     }
 
     val BuiltinThemes = listOf(
+        ThemePreset.WeChatLight,
+        ThemePreset.WeChatDark,
         ThemePreset.MaterialLight,
         ThemePreset.MaterialDark,
         ThemePreset.PixelLight,

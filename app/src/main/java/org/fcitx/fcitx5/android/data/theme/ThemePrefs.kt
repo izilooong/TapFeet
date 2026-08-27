@@ -34,14 +34,14 @@ class ThemePrefs(sharedPreferences: SharedPreferences) :
         return pref
     }
 
-    val keyBorder = switch(R.string.key_border, "key_border", false)
+    val keyBorder = switch(R.string.key_border, "key_border", true)
 
     val keyBorderStroke = switch(
-        R.string.key_border_stroke, "key_border_stroke", false,
+        R.string.key_border_stroke, "key_border_stroke", true,
         enableUiOn = { keyBorder.getValue() }
     )
 
-    val keyRippleEffect = switch(R.string.key_ripple_effect, "key_ripple_effect", false)
+    val keyRippleEffect = switch(R.string.key_ripple_effect, "key_ripple_effect", true)
 
     val keyHorizontalMargin: ManagedPreference.PInt
     val keyHorizontalMarginLandscape: ManagedPreference.PInt
@@ -128,7 +128,7 @@ class ThemePrefs(sharedPreferences: SharedPreferences) :
      * This is effectively an internal preference which does not need UI.
      */
     val normalModeTheme = ManagedThemePreference(
-        sharedPreferences, "normal_mode_theme", ThemeManager.DefaultTheme
+        sharedPreferences, "normal_mode_theme", ThemePreset.WeChatDark
     ).also {
         it.register()
     }
@@ -143,7 +143,7 @@ class ThemePrefs(sharedPreferences: SharedPreferences) :
     val lightModeTheme = themePreference(
         R.string.light_mode_theme,
         "light_mode_theme",
-        if (BuildConfig.DEBUG) ThemePreset.MaterialLight else ThemePreset.PixelLight,
+        ThemePreset.WeChatLight,
         enableUiOn = {
             followSystemDayNightTheme.getValue()
         })
@@ -151,7 +151,7 @@ class ThemePrefs(sharedPreferences: SharedPreferences) :
     val darkModeTheme = themePreference(
         R.string.dark_mode_theme,
         "dark_mode_theme",
-        if (BuildConfig.DEBUG) ThemePreset.MaterialDark else ThemePreset.PixelDark,
+        ThemePreset.WeChatDark,
         enableUiOn = {
             followSystemDayNightTheme.getValue()
         })

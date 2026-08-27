@@ -304,4 +304,56 @@ object ThemePreset {
         genericActiveForegroundColor = 0xffffffff
     )
 
+    val WeChatLight = Theme.Builtin(
+        name = "WeChatLight",
+        isDark = false,
+        backgroundColor = 0xfff5f5f5,
+        barColor = 0xfff5f5f5,
+        keyboardColor = 0xfff5f5f5,
+        keyBackgroundColor = 0xffffffff,
+        keyTextColor = 0xff111111,
+        candidateTextColor = 0xff111111,
+        candidateLabelColor = 0xff888888,
+        candidateCommentColor = 0xff999999,
+        altKeyBackgroundColor = 0xffececec,
+        altKeyTextColor = 0xff888888,
+        accentKeyBackgroundColor = 0xff07c160,
+        accentKeyTextColor = 0xffffffff,
+        keyPressHighlightColor = 0x1f000000,
+        keyShadowColor = 0xffe0e0e0,
+        popupBackgroundColor = 0xffffffff,
+        popupTextColor = 0xff111111,
+        spaceBarColor = 0xffe9e9e9,
+        dividerColor = 0x1f000000,
+        clipboardEntryColor = 0xffffffff,
+        genericActiveBackgroundColor = 0xff07c160,
+        genericActiveForegroundColor = 0xffffffff
+    )
+
+    val WeChatDark = Theme.Builtin(
+        name = "WeChatDark",
+        isDark = true,
+        backgroundColor = 0xff1a1a1a,
+        barColor = 0xff1a1a1a,
+        keyboardColor = 0xff1a1a1a,
+        keyBackgroundColor = 0xff2c2c2e,
+        keyTextColor = 0xffffffff,
+        candidateTextColor = 0xffffffff,
+        candidateLabelColor = 0xff9a9a9a,
+        candidateCommentColor = 0xff8a8a8a,
+        altKeyBackgroundColor = 0xff232325,
+        altKeyTextColor = 0xffb0b0b0,
+        accentKeyBackgroundColor = 0xff07c160,
+        accentKeyTextColor = 0xffffffff,
+        keyPressHighlightColor = 0x33ffffff,
+        keyShadowColor = 0xff000000,
+        popupBackgroundColor = 0xff2c2c2e,
+        popupTextColor = 0xffffffff,
+        spaceBarColor = 0xff232325,
+        dividerColor = 0x1fffffff,
+        clipboardEntryColor = 0xff2c2c2e,
+        genericActiveBackgroundColor = 0xff07c160,
+        genericActiveForegroundColor = 0xffffffff
+    )
+
 }
