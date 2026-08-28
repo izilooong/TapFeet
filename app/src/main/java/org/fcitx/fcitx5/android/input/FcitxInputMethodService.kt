@@ -70,6 +70,7 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
+import org.fcitx.fcitx5.android.input.effects.CommitEffectsOverlay
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.forceShowSelf
@@ -109,6 +110,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         private set
     private var inputView: InputView? = null
     private var candidatesView: CandidatesView? = null
+    internal var effectsOverlay: CommitEffectsOverlay? = null
 
     private val navbarMgr = NavigationBarManager()
     private val inputDeviceMgr = InputDeviceManager { isVirtualKeyboard ->
@@ -116,6 +118,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             setCandidatePagingMode(if (isVirtualKeyboard) 0 else 1)
         }
         currentInputConnection?.monitorCursorAnchor(!isVirtualKeyboard)
+        effectsOverlay?.setCandidatesView(candidatesView)
         if (isVirtualKeyboard) {
             hideStatusIcon()
         } else {
@@ -172,6 +175,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         contentView.addView(newCandidatesView)
         inputDeviceMgr.setCandidatesView(newCandidatesView)
         candidatesView = newCandidatesView
+        effectsOverlay?.setCandidatesView(newCandidatesView)
         return newCandidatesView
     }
 
@@ -250,6 +254,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         InputFeedbacks.preloadSoundEffects()
         decorView = window.window!!.decorView
         contentView = decorView.findViewById(android.R.id.content)
+        // Bolted onto the content view rather than the InputView: the latter is GONE in
+        // hardware-keyboard mode and gets recreated on theme changes, this one is not.
+        effectsOverlay = CommitEffectsOverlay(this).also {
+            it.setCandidatesView(candidatesView)
+            contentView.addView(
+                it,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
         lastKnownConfig = resources.configuration
     }
 
@@ -463,6 +479,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     fun commitText(text: String, cursor: Int = -1) {
         val ic = currentInputConnection ?: return
         inputView?.onCommitText(text)
+        effectsOverlay?.onCommit(text)
         if (composing.isNotEmpty() && composingText.toString() == text) {
             val c = if (cursor == -1) text.length else cursor
             val target = composing.start + c
@@ -1880,6 +1897,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         prefs.candidates.unregisterOnChangeListener(recreateCandidatesViewListener)
         ThemeManager.removeOnChangedListener(onThemeChangeListener)
+        effectsOverlay?.release()
+        effectsOverlay = null
         super.onDestroy()
         // Fcitx might be used in super.onDestroy()
         FcitxDaemon.disconnect(javaClass.name)

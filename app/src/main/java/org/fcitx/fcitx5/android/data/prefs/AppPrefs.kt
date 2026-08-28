@@ -17,6 +17,7 @@ import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesOrientation
 import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateArrangementMode
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateMode
+import org.fcitx.fcitx5.android.input.effects.EffectMode
 import org.fcitx.fcitx5.android.input.keyboard.LangSwitchBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SwipeSymbolDirection
@@ -418,11 +419,6 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         )
 
 
-        val showCandidateFlyAnimation = switch(
-            R.string.show_candidate_fly_animation,
-            "show_candidate_fly_animation",
-            true
-        )
     }
 
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {
@@ -604,6 +600,35 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         }
     }
 
+    inner class Effects : ManagedPreferenceCategory(R.string.input_effects, sharedPreferences) {
+        // Master switch: gates every input effect below.
+        val enabled = switch(R.string.effects_enabled, "effects_enabled", true)
+
+        // Two flavours of the same "input effect" idea — pick one.
+        val mode = enumList(
+            R.string.effects_mode,
+            "effects_mode",
+            EffectMode.Particles
+        )
+
+        init { category(R.string.cat_effects_particles) }
+
+        // Particle-only sub-options; hidden when the fly animation is selected.
+        val comboMeter = switch(
+            R.string.effects_combo_meter,
+            "effects_combo_meter",
+            true,
+            R.string.effects_combo_meter_summary,
+            enableUiOn = { enabled.getValue() && mode.getValue() == EffectMode.Particles }
+        )
+        val particleDensity = int(
+            R.string.effects_particle_density,
+            "effects_particle_density",
+            3, 1, 5,
+            enableUiOn = { enabled.getValue() && mode.getValue() == EffectMode.Particles }
+        )
+    }
+
     private val providers = mutableListOf<ManagedPreferenceProvider>()
 
     fun <T : ManagedPreferenceProvider> registerProvider(
@@ -626,6 +651,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     val clipboard = Clipboard().register()
     val symbols = Symbols().register()
     val customKeyboard = CustomKeyboard().register()
+    val effects = Effects().register()
     val advanced = Advanced().register()
    
 

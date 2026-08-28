@@ -119,6 +119,15 @@
     <string name="clipboard">Clipboard</string>
     <string name="keyboard_height">Keyboard height</string>
     <string name="virtual_keyboard">Virtual Keyboard</string>
+    <string name="input_effects">Input Effects</string>
+    <string name="effects_enabled">Enable input effects</string>
+    <string name="effects_mode">Effect style</string>
+    <string name="effects_mode_fly">Fly animation</string>
+    <string name="effects_mode_particles">Burst particles</string>
+    <string name="cat_effects_particles">Particle options</string>
+    <string name="effects_combo_meter">Combo counter</string>
+    <string name="effects_combo_meter_summary">Show a combo counter and typing speed while you keep typing.</string>
+    <string name="effects_particle_density">Particle density</string>
     <string name="custom_keyboard">Custom Keyboard</string>
     <string name="custom_keyboard_enabled">Enable custom keyboard</string>
     <string name="custom_keyboard_enabled_summary">When off, the custom keyboard is hidden everywhere (status bar button, symbol keyboard entry, Sym key cycle).</string>
@@ -393,7 +402,6 @@
     <string name="edit_text_playground">EditText Playground</string>
     <string name="alt_lock_enabled">Alt locked</string>
     <string name="alt_lock_disabled">Alt unlocked</string>
-    <string name="show_candidate_fly_animation">Candidate selection animation</string>
     <string name="check_update">Check for Updates</string>
     <string name="update_status_unknown">Tap to check for new versions</string>
     <string name="update_status_checking">Checking for updates…</string>

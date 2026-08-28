@@ -116,6 +116,15 @@
     <string name="clipboard">剪贴板</string>
     <string name="keyboard_height">键盘高度</string>
     <string name="virtual_keyboard">虚拟键盘</string>
+    <string name="input_effects">输入特效</string>
+    <string name="effects_enabled">启用输入特效</string>
+    <string name="effects_mode">特效样式</string>
+    <string name="effects_mode_fly">飞字动画</string>
+    <string name="effects_mode_particles">上屏粒子</string>
+    <string name="cat_effects_particles">粒子选项</string>
+    <string name="effects_combo_meter">连击计数</string>
+    <string name="effects_combo_meter_summary">连续输入时显示连击数与打字速度。</string>
+    <string name="effects_particle_density">粒子密度</string>
     <string name="custom_keyboard">自定义键盘</string>
     <string name="custom_keyboard_enabled">启用自定义键盘</string>
     <string name="custom_keyboard_enabled_summary">关闭后自定义键盘在所有入口隐藏。</string>
@@ -387,7 +396,6 @@
     <string name="hide_unsupported_emojis">隐藏不支持的表情</string>
     <string name="key_border_stroke">启用按键边框描边</string>
     <string name="preferred_voice_input">首选语音输入</string>
-    <string name="show_candidate_fly_animation">开启选字动画</string>
     <string name="check_update">检查更新</string>
     <string name="update_status_unknown">点击检查新版本</string>
     <string name="update_status_checking">正在检查更新…</string>

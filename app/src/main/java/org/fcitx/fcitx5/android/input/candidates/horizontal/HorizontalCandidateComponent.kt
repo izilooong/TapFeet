@@ -29,6 +29,7 @@ import org.fcitx.fcitx5.android.core.FcitxEvent.PagedCandidateEvent
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
+import org.fcitx.fcitx5.android.input.effects.EffectMode
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.BooleanKey.ExpandedCandidatesEmpty
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.TransitionEvent.ExpandedCandidatesUpdated
@@ -69,6 +70,8 @@ class HorizontalCandidateComponent :
         sourceView.getLocationOnScreen(loc)
         pendingFlyX = loc[0].toFloat() + sourceView.width / 2f
         pendingFlyY = loc[1].toFloat() + sourceView.height / 2f
+        // Aim the commit-particle burst at the picked candidate, not the whole bar.
+        service.effectsOverlay?.setBurstAtScreen(pendingFlyX, pendingFlyY)
     }
 
     fun prepareFlyAnimationForLocalNumber(number: Int) {
@@ -643,7 +646,8 @@ class HorizontalCandidateComponent :
     }
 
     override fun onCommitText(text: String) {
-        if (!AppPrefs.getInstance().candidateBar.showCandidateFlyAnimation.getValue()) return
+        val effects = AppPrefs.getInstance().effects
+        if (!effects.enabled.getValue() || effects.mode.getValue() != EffectMode.Fly) return
         val flyText = pendingFlyText ?: return
         if (flyText != text) return
         showCandidateFlyAnimation(pendingFlyX, pendingFlyY, text)
