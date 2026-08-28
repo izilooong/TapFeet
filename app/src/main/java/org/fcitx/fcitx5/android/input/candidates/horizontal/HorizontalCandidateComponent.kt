@@ -647,10 +647,16 @@ class HorizontalCandidateComponent :
 
     override fun onCommitText(text: String) {
         val effects = AppPrefs.getInstance().effects
-        if (!effects.enabled.getValue() || effects.mode.getValue() != EffectMode.Fly) return
+        if (!effects.enabled.getValue()) return
         val flyText = pendingFlyText ?: return
         if (flyText != text) return
-        showCandidateFlyAnimation(pendingFlyX, pendingFlyY, text)
+        when (effects.mode.getValue()) {
+            EffectMode.Fly ->
+                showCandidateFlyAnimation(pendingFlyX, pendingFlyY, text)
+            EffectMode.Bubble ->
+                service.effectsOverlay?.burstBubbleAtScreen(pendingFlyX, pendingFlyY, text)
+            else -> {} // Particles drives its own burst via CommitEffectsOverlay.onCommit
+        }
         pendingFlyText = null
     }
 

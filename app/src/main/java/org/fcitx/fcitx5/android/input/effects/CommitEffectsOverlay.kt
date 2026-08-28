@@ -40,6 +40,19 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         var color = 0
     }
 
+    private class Bubble {
+        var x = 0f
+        var y = 0f
+        var text: String = ""
+        var vx = 0f
+        var vy = 0f
+        var phase = 0f
+        var radius = 0f
+        var color = 0
+        var life = 0f
+        var maxLife = 1f
+    }
+
     companion object {
         private const val MAX_PARTICLES = 96
         private const val DEGRADED_MAX = 48
@@ -54,6 +67,17 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         private const val COMBO_SHOW_MS = 1200L
         private const val COMBO_FADE_MS = 400f
         private const val FRAME_SAMPLES = 30
+
+        private const val MAX_BUBBLES = 24
+        private const val DEGRADED_BUBBLES = 12
+        private const val BUBBLE_LIFE_MS = 1500f
+        private const val BUBBLE_MIN_VY = 175f // px/s upward — climbs noticeably higher
+        private const val BUBBLE_MAX_VY = 345f
+        private const val BUBBLE_VX = 70f // px/s sideways spread
+        private const val SWAY_FREQ = 3.2f // rad/s — wandering drift
+        private const val SWAY_AMP = 55f // px/s lateral sway amplitude
+        private const val BUBBLE_FONT_SP = 16f
+        private const val BUBBLE_PAD_DP = 12f
     }
 
     private val density = context.resources.displayMetrics.density
@@ -62,9 +86,17 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     private val pool = Array(MAX_PARTICLES) { Particle() }
     private var alive = 0
 
+    private val bubbles = Array(MAX_BUBBLES) { Bubble() }
+    private var bubbleAlive = 0
+
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.LEFT
+    }
+    private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bubbleTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        color = Color.WHITE
     }
     private val tracker = ComboTracker()
     private val random = Random(SystemClock.uptimeMillis())
@@ -137,6 +169,33 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         burstFresh = true
     }
 
+    /**
+     * Spawns a bubble carrying [text] (the just-picked candidate) at the chosen candidate's
+     * screen position; it then floats up with a random sideways lean. Triggered by
+     * HorizontalCandidateComponent when [EffectMode.Bubble] is selected.
+     */
+    fun burstBubbleAtScreen(screenX: Float, screenY: Float, text: String) {
+        if (text.isBlank()) return
+        val loc = intArrayOf(0, 0)
+        getLocationOnScreen(loc)
+        val cap = if (quality < 0.5f) DEGRADED_BUBBLES else MAX_BUBBLES
+        if (bubbleAlive >= cap) return
+        val b = bubbles[bubbleAlive++]
+        b.x = screenX - loc[0]
+        b.y = screenY - loc[1]
+        b.text = text
+        b.vx = (random.nextFloat() * 2f - 1f) * BUBBLE_VX
+        b.vy = -(BUBBLE_MIN_VY + random.nextFloat() * (BUBBLE_MAX_VY - BUBBLE_MIN_VY))
+        b.phase = random.nextFloat() * Math.PI.toFloat() * 2f
+        b.maxLife = BUBBLE_LIFE_MS * (0.8f + random.nextFloat() * 0.4f)
+        b.life = b.maxLife
+        b.color = randomBubbleColor()
+        bubbleTextPaint.textSize = BUBBLE_FONT_SP * scaledDensity
+        val tw = bubbleTextPaint.measureText(text)
+        b.radius = tw.coerceAtLeast(bubbleTextPaint.textSize) / 2f + BUBBLE_PAD_DP * density
+        startIfNeeded()
+    }
+
     private fun burstX() = if (burstFresh) burstX else anchorX()
 
     private fun burstY() = if (burstFresh) burstY else launchY()
@@ -163,6 +222,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     fun release() {
         running = false
         alive = 0
+        bubbleAlive = 0
         Choreographer.getInstance().removeFrameCallback(this)
     }
 
@@ -170,7 +230,9 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         val cap = if (quality < 0.5f) DEGRADED_MAX else MAX_PARTICLES
         val count = ((BASE_COUNT + densityPref * 2 + tier * 2) * quality).toInt()
             .coerceAtLeast(MIN_COUNT)
-        val color = tintFor(tier)
+        // A fresh random soap-bubble hue per burst — natural, never neon, and every
+        // committed word gets its own colour.
+        val color = randomBubbleColor()
         val minRadius = 2.5f * density
         val maxRadius = 6f * density
         repeat(count) {
@@ -211,6 +273,17 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         )
     }
 
+    /**
+     * Soft, soap-bubble style fill: a fresh random hue with muted saturation and high value,
+     * so colours read as airy and natural rather than neon. Each bubble draws its own on spawn.
+     */
+    private fun randomBubbleColor(): Int {
+        val hue = random.nextFloat() * 360f
+        val sat = 0.35f + random.nextFloat() * 0.25f // 0.35..0.60 — gentle, not garish
+        val value = 0.72f + random.nextFloat() * 0.23f // 0.72..0.95 — bright, see-through
+        return Color.HSVToColor(floatArrayOf(hue, sat, value))
+    }
+
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
         val dtMs = if (lastFrameNs == 0L) 16.7f
@@ -222,7 +295,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         recordFrame(dtMs)
         invalidate()
 
-        if (alive > 0 || now < comboVisibleUntil) {
+        if (alive > 0 || bubbleAlive > 0 || now < comboVisibleUntil) {
             Choreographer.getInstance().postFrameCallback(this)
         } else {
             running = false
@@ -249,7 +322,59 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             p.y += p.vy * dtSec
             i++
         }
+        var bi = 0
+        while (bi < bubbleAlive) {
+            val b = bubbles[bi]
+            b.life -= dtMs
+            if (b.life <= 0f) {
+                // Pops into a small puff of its own colour at end of life.
+                popBubble(b.x, b.y, b.color)
+                retireBubble(bi)
+                continue
+            }
+            if (b.y + b.radius < 0f) {
+                // Drifted clear off the top of the screen — just retire it.
+                retireBubble(bi)
+                continue
+            }
+            b.phase += SWAY_FREQ * dtSec
+            b.x += (b.vx + cos(b.phase) * SWAY_AMP) * dtSec
+            b.y += b.vy * dtSec
+            b.vy *= (1f - 0.22f * dtSec) // gentler drag so it floats higher
+            bi++
+        }
         tracker.tick(now)
+    }
+
+    private fun retireBubble(index: Int) {
+        val tmp = bubbles[index]
+        bubbles[index] = bubbles[bubbleAlive - 1]
+        bubbles[bubbleAlive - 1] = tmp
+        bubbleAlive--
+    }
+
+    /**
+     * A bubble "pops" into a small all-directions puff of its own colour when its life ends,
+     * instead of simply fading out. Reuses the particle pool so the fragments fall under the
+     * same gravity as everything else.
+     */
+    private fun popBubble(x: Float, y: Float, color: Int) {
+        val cap = if (quality < 0.5f) DEGRADED_MAX else MAX_PARTICLES
+        val count = if (quality < 0.5f) 5 else 9
+        repeat(count) {
+            if (alive >= cap) return
+            val p = pool[alive++]
+            val angle = random.nextFloat() * Math.PI.toFloat() * 2f
+            val speed = 120f + random.nextFloat() * 170f
+            p.x = x
+            p.y = y
+            p.vx = cos(angle) * speed
+            p.vy = sin(angle) * speed
+            p.maxLife = 320f + random.nextFloat() * 280f
+            p.life = p.maxLife
+            p.radius = (2f + random.nextFloat() * 3f) * density
+            p.color = color
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -261,7 +386,59 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             paint.alpha = (255 * t * t).toInt().coerceIn(0, 255)
             canvas.drawCircle(p.x, p.y, p.radius * (0.35f + 0.65f * t), paint)
         }
+        drawBubbles(canvas)
         drawCombo(canvas)
+    }
+
+    private fun drawBubbles(canvas: Canvas) {
+        // The word inside each bubble inherits the candidate-bar's text colour, so it always
+        // matches whatever theme the user is on.
+        bubbleTextPaint.color = ThemeManager.activeTheme.candidateTextColor
+        for (i in 0 until bubbleAlive) {
+            val b = bubbles[i]
+            val a = (b.life / b.maxLife).coerceIn(0f, 1f)
+            // Stay fully opaque the whole flight — the pop at end of life is the real exit,
+            // so no point fading while drifting. Just a tiny tail fade right before it bursts
+            // to soften the hand-off into the fragment puff.
+            val alpha = if (a > 0.12f) 1f else (a / 0.12f).coerceIn(0f, 1f)
+            // Wind-blown wobble: the bubble breathes between a tall and a wide ellipse as it
+            // drifts, so it never reads as a rigid circle.
+            val wob = sin(b.phase * 1.3f) * 0.14f
+            val rx = b.radius * (1f + wob)
+            val ry = b.radius * (1f - wob)
+            val cx = b.x
+            val cy = b.y
+
+            // Translucent film body.
+            bubblePaint.style = Paint.Style.FILL
+            bubblePaint.color = b.color
+            bubblePaint.alpha = (255 * 0.30f * alpha).toInt().coerceIn(0, 255)
+            canvas.drawOval(cx - rx, cy - ry, cx + rx, cy + ry, bubblePaint)
+
+            // Bright rim — a hairline Fresnel-style edge light. Kept sub-pixel thin on purpose:
+            // anything thicker reads as a drawn outline rather than the sheen of a film edge.
+            bubblePaint.style = Paint.Style.STROKE
+            bubblePaint.alpha = (255 * 0.55f * alpha).toInt().coerceIn(0, 255)
+            bubblePaint.strokeWidth = 0.6f * density
+            canvas.drawOval(cx - rx, cy - ry, cx + rx, cy + ry, bubblePaint)
+
+            // Natural lit side: a soft highlight wash top-left, plus a tighter brighter glint,
+            // both white at low alpha so they read as a reflection rather than a painted dot.
+            bubblePaint.style = Paint.Style.FILL
+            bubblePaint.color = Color.WHITE
+            bubblePaint.alpha = (255 * 0.36f * alpha).toInt().coerceIn(0, 255)
+            canvas.drawOval(cx - rx * 0.45f, cy - ry * 0.55f,
+                cx + rx * 0.08f, cy - ry * 0.12f, bubblePaint)
+            bubblePaint.alpha = (255 * 0.60f * alpha).toInt().coerceIn(0, 255)
+            canvas.drawOval(cx - rx * 0.50f, cy - ry * 0.62f,
+                cx - rx * 0.22f, cy - ry * 0.38f, bubblePaint)
+
+            // The picked candidate word, riding inside the bubble.
+            bubbleTextPaint.alpha = (255 * alpha).toInt().coerceIn(0, 255)
+            val fm = bubbleTextPaint.fontMetrics
+            val ty = cy - (fm.ascent + fm.descent) / 2f
+            canvas.drawText(b.text, cx, ty, bubbleTextPaint)
+        }
     }
 
     private fun drawCombo(canvas: Canvas) {

@@ -604,7 +604,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // Master switch: gates every input effect below.
         val enabled = switch(R.string.effects_enabled, "effects_enabled", true)
 
-        // Two flavours of the same "input effect" idea — pick one.
+        // Mutually exclusive flavours of the same "input effect" idea — pick one.
         val mode = enumList(
             R.string.effects_mode,
             "effects_mode",

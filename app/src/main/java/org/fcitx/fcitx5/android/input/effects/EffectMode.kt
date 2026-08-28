@@ -14,5 +14,6 @@ import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceEnum
  */
 enum class EffectMode(override val stringRes: Int) : ManagedPreferenceEnum {
     Fly(R.string.effects_mode_fly),
-    Particles(R.string.effects_mode_particles)
+    Particles(R.string.effects_mode_particles),
+    Bubble(R.string.effects_mode_bubble)
 }

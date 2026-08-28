@@ -121,6 +121,7 @@
     <string name="effects_mode">特效样式</string>
     <string name="effects_mode_fly">飞字动画</string>
     <string name="effects_mode_particles">上屏粒子</string>
+    <string name="effects_mode_bubble">泡泡</string>
     <string name="cat_effects_particles">粒子选项</string>
     <string name="effects_combo_meter">连击计数</string>
     <string name="effects_combo_meter_summary">连续输入时显示连击数与打字速度。</string>

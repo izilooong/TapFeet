@@ -124,6 +124,7 @@
     <string name="effects_mode">Effect style</string>
     <string name="effects_mode_fly">Fly animation</string>
     <string name="effects_mode_particles">Burst particles</string>
+    <string name="effects_mode_bubble">Bubbles</string>
     <string name="cat_effects_particles">Particle options</string>
     <string name="effects_combo_meter">Combo counter</string>
     <string name="effects_combo_meter_summary">Show a combo counter and typing speed while you keep typing.</string>
