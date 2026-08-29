@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-License-Identifier: LGPL-2.1-or-later
+  ~ SPDX-FileCopyrightText: Copyright 2021-2026 Fcitx5 for Android Contributors
+  -->
+<resources>
+
+    <!--
+      Every androidx Preference subclass hard-codes its own layout in the Material
+      variant of its style (Preference.Material and friends), so overriding
+      `preferenceStyle` alone would never reach switches or dialogs: each type has
+      to be re-pointed at the modern layouts here.
+
+      None of those Material styles is public API, so these deliberately inherit
+      nothing and spell out the divider / icon-space behaviour instead of parent-ing
+      them — referencing a private library style fails the resource link.
+    -->
+    <style name="SettingsPreferenceTheme" parent="@style/PreferenceThemeOverlay">
+        <item name="preferenceStyle">@style/Preference.Modern</item>
+        <item name="preferenceCategoryStyle">@style/Preference.Category.Modern</item>
+        <item name="preferenceScreenStyle">@style/Preference.Screen.Modern</item>
+        <item name="switchPreferenceStyle">@style/Preference.Switch.Modern</item>
+    </style>
+
+    <!-- Rows share one shape: divider below, never above, no reserved icon gutter
+         (most rows are text-only and would otherwise be indented for nothing).
+         singleLineTitle must be explicit: once set, Preference calls
+         setSingleLine() on the title TextView, which would otherwise clobber the
+         maxLines declared in the layout.
+
+         Deliberately dot-free: a dotted name without an explicit parent implicitly
+         inherits from the name minus its last segment, which would make this the
+         parent of Preference.Modern and loop back on itself. -->
+    <style name="PreferenceRow">
+        <item name="android:layout">@layout/preference_modern</item>
+        <!-- No framework dividers at all: rows are transparent and CardGroupDecoration paints
+             the card surface, so allowDividerAbove/Below would only draw stray lines that
+             peek out between cards (and the category header's allowDividerAbove is exactly
+             the line users see between two groups). -->
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+        <item name="singleLineTitle">true</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+
+    <style name="Preference.Modern" parent="@style/PreferenceRow" />
+
+    <!-- Group header separates sections with space, not with a line, and is not
+         clickable: the title must stay legible even when its group is disabled. -->
+    <style name="Preference.Category.Modern" parent="@style/Preference.Category">
+        <item name="android:layout">@layout/preference_category_modern</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+        <item name="iconSpaceReserved">false</item>
+        <item name="android:selectable">false</item>
+        <item name="selectable">false</item>
+        <item name="android:shouldDisableView">false</item>
+        <item name="shouldDisableView">false</item>
+    </style>
+
+    <style name="Preference.Screen.Modern" parent="@style/PreferenceRow" />
+
+    <!-- SwitchPreference reads switchPreferenceStyle for its widget; without a widgetLayout
+         the on/off toggle is never inflated, so the row looks like a bare text item. -->
+    <style name="Preference.Switch.Modern" parent="@style/PreferenceRow">
+        <item name="android:widgetLayout">@layout/preference_widget_switch</item>
+    </style>
+
+    <style name="TextAppearance.Settings.Title" parent="TextAppearance.AppCompat.Subhead">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">?android:attr/textColorPrimary</item>
+    </style>
+
+    <style name="TextAppearance.Settings.Summary" parent="TextAppearance.AppCompat.Caption">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+    </style>
+
+    <!-- Small accented label: the cue that a new section starts here. -->
+    <style name="TextAppearance.Settings.Category" parent="TextAppearance.AppCompat.Caption">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">?attr/colorAccent</item>
+    </style>
+
+</resources>

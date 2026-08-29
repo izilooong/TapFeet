@@ -8,6 +8,8 @@
         <item name="colorLogInfo">@color/blue_500</item>
         <item name="colorLogDebug">@color/grey_700</item>
         <item name="colorLogVerbose">@color/grey_700</item>
+        <!-- Restyles every settings row across the app (layouts, spacing, type scale). -->
+        <item name="preferenceTheme">@style/SettingsPreferenceTheme</item>
     </style>
 
     <style name="Theme.InputViewTheme" parent="@android:style/Theme.DeviceDefault.Settings" />

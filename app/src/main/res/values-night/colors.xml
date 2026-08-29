@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Rounded-card settings (dark): the page is pure black and the cards float on top as a
+         lighter surface, so cards always read as raised above the page. -->
+    <color name="settings_page_bg">#000000</color>
+    <color name="card_bg">#1C1C1E</color>
+    <color name="card_stroke">#3A3A3C</color>
+
+    <!-- Tab bar text (dark): see values/colors.xml — explicit colors, no theme-attr resolve. -->
+    <color name="tab_text_default">#D1D1D6</color>
+    <color name="tab_text_selected">#0A84FF</color>
+</resources>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-License-Identifier: LGPL-2.1-or-later
+  ~ SPDX-FileCopyrightText: Copyright 2021-2026 Fcitx5 for Android Contributors
+  -->
+<!--
+  Group header: small accented uppercase-ish label with generous space above, the
+  pattern mainstream settings screens use to break a long list into sections.
+  Keeps the id contract of androidx's preference_category_material.xml.
+  -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:baselineAligned="false"
+    android:gravity="center_vertical"
+    android:paddingStart="20dp"
+    android:paddingLeft="20dp"
+    android:paddingEnd="16dp"
+    android:paddingRight="16dp"
+    android:paddingTop="26dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@android:id/title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAlignment="viewStart"
+        android:textAppearance="@style/TextAppearance.Settings.Category" />
+
+</LinearLayout>

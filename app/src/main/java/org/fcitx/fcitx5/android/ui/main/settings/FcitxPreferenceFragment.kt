@@ -23,6 +23,7 @@ import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.RawConfig
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
+import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 import org.fcitx.fcitx5.android.ui.common.withLoadingDialog
 import org.fcitx.fcitx5.android.ui.main.MainViewModel
 import org.fcitx.fcitx5.android.ui.main.settings.PreferenceScreenFactory
@@ -105,13 +106,8 @@ abstract class FcitxPreferenceFragment : PaddingPreferenceFragment() {
         savedInstanceState: Bundle?
     ): View {
         val root = super.onCreateView(inflater, container, savedInstanceState)
-        tabLayout = TabLayout(requireContext()).apply {
-            tabMode = TabLayout.MODE_AUTO
+        tabLayout = createSettingsTabBar(requireContext()).apply {
             visibility = View.GONE
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
         }
         // The root of a PreferenceFragmentCompat is a (non-scrolling) LinearLayout whose
         // child RecyclerView does the scrolling, so pinning the TabLayout at index 0 keeps

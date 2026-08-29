@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-License-Identifier: LGPL-2.1-or-later
+  ~ SPDX-FileCopyrightText: Copyright 2021-2026 Fcitx5 for Android Contributors
+  -->
+<resources>
+    <!--
+      androidx.preference looks this id up when binding but declares it as private,
+      so the app has to publish its own for the custom preference layouts to use.
+      Same name means it merges into the single entry the library resolves at runtime.
+    -->
+    <item name="icon_frame" type="id" />
+</resources>

@@ -17,6 +17,7 @@ import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
+import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
 
@@ -319,10 +320,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val root = super.onCreateView(inflater, container, savedInstanceState)
-        tabLayout = TabLayout(requireContext()).apply {
-            tabMode = TabLayout.MODE_AUTO
-            tabGravity = TabLayout.GRAVITY_FILL
-        }
+        tabLayout = createSettingsTabBar(requireContext())
         (root as? ViewGroup)?.addView(tabLayout, 0)
         return root
     }

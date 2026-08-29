@@ -608,7 +608,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val mode = enumList(
             R.string.effects_mode,
             "effects_mode",
-            EffectMode.Particles
+            EffectMode.Fly
         )
 
         init { category(R.string.cat_effects_particles) }

@@ -7,4 +7,16 @@
     <color name="blue_500">#2196F3</color>
     <color name="grey_400">#BDBDBD</color>
     <color name="grey_700">#616161</color>
+
+    <!-- Rounded-card settings (light): the page is a deeper grey and the cards float on top
+         as a lighter white surface, so cards always read as raised above the page. -->
+    <color name="settings_page_bg">#EBEBF0</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="card_stroke">#D1D1D6</color>
+
+    <!-- Tab bar text (light): explicit colors instead of theme attrs — textColorSecondary is
+         a ColorStateList in most themes, so a raw TypedValue resolve returns a resource id,
+         not a color, and setTabTextColors would draw garbage (invisible on the white card). -->
+    <color name="tab_text_default">#3A3A3C</color>
+    <color name="tab_text_selected">#007AFF</color>
 </resources>

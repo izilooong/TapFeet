@@ -648,6 +648,10 @@ class HorizontalCandidateComponent :
     override fun onCommitText(text: String) {
         val effects = AppPrefs.getInstance().effects
         if (!effects.enabled.getValue()) return
+        // Same gate as CommitEffectsOverlay.onCommit: "disable animation" must stop every
+        // effect alike. Fly/Bubble skipping this check while Particles honoured it was why
+        // particles alone vanished whenever the toggle was on.
+        if (AppPrefs.getInstance().advanced.disableAnimation.getValue()) return
         val flyText = pendingFlyText ?: return
         if (flyText != text) return
         when (effects.mode.getValue()) {

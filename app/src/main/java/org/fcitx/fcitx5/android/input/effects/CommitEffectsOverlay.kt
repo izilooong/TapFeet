@@ -17,6 +17,7 @@ import org.fcitx.fcitx5.android.input.effects.EffectMode
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
+import timber.log.Timber
 
 /**
  * Full-screen overlay bolted straight onto the service's content view: bursts a puff of
@@ -125,18 +126,29 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
 
     fun onCommit(text: String) {
         val prefs = AppPrefs.getInstance()
-        if (prefs.advanced.disableAnimation.getValue()) return
+        if (prefs.advanced.disableAnimation.getValue()) {
+            Timber.w("effects: skipped by disableAnimation")
+            return
+        }
         val effects = prefs.effects
-        if (!effects.enabled.getValue() || effects.mode.getValue() != EffectMode.Particles) return
-        val combo = effects.comboMeter.getValue()
-        if (!combo) return
+        if (!effects.enabled.getValue() || effects.mode.getValue() != EffectMode.Particles) {
+            Timber.w(
+                "effects: skipped (enabled=%b mode=%s)",
+                effects.enabled.getValue(), effects.mode.getValue()
+            )
+            return
+        }
 
         val now = SystemClock.uptimeMillis()
         tracker.onCommit(text, now)
 
-        // Reaching here means effects.enabled && mode == Particles, so burst unconditionally.
+        // The burst depends on the master switch and Particles mode only; the combo counter
+        // is an independent overlay governed by its own switch. Turning the counter off must
+        // not swallow the particles — that coupling made particles silently vanish whenever
+        // comboMeter was disabled.
         emit(burstX(), burstY(), tracker.tier, effects.particleDensity.getValue())
-        if (combo) {
+        Timber.d("effects: burst %s", text)
+        if (effects.comboMeter.getValue()) {
             comboX = burstX()
             comboY = burstY()
             comboVisibleUntil = now + COMBO_SHOW_MS
@@ -230,9 +242,10 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         val cap = if (quality < 0.5f) DEGRADED_MAX else MAX_PARTICLES
         val count = ((BASE_COUNT + densityPref * 2 + tier * 2) * quality).toInt()
             .coerceAtLeast(MIN_COUNT)
-        // A fresh random soap-bubble hue per burst — natural, never neon, and every
-        // committed word gets its own colour.
-        val color = randomBubbleColor()
+        // A fresh random hue per burst — natural, never neon, and every committed word gets
+        // its own colour. Particles cannot reuse the bubbles' pale pastels (they'd vanish on
+        // a light candidate bar), so they get their own mid-value palette.
+        val color = randomParticleColor()
         val minRadius = 2.5f * density
         val maxRadius = 6f * density
         repeat(count) {
@@ -281,6 +294,18 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         val hue = random.nextFloat() * 360f
         val sat = 0.35f + random.nextFloat() * 0.25f // 0.35..0.60 — gentle, not garish
         val value = 0.72f + random.nextFloat() * 0.23f // 0.72..0.95 — bright, see-through
+        return Color.HSVToColor(floatArrayOf(hue, sat, value))
+    }
+
+    /**
+     * Particle colour: random hue like the bubbles, but a solid filled dot cannot borrow the
+     * bubble's airy high-value pastels — on a light candidate bar / input field they vanish.
+     * Richer saturation and a mid value keep the burst visible on both light and dark ground.
+     */
+    private fun randomParticleColor(): Int {
+        val hue = random.nextFloat() * 360f
+        val sat = 0.5f + random.nextFloat() * 0.25f // 0.50..0.75 — vivid enough to read at 3-6dp
+        val value = 0.4f + random.nextFloat() * 0.25f // 0.40..0.65 — mid, pops on light and dark
         return Color.HSVToColor(floatArrayOf(hue, sat, value))
     }
 

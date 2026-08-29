@@ -18,6 +18,7 @@ import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
+import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 
 abstract class ManagedPreferenceFragment(private val preferenceProvider: ManagedPreferenceProvider) :
     PaddingPreferenceFragment() {
@@ -88,10 +89,7 @@ abstract class ManagedPreferenceFragment(private val preferenceProvider: Managed
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val root = super.onCreateView(inflater, container, savedInstanceState)
-        tabLayout = TabLayout(requireContext()).apply {
-            tabMode = TabLayout.MODE_AUTO
-            tabGravity = TabLayout.GRAVITY_FILL
-        }
+        tabLayout = createSettingsTabBar(requireContext())
         (root as? ViewGroup)?.addView(tabLayout, 0)
         return root
     }

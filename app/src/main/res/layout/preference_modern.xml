@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-License-Identifier: LGPL-2.1-or-later
+  ~ SPDX-FileCopyrightText: Copyright 2021-2026 Fcitx5 for Android Contributors
+  -->
+<!--
+  Modern settings row: roomier height, a two-line title/summary stack and tighter
+  icon slot, matching what mainstream apps ship. Mirrors the id contract of
+  androidx's preference_material.xml so Preference binding keeps working:
+  @id/icon_frame, @android:id/icon, @android:id/title, @android:id/summary,
+  @android:id/widget_frame.
+  -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="56dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:baselineAligned="false"
+    android:clipToPadding="false"
+    android:paddingStart="20dp"
+    android:paddingLeft="20dp"
+    android:paddingEnd="16dp"
+    android:paddingRight="16dp"
+    android:background="?android:attr/selectableItemBackground">
+
+    <FrameLayout
+        android:id="@id/icon_frame"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="32dp"
+        android:paddingEnd="12dp"
+        android:paddingRight="12dp">
+
+        <ImageView
+            android:id="@android:id/icon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="@null"
+            android:scaleType="fitCenter"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp">
+
+        <TextView
+            android:id="@android:id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Settings.Title" />
+
+        <TextView
+            android:id="@android:id/summary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="4"
+            android:textAppearance="@style/TextAppearance.Settings.Summary"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Preference puts its actual widget (switch, checkbox, …) in here. -->
+    <LinearLayout
+        android:id="@android:id/widget_frame"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="end|center_vertical"
+        android:orientation="vertical"
+        android:paddingStart="8dp"
+        android:paddingLeft="8dp" />
+
+</LinearLayout>

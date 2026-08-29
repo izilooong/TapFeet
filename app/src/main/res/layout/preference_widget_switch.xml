@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-License-Identifier: LGPL-2.1-or-later
+  ~ SPDX-FileCopyrightText: Copyright 2021-2026 Fcitx5 for Android Contributors
+  -->
+<!-- Switch widget used by SwitchPreference. Mirrors the framework layout that
+     androidx.preference ships, but kept locally so the modern theme is fully
+     self-contained and does not depend on a private library resource. -->
+<Switch
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/switch_widget"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:focusable="false"
+    android:clickable="false"
+    android:background="@null" />
