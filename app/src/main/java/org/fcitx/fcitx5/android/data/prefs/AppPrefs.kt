@@ -617,7 +617,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val comboMeter = switch(
             R.string.effects_combo_meter,
             "effects_combo_meter",
-            true,
+            false,
             R.string.effects_combo_meter_summary,
             enableUiOn = { enabled.getValue() && mode.getValue() == EffectMode.Particles }
         )
