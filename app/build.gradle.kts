@@ -14,6 +14,12 @@ import java.util.Properties
 android {
     namespace = "org.fcitx.fcitx5.android"
 
+    // Keep our bundled keypress sounds uncompressed so SoundPool can mmap/load them reliably on
+    // every device (a compressed res/raw asset can return sample id 0 on some ROMs).
+    aaptOptions {
+        noCompress.add("wav")
+    }
+
     defaultConfig {
         applicationId = "tapfeet.ime"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

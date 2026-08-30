@@ -305,6 +305,16 @@
     <string name="following_system_settings">跟随系统设置</string>
     <string name="button_sound">按键音</string>
     <string name="button_sound_volume">按键音音量</string>
+    <string name="sound_scheme">音效方案</string>
+    <string name="sound_scheme_classic">经典键盘</string>
+    <string name="sound_scheme_crisp">清脆风铃</string>
+    <string name="sound_scheme_muffled">低沉闷响</string>
+    <string name="sound_scheme_soft">柔和轻点</string>
+    <string name="sound_scheme_piano">钢琴清音</string>
+    <string name="sound_scheme_telegraph">电报嘀嗒</string>
+    <string name="sound_scheme_woodfish">木鱼笃笃</string>
+    <string name="sound_scheme_abacus">算盘噼啪</string>
+    <string name="sound_scheme_silent">静默无声</string>
     <string name="clipboard_return_after_paste">粘贴后返回键盘</string>
     <string name="theme_message_follow_system_day_night_mode_enabled">“跟随系统夜间模式”已启用，不能手动更换主题。</string>
     <string name="disable_it">禁用它</string>

@@ -4,13 +4,18 @@
  */
 package org.fcitx.fcitx5.android.ui.common
 
+import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.CallSuper
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceGroupAdapter
+import androidx.recyclerview.widget.RecyclerView
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.ui.main.modified.MyPreferenceFragment
 
@@ -47,6 +52,35 @@ abstract class PaddingPreferenceFragment : MyPreferenceFragment() {
             v.setPadding(pad, topPad, pad, bottomPad + nav.bottom)
             windowInsets
         }
-        listView.addItemDecoration(CardGroupDecoration(requireContext()))
+        // 定死背景:设置项不多、也不回收(view 创建后背景就固定在它身上,滚动只 detach/attach,
+        // background 永远跟着 view,不会"丢失")。所以背景在 view 首次 attach 时算好圆角设一次即可,
+        // 不再每帧 canvas 重画(大哥:只要初始化时定死就可以了)。
+        // 把 scrap cache 开大,避免 view 被回收进 pool 导致 background 被复用串掉。
+        listView.setItemViewCacheSize(512)
+        listView.addOnChildAttachStateChangeListener(
+            object : RecyclerView.OnChildAttachStateChangeListener {
+                override fun onChildViewAttachedToWindow(view: View) {
+                    val adapter = listView.adapter as? PreferenceGroupAdapter ?: return
+                    val pos = listView.getChildAdapterPosition(view)
+                    if (pos == RecyclerView.NO_POSITION) return
+                    if (adapter.getItem(pos) is PreferenceCategory) {
+                        // 标题行不设卡片背景
+                        if (view.background != null) view.background = null
+                        view.foreground = null
+                        return
+                    }
+                    val isFirst = pos == 0 || adapter.getItem(pos - 1) is PreferenceCategory
+                    val isLast =
+                        pos == adapter.itemCount - 1 || adapter.getItem(pos + 1) is PreferenceCategory
+                    val bg = CardGroupDecoration.shapeFor(requireContext(), isFirst, isLast)
+                    view.background = bg
+                    // 按压高亮裁剪到圆角,不溢出卡片
+                    view.foreground =
+                        RippleDrawable(CardGroupDecoration.rippleColor(requireContext()), null, bg)
+                }
+
+                override fun onChildViewDetachedFromWindow(view: View) = Unit
+            }
+        )
     }
 }

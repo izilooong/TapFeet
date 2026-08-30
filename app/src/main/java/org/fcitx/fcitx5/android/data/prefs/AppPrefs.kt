@@ -12,6 +12,7 @@ import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.InputFeedbacks.InputFeedbackMode
+import org.fcitx.fcitx5.android.data.InputFeedbacks.SoundScheme
 import org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesOrientation
@@ -548,6 +549,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         ) {
             keySoundEnabled.getValue()
         }
+
+        // Sound flavour (timbre) of the keypress click. The option lives under the physical-keyboard
+        // group, but the chosen scheme is a single global selection shared by the on-screen keyboard
+        // too — both go through InputFeedbacks.soundEffect, which reads this preference. The
+        // keySoundEnabled/keySoundVolume above gate and scale the physical keys on top of it.
+        val soundScheme = enumList(
+            R.string.sound_scheme,
+            "sound_scheme",
+            SoundScheme.Classic
+        )
 
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
         // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".

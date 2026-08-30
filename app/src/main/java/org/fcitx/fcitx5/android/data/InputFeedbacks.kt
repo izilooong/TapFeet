@@ -8,6 +8,7 @@ import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.SoundPool
 import android.os.Build
+import android.util.Log
 import android.os.VibrationEffect
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
@@ -19,15 +20,42 @@ import org.fcitx.fcitx5.android.utils.appContext
 import org.fcitx.fcitx5.android.utils.audioManager
 import org.fcitx.fcitx5.android.utils.getSystemSettings
 import org.fcitx.fcitx5.android.utils.vibrator
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 object InputFeedbacks {
+
+    private const val TAG = "InputFeedbacks"
 
     enum class InputFeedbackMode(override val stringRes: Int) : ManagedPreferenceEnum {
         FollowingSystem(R.string.following_system_settings),
         Enabled(R.string.enabled),
         Disabled(R.string.disabled);
+    }
+
+    /**
+     * Keyboard click "sound scheme" — a selectable flavour of the keypress sound, shared by the
+     * on-screen and physical keyboards alike.
+     *
+     * Each scheme ships its OWN audio asset under `res/raw/` (e.g. `keypress_classic.wav`), so the
+     * timbre itself changes when the user switches — no dependency on vendor ROM system sounds
+     * (which the BlackBerry Q25, for one, does not provide, so the old "re-pitch the system file"
+     * approach silently produced no change). [volumeScale] rides on top of the user's own volume
+     * preference.
+     */
+    enum class SoundScheme(
+        override val stringRes: Int,
+        /** Multiplier on the user's volume preference. */
+        val volumeScale: Float
+    ) : ManagedPreferenceEnum {
+        Classic(R.string.sound_scheme_classic, 1.0f),
+        Crisp(R.string.sound_scheme_crisp, 0.9f),
+        Muffled(R.string.sound_scheme_muffled, 1.05f),
+        Soft(R.string.sound_scheme_soft, 0.85f),
+        Piano(R.string.sound_scheme_piano, 0.9f),
+        Telegraph(R.string.sound_scheme_telegraph, 0.9f),
+        Woodfish(R.string.sound_scheme_woodfish, 0.95f),
+        Abacus(R.string.sound_scheme_abacus, 0.92f),
+        Silent(R.string.sound_scheme_silent, 0f);
     }
 
     private var systemSoundEffects = false
@@ -42,6 +70,7 @@ object InputFeedbacks {
     }
 
     private val keyboardPrefs = AppPrefs.getInstance().keyboard
+    private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
 
     private val soundOnKeyPress by keyboardPrefs.soundOnKeyPress
     private val soundOnKeyPressVolume by keyboardPrefs.soundOnKeyPressVolume
@@ -114,29 +143,35 @@ object InputFeedbacks {
 
     private val audioManager = appContext.audioManager
 
-    // ---- Precise-volume playback -----------------------------------------------------------
+    // ---- Bundled keypress samples ---------------------------------------------------------
     //
-    // `AudioManager.playSoundEffect(fx, volume)` hands the request to the system AudioService,
-    // whose SoundPool is bound to STREAM_SYSTEM. The volume we pass is only a relative scalar on
-    // top of the system stream volume, and a fair number of vendor ROMs drop it entirely — which
-    // makes an in-app volume slider look completely dead.
-    //
-    // Load the very same system keypress samples into our own SoundPool instead, so the requested
-    // gain is applied verbatim. Anything that fails (missing files, unreadable, load error) falls
-    // back to the AudioManager path, so behaviour degrades to the platform default rather than
-    // going silent.
+    // We ship one audio asset per scheme under res/raw/ (e.g. keypress_classic.wav). Each scheme's
+    // timbre is therefore a real, distinct sound rather than a re-pitch of a single system sample,
+    // which also removes the dependency on vendor ROM system sounds (the BlackBerry Q25 ships
+    // none, so the old "re-pitch the system file" approach silently produced no change). A tiny
+    // per-effect rate offset keeps the four key types from sounding identical.
 
-    private const val SystemUiSoundDir = "/system/media/audio/ui"
+    private val schemeSampleRes = mapOf(
+        SoundScheme.Classic to R.raw.keypress_classic,
+        SoundScheme.Crisp to R.raw.keypress_crisp,
+        SoundScheme.Muffled to R.raw.keypress_muffled,
+        SoundScheme.Soft to R.raw.keypress_soft,
+        SoundScheme.Piano to R.raw.keypress_piano,
+        SoundScheme.Telegraph to R.raw.keypress_telegraph,
+        SoundScheme.Woodfish to R.raw.keypress_woodfish,
+        SoundScheme.Abacus to R.raw.keypress_abacus
+    )
 
-    private val sampleFileNames = mapOf(
-        SoundEffect.Standard to "KeypressStandard.ogg",
-        SoundEffect.SpaceBar to "KeypressSpacebar.ogg",
-        SoundEffect.Delete to "KeypressDelete.ogg",
-        SoundEffect.Return to "KeypressReturn.ogg"
+    // Small pitch offsets so Space/Delete/Return don't all sound the same (1.0 = original).
+    private val effectRateOffset = mapOf(
+        SoundEffect.Standard to 1.0f,
+        SoundEffect.SpaceBar to 0.92f,
+        SoundEffect.Delete to 1.12f,
+        SoundEffect.Return to 0.96f
     )
 
     // Only ever touched from the IME main thread (onCreate + key/touch handling).
-    private val sampleIds = mutableMapOf<SoundEffect, Int>()
+    private val sampleIds = mutableMapOf<SoundScheme, Int>()
 
     // Written from the SoundPool load callback (binder thread), read while typing (main thread).
     private val loadedSamples: MutableSet<Int> = ConcurrentHashMap.newKeySet<Int>()
@@ -162,36 +197,48 @@ object InputFeedbacks {
     }
 
     /**
-     * Load the system keypress samples into our own [SoundPool]. Idempotent — only the first call
-     * does any work. Call it early (IME `onCreate`) so the very first keypress already has a
-     * loaded sample instead of falling back to the platform path.
+     * Load the bundled scheme samples into our own [SoundPool]. Idempotent — only the first call
+     * does any work. Call it early (IME `onCreate`) so the very first keypress already has a loaded
+     * sample instead of falling back to the platform path.
      */
     fun preloadSoundEffects() {
-        // Unsynchronised fast path: this runs on every keypress via [playAtExactVolume].
-        if (samplesRequested) return
+        // loadSamples() itself guards against redundant work once samples exist.
         loadSamples()
     }
 
     @Synchronized
     private fun loadSamples() {
-        if (samplesRequested) return
+        if (samplesRequested && sampleIds.isNotEmpty()) return
         samplesRequested = true
-        sampleFileNames.forEach { (effect, name) ->
-            val file = File(SystemUiSoundDir, name)
-            if (!file.canRead()) return@forEach
-            val id = runCatching { soundPool.load(file.absolutePath, 1) }.getOrNull() ?: return@forEach
+        schemeSampleRes.forEach { (scheme, resId) ->
+            val id = runCatching { soundPool.load(appContext, resId, 1) }.getOrNull() ?: return@forEach
             // load() returns 0 on failure.
-            if (id != 0) sampleIds[effect] = id
+            if (id != 0) {
+                sampleIds[scheme] = id
+                Log.d(TAG, "loaded scheme sample ${scheme.name} -> $id")
+            } else {
+                Log.w(TAG, "failed to load scheme sample ${scheme.name}")
+            }
         }
     }
 
-    /** @return true when the sample was actually played at the requested [gain]. */
-    private fun playAtExactVolume(effect: SoundEffect, gain: Float): Boolean {
+    /** @return true when the scheme's sample actually played at [gain] (and the effect's rate). */
+    private fun playScheme(scheme: SoundScheme, effect: SoundEffect, gain: Float): Boolean {
         preloadSoundEffects()
-        val id = sampleIds[effect] ?: return false
+        val id = sampleIds[scheme]
+        if (id == null) {
+            Log.w(TAG, "playScheme: no sample for ${scheme.name}")
+            return false
+        }
         // Still decoding: let this press fall back rather than dropping it silently.
-        if (id !in loadedSamples) return false
-        return soundPool.play(id, gain, gain, 1, 0, 1f) != 0
+        if (id !in loadedSamples) {
+            Log.d(TAG, "playScheme: sample $id for ${scheme.name} not ready yet")
+            return false
+        }
+        val rate = effectRateOffset[effect] ?: 1.0f
+        val played = soundPool.play(id, gain, gain, 1, 0, rate) != 0
+        Log.d(TAG, "playScheme: scheme=${scheme.name} effect=$effect gain=$gain rate=$rate played=$played")
+        return played
     }
 
     /**
@@ -207,20 +254,24 @@ object InputFeedbacks {
             InputFeedbackMode.Disabled -> return
             InputFeedbackMode.FollowingSystem -> if (!systemSoundEffects) return
         }
-        // An explicit volume only means something if we control the gain ourselves; `0` keeps the
-        // platform's own default level.
-        if (volume > 0 && playAtExactVolume(effect, volume / 100f)) return
+        // Silent means "no click at all".
+        val scheme = hardwareKeyboardPrefs.soundScheme.getValue()
+        if (scheme == SoundScheme.Silent) return
+
+        // Each scheme plays its OWN bundled sample, so switching is clearly audible. A per-effect
+        // rate offset adds a little variety between the four key types.
+        val gain = if (volume > 0) (volume * scheme.volumeScale) / 100f else 1.0f
+        if (playScheme(scheme, effect, gain)) return
+
+        // SoundPool still warming up on the very first press: fall back to a plain system click so
+        // a press is never silent.
         val fx = when (effect) {
             SoundEffect.Standard -> AudioManager.FX_KEYPRESS_STANDARD
             SoundEffect.SpaceBar -> AudioManager.FX_KEYPRESS_SPACEBAR
             SoundEffect.Delete -> AudioManager.FX_KEYPRESS_DELETE
             SoundEffect.Return -> AudioManager.FX_KEYPRESS_RETURN
         }
-        if (volume == 0) {
-            audioManager.playSoundEffect(fx, -1f)
-        } else {
-            audioManager.playSoundEffect(fx, volume / 100f)
-        }
+        audioManager.playSoundEffect(fx, if (volume <= 0) -1f else (volume * scheme.volumeScale) / 100f)
     }
 
 }

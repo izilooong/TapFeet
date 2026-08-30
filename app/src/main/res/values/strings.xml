@@ -308,6 +308,16 @@
     <string name="following_system_settings">Follow system settings</string>
     <string name="button_sound">Sound on keypress</string>
     <string name="button_sound_volume">Keypress sound volume</string>
+    <string name="sound_scheme">Sound scheme</string>
+    <string name="sound_scheme_classic">Classic</string>
+    <string name="sound_scheme_crisp">Crisp</string>
+    <string name="sound_scheme_muffled">Muffled</string>
+    <string name="sound_scheme_soft">Soft</string>
+    <string name="sound_scheme_piano">Piano</string>
+    <string name="sound_scheme_telegraph">Telegraph</string>
+    <string name="sound_scheme_woodfish">Woodfish</string>
+    <string name="sound_scheme_abacus">Abacus</string>
+    <string name="sound_scheme_silent">Silent</string>
     <string name="clipboard_return_after_paste">Return after pasting</string>
     <string name="theme_message_follow_system_day_night_mode_enabled">Cannot switch theme manually while \"Follow system day/night mode\" is enabled.</string>
     <string name="disable_it">Disable it</string>

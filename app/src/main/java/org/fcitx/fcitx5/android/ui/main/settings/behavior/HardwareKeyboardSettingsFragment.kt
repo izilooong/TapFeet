@@ -13,6 +13,7 @@ import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import com.google.android.material.tabs.TabLayout
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.data.InputFeedbacks.SoundScheme
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
@@ -206,6 +207,43 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             true
         }
         soundScreen.addPreference(keySoundVolumePref)
+
+        // Keypress sound flavour (timbre). Lives on the physical-keyboard sound tab, but the chosen
+        // scheme is a single global selection also shared by the on-screen keyboard — both reach it
+        // through InputFeedbacks.soundEffect. entryValues are the enum constant names (how
+        // ManagedPreferenceEnum serialises), entries are the user-facing strings.
+        val soundSchemePref = ListPreference(context).apply {
+            key = hw.soundScheme.key
+            title = getString(R.string.sound_scheme)
+            entries = arrayOf(
+                getString(R.string.sound_scheme_classic),
+                getString(R.string.sound_scheme_crisp),
+                getString(R.string.sound_scheme_muffled),
+                getString(R.string.sound_scheme_soft),
+                getString(R.string.sound_scheme_piano),
+                getString(R.string.sound_scheme_telegraph),
+                getString(R.string.sound_scheme_woodfish),
+                getString(R.string.sound_scheme_abacus),
+                getString(R.string.sound_scheme_silent)
+            )
+            entryValues = arrayOf(
+                SoundScheme.Classic.name,
+                SoundScheme.Crisp.name,
+                SoundScheme.Muffled.name,
+                SoundScheme.Soft.name,
+                SoundScheme.Piano.name,
+                SoundScheme.Telegraph.name,
+                SoundScheme.Woodfish.name,
+                SoundScheme.Abacus.name,
+                SoundScheme.Silent.name
+            )
+            setDefaultValue(hw.soundScheme.defaultValue)
+            value = hw.soundScheme.getValue().name
+            summary = "%s"
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+        }
+        soundScreen.addPreference(soundSchemePref)
 
         // Build the per-key preferences. candidate2-5 are remembered separately so the display-mode
         // handler can flip their visibility without disturbing candidate1 (first-pick, always shown).

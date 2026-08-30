@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tag slot on each settings-row view carrying its current card shape, so the
+         CardGroupDecoration can tell whether the background needs re-applying without
+         using a WeakHashMap (whose weakly-referenced keys get cleared by the GC and
+         cause backgrounds to be dropped after view recycle). -->
+    <item name="card_shape_key" type="id" />
+</resources>
