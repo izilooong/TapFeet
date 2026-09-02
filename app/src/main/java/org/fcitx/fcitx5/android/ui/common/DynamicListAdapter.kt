@@ -231,6 +231,21 @@ abstract class DynamicListAdapter<T>(
         return item
     }
 
+    /**
+     * Remove every entry from the list in one shot, without firing
+     * [OnItemChangedListener.onItemRemoved] per item. Use this for a bulk
+     * "clear all" where the backing store is wiped by a single call elsewhere.
+     */
+    @CallSuper
+    open fun clearItems() {
+        val size = _entries.size
+        if (size == 0) return
+        _entries.clear()
+        notifyItemRangeRemoved(0, size)
+        if (entries.isEmpty())
+            mainViewModel?.hideToolbarEditButton()
+    }
+
     @CallSuper
     open fun swapItem(fromIdx: Int, toIdx: Int) {
         Collections.swap(_entries, fromIdx, toIdx)

@@ -25,6 +25,8 @@ class MainViewModel : ViewModel() {
 
     val toolbarDeleteButtonOnClickListener = MutableLiveData<(() -> Unit)?>()
 
+    val toolbarClearButtonOnClickListener = MutableLiveData<(() -> Unit)?>()
+
     val aboutButton = MutableLiveData(false)
 
     val fcitx: FcitxConnection = FcitxDaemon.connect(javaClass.name)
@@ -73,6 +75,14 @@ class MainViewModel : ViewModel() {
 
     fun disableToolbarDeleteButton() {
         toolbarDeleteButtonOnClickListener.value = null
+    }
+
+    fun enableToolbarClearButton(onClick: () -> Unit) {
+        toolbarClearButtonOnClickListener.value = onClick
+    }
+
+    fun disableToolbarClearButton() {
+        toolbarClearButtonOnClickListener.value = null
     }
 
     fun enableAboutButton() {

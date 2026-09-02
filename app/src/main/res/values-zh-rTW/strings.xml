@@ -34,6 +34,7 @@
     <string name="setup_keyboard">完成鍵盤設定</string>
     <string name="setup_channel">設定精靈</string>
     <string name="pinyin_dict">拼音词库</string>
+    <string name="user_dict">使用者詞典</string>
     <string name="reloading">正在重新載入</string>
     <string name="importing">正在匯入</string>
     <string name="import_error">匯入錯誤</string>
@@ -246,6 +247,7 @@
     <string name="exception_user_data_package_name_mismatch">使用者資料與目前應用程式不符合</string>
     <string name="user_data_imported">已匯入來自 %1$s 的使用者資料，正在重新啟動</string>
     <string name="confirm_import_user_data">匯入使用者資料將會覆寫本機設定與輸入歷史，並且需要重新啟動來使變動生效。是否繼續？</string>
+    <string name="confirm_clear_user_dict">這將永久清除使用者詞典中的全部自造詞，且無法復原。是否繼續？</string>
     <string name="restart_channel">重新啟動應用程式</string>
     <string name="restart_notify_msg">應用程式已重新啟動，點此打開</string>
     <string name="i_do_not_need_it">我不需要</string>

@@ -207,6 +207,9 @@ sealed class SettingsRoute : Parcelable {
     @Serializable
     data object PinyinCustomPhrase : SettingsRoute()
 
+    @Serializable
+    data object PinyinUserDict : SettingsRoute()
+
     companion object {
         fun createGraph(controller: NavController) = controller.createGraph(Index) {
             val ctx = controller.context
@@ -302,6 +305,7 @@ sealed class SettingsRoute : Parcelable {
                 label = ctx.getString(R.string.table_im)
             }
             fragment<PinyinCustomPhraseFragment, PinyinCustomPhrase>()
+            fragment<PinyinUserDictFragment, PinyinUserDict>()
         }
     }
 }

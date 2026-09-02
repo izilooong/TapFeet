@@ -210,6 +210,18 @@ object PreferenceScreenFactory {
                     topLevelDesc.values, store, entry.sourceId, entry.addonId, save, seen
                 )
             }
+            if (source.sourceId == "pinyin") {
+                // User dictionary (self-learned words) — enumerated + swipe-to-delete,
+                // distinct from the pinyin library / custom phrase pages.
+                screen.addPreference(Preference(context).apply {
+                    setTitle(R.string.user_dict)
+                    setOnPreferenceClickListener {
+                        fragmentManager.primaryNavigationFragment
+                            ?.let { it.navigateWithAnim(SettingsRoute.PinyinUserDict) }
+                        true
+                    }
+                })
+            }
             if (!screen.isEmpty()) {
                 tabs.add(ConfigTab(source.title, screen))
             }

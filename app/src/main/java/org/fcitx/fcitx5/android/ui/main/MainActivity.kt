@@ -159,6 +159,12 @@ class MainActivity : AppCompatActivity() {
             viewModel.toolbarDeleteButtonOnClickListener
                 .observe(this@MainActivity) { listener -> isVisible = listener != null }
         }
+        menu.item(R.string.clear, R.drawable.ic_baseline_delete_sweep_24, iconTint, true) {
+            viewModel.toolbarClearButtonOnClickListener.value?.invoke()
+        }.apply {
+            viewModel.toolbarClearButtonOnClickListener
+                .observe(this@MainActivity) { listener -> isVisible = listener != null }
+        }
         // all menus should be invisible and enabled on demand
         menu.forEach { it.isVisible = false }
     }

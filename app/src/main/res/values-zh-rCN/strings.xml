@@ -87,6 +87,7 @@
     <string name="setup_keyboard">请完成键盘设置</string>
     <string name="setup_channel">设置向导</string>
     <string name="pinyin_dict">拼音词库</string>
+    <string name="user_dict">用户词典</string>
     <string name="reloading">重新加载中</string>
     <string name="importing">正在导入</string>
     <string name="import_error">导入错误</string>
@@ -326,6 +327,7 @@
     <string name="exception_user_data_package_name_mismatch">用户数据与当前应用不匹配</string>
     <string name="user_data_imported">已导入来自 %1$s 的用户数据，正在重启…</string>
     <string name="confirm_import_user_data">导入用户数据会覆盖本地设置与输入历史，并且在重启应用后才能生效。继续吗？</string>
+    <string name="confirm_clear_user_dict">这将永久清空用户词典里的全部自造词，且无法撤销。继续吗？</string>
     <string name="restart_channel">应用重启</string>
     <string name="restart_notify_msg">应用已被重启，点击此处打开</string>
     <string name="i_do_not_need_it">我不需要</string>
