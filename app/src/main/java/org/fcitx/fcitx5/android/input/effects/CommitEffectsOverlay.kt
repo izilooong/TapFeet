@@ -8,6 +8,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.View
@@ -16,6 +17,7 @@ import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.effects.EffectMode
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 import timber.log.Timber
 
@@ -54,17 +56,49 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         var maxLife = 1f
     }
 
+    /**
+     * The picked candidate word sailing upward after a commit — the "Fly" effect, drawn here
+     * instead of living in a throwaway TextView driven by ObjectAnimator: a fixed pixel
+     * target flew off the top of tall screens, and a system "remove animations" setting
+     * (or a 0x animator scale) silently shortened the animator to nothing.
+     */
+    private class Flyer {
+        var x = 0f
+        var startY = 0f
+        var rise = 0f
+        var text: String = ""
+        var life = 0f
+        var maxLife = 1f
+    }
+
     companion object {
         private const val MAX_PARTICLES = 96
         private const val DEGRADED_MAX = 48
         private const val BASE_COUNT = 6
-        private const val MIN_COUNT = 4
+        private const val MIN_COUNT = 6
         private const val MIN_LIFE_MS = 700f
         private const val MAX_LIFE_MS = 1100f
-        private const val GRAVITY = 520f // px/s^2 — gentle, long visible climb
-        private const val MIN_SPEED = 340f // px/s — strong upward launch
-        private const val MAX_SPEED = 720f
+        /**
+         * Every kinematic below is expressed in **dp** and scaled by [density] where it is
+         * used. As raw px/s constants they travelled half as far — visually — on a 3x phone
+         * as on a 1.5x one, which is why the same build looked alive on one device and
+         * "broken" on another.
+         */
+        private const val GRAVITY = 520f // dp/s^2
+        /** Burst height is a slice of the open space above the launch point, not an absolute. */
+        private const val RISE_RATIO = 0.42f
+        private const val MIN_RISE_DP = 72f
+        private const val MAX_RISE_DP = 300f
+        private const val SPEED_JITTER = 0.22f
         private const val SPREAD = 1.2f // radians, tight upward jet
+        /** Frames an emission may wait for the first layout before it gives up on this burst. */
+        private const val MAX_EMIT_RETRIES = 3
+        /**
+         * How long the frame loop may go silent before it is assumed dead. A burst lasts at
+         * most ~1.5s, so anything beyond this means the callback chain was lost rather than
+         * that the effect simply finished.
+         */
+        private const val STALE_LOOP_MS = 1000L
         private const val COMBO_SHOW_MS = 1200L
         private const val COMBO_FADE_MS = 400f
         private const val FRAME_SAMPLES = 30
@@ -72,13 +106,19 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         private const val MAX_BUBBLES = 24
         private const val DEGRADED_BUBBLES = 12
         private const val BUBBLE_LIFE_MS = 1500f
-        private const val BUBBLE_MIN_VY = 175f // px/s upward — climbs noticeably higher
-        private const val BUBBLE_MAX_VY = 345f
-        private const val BUBBLE_VX = 70f // px/s sideways spread
+        /** A dragged bubble covers this multiple of its launch speed over [BUBBLE_LIFE_MS]. */
+        private const val BUBBLE_DIST_FACTOR = 1.28f
+        private const val BUBBLE_VX = 70f // dp/s sideways spread
         private const val SWAY_FREQ = 3.2f // rad/s — wandering drift
-        private const val SWAY_AMP = 55f // px/s lateral sway amplitude
+        private const val SWAY_AMP = 55f // dp/s lateral sway amplitude
         private const val BUBBLE_FONT_SP = 16f
         private const val BUBBLE_PAD_DP = 12f
+
+        private const val MAX_FLYERS = 12
+        private const val FLY_LIFE_MS = 620f
+        private const val FLY_FONT_SP = 20f
+        private const val FLY_RISE_RATIO = 0.55f
+        private const val FLY_MIN_RISE_DP = 88f
     }
 
     private val density = context.resources.displayMetrics.density
@@ -90,9 +130,15 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     private val bubbles = Array(MAX_BUBBLES) { Bubble() }
     private var bubbleAlive = 0
 
+    private val flyers = Array(MAX_FLYERS) { Flyer() }
+    private var flyerAlive = 0
+
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.LEFT
+    }
+    private val flyerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
     }
     private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bubbleTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -104,6 +150,10 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
 
     private var running = false
     private var lastFrameNs = 0L
+    /** Wall-clock stamp of the last delivered frame; drives the stale-loop watchdog. */
+    private var lastDoFrameMs = 0L
+    /** Retries left for an emission that lands before the first layout. */
+    private var retryLeft = MAX_EMIT_RETRIES
 
     private var candidatesView: View? = null
 
@@ -122,17 +172,35 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         setWillNotDraw(false)
+        // CandidatesView is added to the same parent *after* us, so without an explicit
+        // elevation it would win the z-order and clip the first half of every burst.
+        elevation = 1000f
+    }
+
+    /**
+     * Choreographer is thread-local: a frame callback posted from anywhere but the main thread
+     * lands on *that* thread's Choreographer, which never ticks inside an IME window. The loop
+     * would then sit at running=true forever and every later burst gets silently dropped — the
+     * classic "effects suddenly stopped working, and never came back" report. Re-dispatch and
+     * let the real work happen on the main thread instead of touching views from here.
+     */
+    private fun onMainThread(what: String, rerun: () -> Unit): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) return true
+        Timber.w("effects: %s called off the main thread, re-posting", what)
+        post { rerun() }
+        return false
     }
 
     fun onCommit(text: String) {
+        if (!onMainThread("onCommit") { onCommit(text) }) return
         val prefs = AppPrefs.getInstance()
         if (prefs.advanced.disableAnimation.getValue()) {
-            Timber.w("effects: skipped by disableAnimation")
+            Timber.d("effects: skipped by disableAnimation")
             return
         }
         val effects = prefs.effects
         if (!effects.enabled.getValue() || effects.mode.getValue() != EffectMode.Particles) {
-            Timber.w(
+            Timber.d(
                 "effects: skipped (enabled=%b mode=%s)",
                 effects.enabled.getValue(), effects.mode.getValue()
             )
@@ -182,22 +250,44 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     }
 
     /**
+     * Sails the picked candidate word upward from where it was chosen — the "Fly" effect.
+     * Drawn on this overlay rather than on a throwaway TextView: see [Flyer].
+     */
+    fun flyTextAtScreen(screenX: Float, screenY: Float, text: String) {
+        if (!onMainThread("flyText") { flyTextAtScreen(screenX, screenY, text) }) return
+        if (text.isBlank() || flyerAlive >= MAX_FLYERS) return
+        val loc = intArrayOf(0, 0)
+        getLocationOnScreen(loc)
+        val y = screenY - loc[1]
+        val f = flyers[flyerAlive++]
+        f.x = screenX - loc[0]
+        f.startY = y
+        f.text = text
+        f.rise = (y * FLY_RISE_RATIO).coerceAtLeast(FLY_MIN_RISE_DP * density)
+        f.maxLife = FLY_LIFE_MS
+        f.life = f.maxLife
+        startIfNeeded()
+    }
+
+    /**
      * Spawns a bubble carrying [text] (the just-picked candidate) at the chosen candidate's
      * screen position; it then floats up with a random sideways lean. Triggered by
      * HorizontalCandidateComponent when [EffectMode.Bubble] is selected.
      */
     fun burstBubbleAtScreen(screenX: Float, screenY: Float, text: String) {
+        if (!onMainThread("bubble") { burstBubbleAtScreen(screenX, screenY, text) }) return
         if (text.isBlank()) return
         val loc = intArrayOf(0, 0)
         getLocationOnScreen(loc)
         val cap = if (quality < 0.5f) DEGRADED_BUBBLES else MAX_BUBBLES
         if (bubbleAlive >= cap) return
+        val y = screenY - loc[1]
         val b = bubbles[bubbleAlive++]
         b.x = screenX - loc[0]
-        b.y = screenY - loc[1]
+        b.y = y
         b.text = text
-        b.vx = (random.nextFloat() * 2f - 1f) * BUBBLE_VX
-        b.vy = -(BUBBLE_MIN_VY + random.nextFloat() * (BUBBLE_MAX_VY - BUBBLE_MIN_VY))
+        b.vx = (random.nextFloat() * 2f - 1f) * BUBBLE_VX * density
+        b.vy = -(riseFor(y) / BUBBLE_DIST_FACTOR) * (0.85f + random.nextFloat() * 0.3f)
         b.phase = random.nextFloat() * Math.PI.toFloat() * 2f
         b.maxLife = BUBBLE_LIFE_MS * (0.8f + random.nextFloat() * 0.4f)
         b.life = b.maxLife
@@ -223,22 +313,47 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
      * near the bottom of the window.
      */
     private fun launchY(): Float {
+        val h = height.toFloat()
         val cv = candidatesView
-        return if (cv != null && cv.isShown && cv.height > 0) {
-            cv.y
-        } else {
-            height * 0.9f
-        }
+        val y = if (cv != null && cv.isShown && cv.height > 0) cv.y else h * 0.9f
+        // Bursts need headroom. A candidate bar parked near the top of the window leaves
+        // nothing to climb into, so fall back to the bottom rather than firing upward into
+        // the void from y≈0.
+        return if (y > h * 0.22f) y else h * 0.9f
     }
+
+    /**
+     * How far an effect should travel upward: a slice of the space above the launch point,
+     * clamped to a dp band. A fixed pixel distance is invisible on a tall display and sails
+     * off the top of a short one — the two faces of the same "it does nothing on my phone"
+     * report.
+     */
+    private fun riseFor(y: Float): Float =
+        (y * RISE_RATIO).coerceIn(MIN_RISE_DP * density, MAX_RISE_DP * density)
 
     fun release() {
         running = false
         alive = 0
         bubbleAlive = 0
+        flyerAlive = 0
         Choreographer.getInstance().removeFrameCallback(this)
     }
 
     private fun emit(x: Float, y: Float, tier: Int, densityPref: Int) {
+        // Firing before the very first layout would launch from (0,0) and the whole burst
+        // would sail off-screen unseen — on some devices that is exactly the first commit.
+        if (width <= 0 || height <= 0) {
+            if (retryLeft > 0) {
+                retryLeft--
+                post { emit(x, y, tier, densityPref) }
+            }
+            return
+        }
+        retryLeft = MAX_EMIT_RETRIES
+        // An anchor measured before layout (or a bar that never reported one) reads as 0;
+        // recompute it now that the window has a size.
+        val ox = if (x > 0f) x else anchorX()
+        val oy = if (y > 0f) y else launchY()
         val cap = if (quality < 0.5f) DEGRADED_MAX else MAX_PARTICLES
         val count = ((BASE_COUNT + densityPref * 2 + tier * 2) * quality).toInt()
             .coerceAtLeast(MIN_COUNT)
@@ -248,13 +363,17 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         val color = randomParticleColor()
         val minRadius = 2.5f * density
         val maxRadius = 6f * density
+        // Launch speed is derived from how high the burst should climb, so it coasts to a
+        // halt near the top of its arc instead of overshooting a short window.
+        val rise = riseFor(oy)
+        val baseSpeed = sqrt(2f * GRAVITY * density * rise)
         repeat(count) {
             if (alive >= cap) return
             val p = pool[alive++]
             val angle = -Math.PI.toFloat() / 2f + (random.nextFloat() - 0.5f) * SPREAD
-            val speed = MIN_SPEED + random.nextFloat() * (MAX_SPEED - MIN_SPEED)
-            p.x = x
-            p.y = y
+            val speed = baseSpeed * (1f - SPEED_JITTER + random.nextFloat() * 2f * SPEED_JITTER)
+            p.x = ox
+            p.y = oy
             p.vx = cos(angle) * speed
             p.vy = sin(angle) * speed
             p.maxLife = MIN_LIFE_MS + random.nextFloat() * (MAX_LIFE_MS - MIN_LIFE_MS)
@@ -320,7 +439,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         recordFrame(dtMs)
         invalidate()
 
-        if (alive > 0 || bubbleAlive > 0 || now < comboVisibleUntil) {
+        if (alive > 0 || bubbleAlive > 0 || flyerAlive > 0 || now < comboVisibleUntil) {
             Choreographer.getInstance().postFrameCallback(this)
         } else {
             running = false
@@ -342,7 +461,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
                 alive--
                 continue
             }
-            p.vy += GRAVITY * dtSec
+            p.vy += GRAVITY * density * dtSec
             p.x += p.vx * dtSec
             p.y += p.vy * dtSec
             i++
@@ -363,12 +482,24 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
                 continue
             }
             b.phase += SWAY_FREQ * dtSec
-            b.x += (b.vx + cos(b.phase) * SWAY_AMP) * dtSec
+            b.x += (b.vx + cos(b.phase) * SWAY_AMP * density) * dtSec
             b.y += b.vy * dtSec
             b.vy *= (1f - 0.22f * dtSec) // gentler drag so it floats higher
             bi++
         }
+        var fi = 0
+        while (fi < flyerAlive) {
+            flyers[fi].life -= dtMs
+            if (flyers[fi].life <= 0f) retireFlyer(fi) else fi++
+        }
         tracker.tick(now)
+    }
+
+    private fun retireFlyer(index: Int) {
+        val tmp = flyers[index]
+        flyers[index] = flyers[flyerAlive - 1]
+        flyers[flyerAlive - 1] = tmp
+        flyerAlive--
     }
 
     private fun retireBubble(index: Int) {
@@ -390,7 +521,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             if (alive >= cap) return
             val p = pool[alive++]
             val angle = random.nextFloat() * Math.PI.toFloat() * 2f
-            val speed = 120f + random.nextFloat() * 170f
+            val speed = (120f + random.nextFloat() * 170f) * density
             p.x = x
             p.y = y
             p.vx = cos(angle) * speed
@@ -412,7 +543,25 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             canvas.drawCircle(p.x, p.y, p.radius * (0.35f + 0.65f * t), paint)
         }
         drawBubbles(canvas)
+        drawFlyers(canvas)
         drawCombo(canvas)
+    }
+
+    private fun drawFlyers(canvas: Canvas) {
+        if (flyerAlive == 0) return
+        // Same colour rule as the old fly view: ride the candidate bar's own text colour so
+        // the word stays legible on whatever theme is active.
+        flyerPaint.color = ThemeManager.activeTheme.candidateTextColor
+        flyerPaint.textSize = FLY_FONT_SP * scaledDensity
+        for (i in 0 until flyerAlive) {
+            val f = flyers[i]
+            val progress = 1f - (f.life / f.maxLife).coerceIn(0f, 1f)
+            // Ease out: leaves the candidate bar briskly, then settles at the top of the arc.
+            val eased = 1f - (1f - progress) * (1f - progress)
+            val alpha = if (progress < 0.75f) 1f else ((1f - progress) / 0.25f).coerceIn(0f, 1f)
+            flyerPaint.alpha = (255 * alpha).toInt()
+            canvas.drawText(f.text, f.x, f.startY - f.rise * eased, flyerPaint)
+        }
     }
 
     private fun drawBubbles(canvas: Canvas) {
@@ -504,9 +653,12 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         }
         if (frameIndex != 0) return
         val avg = frameTimes.average().toFloat()
+        // Thresholds keep clear of a healthy 60Hz cadence (~16.7ms): sitting right on top of
+        // it made ordinary 60Hz devices look like they were dropping frames, throttling the
+        // burst down to a handful of dots — i.e. an effect that appeared to do nothing.
         quality = when {
-            avg > 22f -> 0.4f
-            avg > 17.5f -> 0.7f
+            avg > 22f -> 0.55f
+            avg > 18.5f -> 0.75f
             avg < 16.9f -> (quality + 0.1f).coerceAtMost(1f)
             else -> quality
         }

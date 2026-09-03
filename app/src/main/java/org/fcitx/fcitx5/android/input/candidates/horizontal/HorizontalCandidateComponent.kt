@@ -5,13 +5,10 @@
 
 package org.fcitx.fcitx5.android.input.candidates.horizontal
 
-import android.animation.ObjectAnimator
 import android.content.res.Configuration
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
 import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
 import androidx.annotation.Keep
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
@@ -656,66 +653,11 @@ class HorizontalCandidateComponent :
         if (flyText != text) return
         when (effects.mode.getValue()) {
             EffectMode.Fly ->
-                showCandidateFlyAnimation(pendingFlyX, pendingFlyY, text)
+                service.effectsOverlay?.flyTextAtScreen(pendingFlyX, pendingFlyY, text)
             EffectMode.Bubble ->
                 service.effectsOverlay?.burstBubbleAtScreen(pendingFlyX, pendingFlyY, text)
             else -> {} // Particles drives its own burst via CommitEffectsOverlay.onCommit
         }
         pendingFlyText = null
-    }
-
-    private fun showCandidateFlyAnimation(startX: Float, startY: Float, text: String) {
-        val flyView =
-                TextView(context).apply {
-                    this.text = text
-                    textSize = 20f
-                    setTextColor(theme.candidateTextColor)
-                    isSingleLine = true
-                    alpha = 0f
-                    elevation = 1000f
-                }
-
-        val parentView = service.contentView as ViewGroup
-        parentView.addView(
-                flyView,
-                ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-        )
-
-        flyView.post {
-            val parentLoc = intArrayOf(0, 0)
-            parentView.getLocationOnScreen(parentLoc)
-
-            val localStartX = startX - parentLoc[0]
-            val localStartY = startY - parentLoc[1]
-
-            flyView.x = localStartX - flyView.width / 2f
-            flyView.y = localStartY - flyView.height / 2f
-
-            flyView.alpha = 1f
-
-            val targetY = 300f - parentLoc[1]
-            val flyDistance = startY - 300f
-
-            ObjectAnimator.ofFloat(
-                            flyView,
-                            View.TRANSLATION_Y,
-                            flyView.translationY,
-                            flyView.translationY - flyDistance
-                    )
-                    .apply {
-                        duration = 600
-                        start()
-                    }
-
-            ObjectAnimator.ofFloat(flyView, View.ALPHA, 1f, 1f, 1f, 1f, 0.8f, 0f).apply {
-                duration = 600
-                start()
-            }
-        }
-
-        flyView.postDelayed({ parentView.removeView(flyView) }, 700)
     }
 }
