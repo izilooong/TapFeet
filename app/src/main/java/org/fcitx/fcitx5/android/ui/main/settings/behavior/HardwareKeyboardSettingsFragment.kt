@@ -61,9 +61,14 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             title = getString(R.string.hw_key_profile)
             entries = arrayOf(
                 getString(R.string.hw_profile_blackberry),
-                getString(R.string.hw_profile_tt2)
+                getString(R.string.hw_profile_tt2),
+                getString(R.string.hw_profile_titan2_elite)
             )
-            entryValues = arrayOf(HardwareKeyProfiles.BLACKBERRY, HardwareKeyProfiles.TT2)
+            entryValues = arrayOf(
+                HardwareKeyProfiles.BLACKBERRY,
+                HardwareKeyProfiles.TT2,
+                HardwareKeyProfiles.TITAN2_ELITE
+            )
             setDefaultValue(hw.keyProfile.getValue())
             value = hw.keyProfile.getValue()
             summary = "%s"
@@ -237,7 +242,16 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 SoundScheme.Abacus.name,
                 SoundScheme.Silent.name
             )
-            setDefaultValue(hw.soundScheme.defaultValue)
+            // MUST be the enum's NAME, not the enum instance: ListPreference.onSetInitialValue
+            // casts the default straight to String ((String) mDefaultValue), while
+            // ManagedPreference.PStringLike<T>.defaultValue is typed as T itself (enumList yields
+            // the enum constant). Passing it as-is throws ClassCastException out of
+            // onAttachedToHierarchy — and because createPreferenceScreen() attaches the screen
+            // immediately, addPreference() below triggers it right here. It only fires while this key
+            // has never been persisted (fresh install) and silently "heals" once the user picks a
+            // scheme, which is why it is so hard to catch. The name is also what enumList's codec
+            // stores (decode = enumValueOf(raw)), so it matches entryValues / the persisted value.
+            setDefaultValue(hw.soundScheme.defaultValue.name)
             value = hw.soundScheme.getValue().name
             summary = "%s"
             isIconSpaceReserved = false

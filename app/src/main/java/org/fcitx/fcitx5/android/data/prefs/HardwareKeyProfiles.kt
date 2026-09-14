@@ -8,20 +8,23 @@ package org.fcitx.fcitx5.android.data.prefs
  * Predefined sets ("profiles") of hardware keyboard key bindings.
  *
  * Each profile maps a [AppPrefs.HardwareKeyboard] key-binding preference key to its fcitx5
- * portableString value (e.g. "Alt+space", "dollar", "Shift_L", or the special "Sym" string).
+ * portableString value (e.g. "Alt+space", "dollar", "Shift_L") or to a [HardwareSpecialKeys]
+ * pseudo-key name (e.g. "Sym", "NavBack") for physical function keys that have no fcitx5 KeySym.
  * Selecting a profile in the settings screen overwrites every individual key binding with the
  * profile's values.
  *
- * [BLACKBERRY] is the original/default set of bindings. [TT2] is an alternative layout.
+ * [BLACKBERRY] is the original/default set of bindings. [TT2] and [TITAN2_ELITE] are alternative
+ * layouts.
  * The individual keys remain editable afterwards, so a profile is only an initial batch set.
  */
 object HardwareKeyProfiles {
 
     const val BLACKBERRY = "blackberry"
     const val TT2 = "tt2"
+    const val TITAN2_ELITE = "titan2_elite"
 
     /** All available profile ids, in display order. */
-    fun ids(): List<String> = listOf(BLACKBERRY, TT2)
+    fun ids(): List<String> = listOf(BLACKBERRY, TT2, TITAN2_ELITE)
 
     /**
      * Single source of truth for the 11 hardware-keyboard key-binding preferences, in canonical
@@ -54,8 +57,38 @@ object HardwareKeyProfiles {
         "", "", "", "Alt+space", "Shift+space", "Alt_R",
     )
 
+    /**
+     * Titan2 Elite. Its bottom row (`TitanKey.kl` ROW4) is
+     * `左Shift / 返回 / home / 空格 / 后台任务 / fn / 右Shift`, but **home and 后台任务 cannot be
+     * bound at all**: they report `KEYCODE_HOME` / `KEYCODE_APP_SWITCH`, which the window policy
+     * consumes before any window — including the IME window — so no input method ever receives them
+     * (measured: pressing either produces zero events on the IME side, while their keyCodes are
+     * already present in the shortcut tables).
+     *
+     * What remains is exactly five bottom-row keys, symmetric around 空格, so the full 巨硬
+     * (4-2-1-3-5) row still works: `左Shift=4th, 返回=2nd, 空格=1st (centre), fn=3rd, 右Shift=5th`.
+     *
+     * Paging therefore moves off the Shifts (they are candidate keys now) onto DPAD left/right —
+     * pending a measurement of whether DPAD events reach the input method on this keyboard.
+     * `altLatchKey` is a bare `Alt_L` because this keyboard has no right Alt (only `KEY_LEFTALT`).
+     */
+    private val titan2EliteValues = listOf(
+        "space",        // candidate1Key     空格 —— 巨硬首选字（居中）
+        "NavBack",      // candidate2Key     返回
+        "NavFn",        // candidate3Key     fn
+        "Shift_L",      // candidate4Key     左Shift
+        "Shift_R",      // candidate5Key     右Shift
+        "Right",        // pageNextKey       方向键右（待实测 DPAD 能否到达输入法）
+        "Left",         // pagePrevKey       方向键左（同上）
+        "Sym",          // symbolPickerKey   SYM 键
+        "Alt+space",    // toggleImeKey
+        "Shift+space",  // pickerKey
+        "Alt_L",        // altLatchKey       本机只有左 Alt
+    )
+
     private fun valuesFor(name: String): List<String> = when (name) {
         TT2 -> tt2Values
+        TITAN2_ELITE -> titan2EliteValues
         else -> blackberryValues
     }
 

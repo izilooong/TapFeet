@@ -18,9 +18,13 @@ package org.fcitx.fcitx5.android.utils
  * `"Alt_L+grave"` -> `"Alt+grave"`, `"Ctrl_L+c"` -> `"Control+c"`. Plain keys (e.g. a bare
  * `"Alt_L"` with no trailing `+`) are left untouched, since those are valid standalone key
  * bindings (the left/right Alt *key*, not a modifier combo).
+ *
+ * Hardware pseudo-key names (e.g. `"Sym"`, `"NavBack"` — see
+ * [org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys]) need no special case here: they are
+ * matched by name *before* any `Key.parse`, and they can never contain a `Modifier_L/R+` prefix.
  */
 fun normalizeKeyString(keyString: String): String {
-    if (keyString.isEmpty() || keyString == "Sym") return keyString
+    if (keyString.isEmpty()) return keyString
     val sideQualified = Regex("(?i)(control|ctrl|alt|shift|super|hyper)_(?:l|r)\\+")
     return sideQualified.replace(keyString) { m ->
         when (m.groupValues[1].lowercase()) {

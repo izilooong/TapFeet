@@ -13,7 +13,8 @@ import org.fcitx.fcitx5.android.R
 /**
  * Preference that captures a hardware keyboard key binding using the fcitx5 Key system.
  * Stores the key as a fcitx5 portableString (e.g. "Alt+space", "dollar", "Shift_L"),
- * or the special string "Sym" for the BlackBerry SYM key.
+ * or the name of a [HardwareSpecialKeys] pseudo key (e.g. "Sym", "NavBack") for physical function
+ * keys that have no fcitx5 KeySym.
  * Uses [KeyCaptureUi] (same approach as the global [FcitxKeyPreference]).
  */
 class KeyCapturePreference : Preference {
@@ -71,7 +72,7 @@ class KeyCapturePreference : Preference {
             val v = preference.sharedPreferences?.getString(preference.key, preference.defaultValue)
                 ?: preference.defaultValue
             if (v.isEmpty()) return preference.context.getString(R.string.none)
-            return KeyCaptureUi.formatKey(v)
+            return KeyCaptureUi.formatKey(preference.context, v)
         }
     }
 

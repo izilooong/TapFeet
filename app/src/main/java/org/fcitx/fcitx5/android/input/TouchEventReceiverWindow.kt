@@ -19,6 +19,10 @@ class TouchEventReceiverWindow(
     private val window = PopupWindow(object : View(ctx) {
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(event: MotionEvent?): Boolean {
+            // Lab-page probe only: this popup is how the floating candidate surface gets touches
+            // back after the IME's own touchable region was squeezed away, so a touch that lands
+            // here proves the receiver-window route works.
+            event?.let { TouchProbeLog.record(TouchProbeLog.PATH_IME_RECEIVER, it) }
             return contentView.dispatchTouchEvent(event)
         }
     }).apply {

@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.Menu
+import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -28,6 +29,7 @@ import org.fcitx.fcitx5.android.BuildConfig
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.databinding.ActivityMainBinding
+import org.fcitx.fcitx5.android.input.TouchProbeLog
 import org.fcitx.fcitx5.android.ui.main.settings.SettingsRoute
 import org.fcitx.fcitx5.android.ui.setup.SetupActivity
 import org.fcitx.fcitx5.android.utils.Const
@@ -99,6 +101,28 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         processIntent(intent)
+    }
+
+    /**
+     * Lab-page probe only (no behaviour change): the physical keyboard's touch surface usually
+     * lands on the app window, because the IME squeezes its own touchable region down to a sliver in
+     * physical-keyboard mode. Overriding here — rather than a view-level touch listener — is what
+     * lets the probe see every touch in this window, including the ones a child view consumes.
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        TouchProbeLog.record(TouchProbeLog.PATH_APP_WINDOW, ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * Lab-page probe only (no behaviour change): hover and pointer motion — the keyboard surface's
+     * pointer/mouse mode, and any real mouse — are delivered through the generic-motion path rather
+     * than the touch path, so hooking only [dispatchTouchEvent] makes those coordinates look like
+     * they never arrive at all.
+     */
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        TouchProbeLog.record(TouchProbeLog.PATH_APP_MOTION, ev)
+        return super.dispatchGenericMotionEvent(ev)
     }
 
     private fun processIntent(intent: Intent?) {

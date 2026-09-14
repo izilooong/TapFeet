@@ -29,6 +29,17 @@
     <string name="char_format">字符: %1$s</string>
     <string name="char_none">字符: -</string>
     <string name="key_event_log">按键事件日志</string>
+    <string name="key_probe_ime_log">输入法侧按键日志</string>
+    <string name="key_probe_ime_hint">提示：点下面的输入框激活输入法后，按键会先经过输入法（上面那份日志只看得到落到应用窗口的键）。系统键（home / 后台任务）在系统层就被消费，永远到不了输入法，这里也不会出现。</string>
+    <string name="key_probe_ime_edit_hint">点此激活输入法</string>
+    <string name="key_probe_clear">清空</string>
+    <string name="key_probe_waiting">等待按键…</string>
+    <string name="touch_probe_title">键盘触摸面坐标</string>
+    <string name="touch_probe_waiting">等待触摸…</string>
+    <string name="touch_probe_hint">手指摸键盘触摸面，或切到鼠标指针模式再动一下。手指触摸和指针移动走的是不同的事件通道，下面那行计数会告诉我们究竟哪条通道收到了。</string>
+    <string name="touch_probe_counts">样本数: %1$s</string>
+    <string name="touch_trail_waiting">触摸键盘面…</string>
+    <string name="touch_trail_ime_band">输入法可触区</string>
     <string name="ignore_sys_cursor">忽略系统光标位置</string>
     <string name="hardware_keyboard">物理键盘</string>
     <string name="candidate_key_1">首选字</string>
@@ -59,6 +70,11 @@
     <string name="hw_key_profile">键盘布局预设</string>
     <string name="hw_profile_blackberry">BlackBerry</string>
     <string name="hw_profile_tt2">Titan2</string>
+    <string name="hw_profile_titan2_elite">Titan2 Elite</string>
+    <!-- 伪按键显示名（见 HardwareSpecialKeys）：没有 fcitx5 KeySym 的物理功能键 -->
+    <string name="hw_special_sym">Sym</string>
+    <string name="hw_special_back">返回</string>
+    <string name="hw_special_fn">Fn</string>
     <string name="hw_enable_candidate_quick_pick">巨硬模式</string>
     <string name="hw_enable_candidate_quick_pick_summary">由物理按键（Shift、0、Space、SYM、Shift）直接选词</string>
     <string name="key_capture_hint">按任意键以绑定…</string>

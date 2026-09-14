@@ -29,6 +29,17 @@
     <string name="char_format">Character: %1$s</string>
     <string name="char_none">Character: -</string>
     <string name="key_event_log">Key Event Log</string>
+    <string name="key_probe_ime_log">IME-side Key Log</string>
+    <string name="key_probe_ime_hint">Tip: tap the field below so the IME becomes active — keys then reach the input method first (the log above only sees keys the app window gets). System keys (home / recents) are consumed by the system before any window, so they can never reach an IME and will not appear here.</string>
+    <string name="key_probe_ime_edit_hint">Tap to activate the IME</string>
+    <string name="key_probe_clear">Clear</string>
+    <string name="key_probe_waiting">Waiting for a key…</string>
+    <string name="touch_probe_title">Keyboard Touch Surface</string>
+    <string name="touch_probe_waiting">Waiting for touch…</string>
+    <string name="touch_probe_hint">Touch the keyboard surface — or switch it to pointer mode and move it. A finger and a pointer travel through different event paths, so the counter below tells you which paths actually reached us.</string>
+    <string name="touch_probe_counts">Samples: %1$s</string>
+    <string name="touch_trail_waiting">Touch the surface…</string>
+    <string name="touch_trail_ime_band">IME touchable area</string>
     <string name="ignore_sys_cursor">Ignore system cursor position</string>
     <string name="hardware_keyboard">Physical Keyboard</string>
     <string name="candidate_key_1">First candidate</string>
@@ -59,6 +70,12 @@
     <string name="hw_key_profile">Key layout preset</string>
     <string name="hw_profile_blackberry">BlackBerry</string>
     <string name="hw_profile_tt2">Titan2</string>
+    <string name="hw_profile_titan2_elite">Titan2 Elite</string>
+    <!-- Labels for pseudo keys (see HardwareSpecialKeys): physical function keys that have no
+         fcitx5 KeySym, so they are bound by name instead of a portableString. -->
+    <string name="hw_special_sym">Sym</string>
+    <string name="hw_special_back">Back</string>
+    <string name="hw_special_fn">Fn</string>
     <string name="hw_candidate_display_mode">Candidate display mode</string>
     <string name="hw_candidate_display_mode_macrohard">Macrohard</string>
     <string name="hw_candidate_display_mode_linear">Linear</string>

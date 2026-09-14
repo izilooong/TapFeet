@@ -10,6 +10,7 @@ import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
 import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateArrangementMode
 import org.fcitx.fcitx5.android.utils.normalizeKeyString
@@ -36,7 +37,8 @@ import org.fcitx.fcitx5.android.utils.normalizeKeyString
 object HardwareShortcutResolver {
 
     private sealed interface ParsedKey {
-        object Sym : ParsedKey
+        /** A pseudo key with no fcitx5 KeySym — see [HardwareSpecialKeys]. */
+        data class Special(val entry: HardwareSpecialKeys.Entry) : ParsedKey
         data class Ref(val key: Key) : ParsedKey
     }
 
@@ -66,18 +68,18 @@ object HardwareShortcutResolver {
     private fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
         return parsedKeyCache.getOrPut(keyString) {
-            if (keyString == "Sym") ParsedKey.Sym
-            else ParsedKey.Ref(Key.parse(normalizeKeyString(keyString)))
+            // Pseudo keys MUST be looked up before Key.parse: their names deliberately avoid the
+            // fcitx5 native key names (which "Back" / "Home" / "Fn" would otherwise collide with
+            // and silently resolve to something else).
+            HardwareSpecialKeys.entryForName(keyString)?.let { return@getOrPut ParsedKey.Special(it) }
+            ParsedKey.Ref(Key.parse(normalizeKeyString(keyString)))
         }
     }
 
-    private fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean {
-        if (parsed == null) return false
-        return when (parsed) {
-            ParsedKey.Sym -> event.keyCode == KeyEvent.KEYCODE_SYM ||
-                event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
-            is ParsedKey.Ref -> matchesKey(event, parsed.key)
-        }
+    private fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean = when (parsed) {
+        null -> false
+        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
+        is ParsedKey.Ref -> matchesKey(event, parsed.key)
     }
 
     private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
@@ -122,8 +124,7 @@ object HardwareShortcutResolver {
     private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
         val parsed = parseKeyString(keyString) ?: return false
         return when (parsed) {
-            ParsedKey.Sym -> event.keyCode == KeyEvent.KEYCODE_SYM ||
-                event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
+            is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
             is ParsedKey.Ref -> FcitxKeyMapping.keyCodeToSym(event.keyCode) == parsed.key.sym ||
                 (event.unicodeChar != 0 && event.unicodeChar == parsed.key.sym)
         }

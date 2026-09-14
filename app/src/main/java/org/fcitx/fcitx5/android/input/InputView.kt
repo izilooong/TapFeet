@@ -27,6 +27,7 @@ import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -205,12 +206,13 @@ class InputView(
     }
 
     // ---- Hardware shortcut key caching ----------------------------------------
-    // Configured shortcut strings (e.g. "Alt+space", "Shift_L", "Sym") only change when
+    // Configured shortcut strings (e.g. "Alt+space", "Shift_L", "Sym", "NavBack") only change when
     // the user edits settings, yet `handleHardwareCandidateShortcut` runs on EVERY physical
     // key down. Parsing them via `Key.parse(normalizeKeyString(...))` on each keystroke is
     // wasted work, so we memoize the parsed `Key` and invalidate the cache on pref change.
     private sealed interface ParsedKey {
-        object Sym : ParsedKey
+        /** A pseudo key with no fcitx5 KeySym — see [HardwareSpecialKeys]. */
+        data class Special(val entry: HardwareSpecialKeys.Entry) : ParsedKey
         data class Ref(val key: Key) : ParsedKey
     }
 
@@ -242,18 +244,17 @@ class InputView(
     private fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
         return parsedKeyCache.getOrPut(keyString) {
-            if (keyString == "Sym") ParsedKey.Sym
-            else ParsedKey.Ref(Key.parse(normalizeKeyString(keyString)))
+            // Pseudo keys MUST be looked up before Key.parse: their names deliberately avoid the
+            // fcitx5 native key names that "Back" / "Home" / "Fn" would otherwise collide with.
+            HardwareSpecialKeys.entryForName(keyString)?.let { return@getOrPut ParsedKey.Special(it) }
+            ParsedKey.Ref(Key.parse(normalizeKeyString(keyString)))
         }
     }
 
-    private fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean {
-        if (parsed == null) return false
-        return when (parsed) {
-            ParsedKey.Sym -> event.keyCode == KeyEvent.KEYCODE_SYM ||
-                event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
-            is ParsedKey.Ref -> matchesKey(event, parsed.key)
-        }
+    private fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean = when (parsed) {
+        null -> false
+        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
+        is ParsedKey.Ref -> matchesKey(event, parsed.key)
     }
 
     @Keep
@@ -507,7 +508,7 @@ class InputView(
 
     /**
      * Match a [KeyEvent] against a stored key string (fcitx5 portableString, e.g. "Alt+space",
-     * "dollar", "Shift_L", or the special "Sym" string for the BlackBerry SYM key).
+     * "dollar", "Shift_L", or a [HardwareSpecialKeys] pseudo-key name such as "Sym" / "NavBack").
      *
      * Uses [KeySym.fromKeyEvent] (character identity) so symbol keys like `$` are matched by the
      * character they produce, not by an unreliable Android keyCode. Combos (keys with a modifier,
@@ -542,20 +543,22 @@ class InputView(
                 (event.unicodeChar != 0 && event.unicodeChar == key.sym)
         if (!symMatches) return false
         if (isModifierKeySym(key.sym)) return true
-        // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so use
-        // raw states (no stripping). A plain key (no modifier) keeps [KeyStates.fromKeyEvent]'s
-        // tolerant stripping, so an Alt-latched press of a number/symbol key still selects the
-        // candidate (the original fcitx5-android behaviour).
-        val states = if (key.states != 0) rawModifierStates(event) else KeyStates.fromKeyEvent(event)
+        // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so
+        // use raw states (no stripping). A plain key (no modifier) must ignore the system's residual
+        // modifier state — notably Alt sticky/locked left by some ROMs after an Alt tap — so the
+        // shortcut still works in editors where that happens. This mirrors
+        // [HardwareShortcutResolver.matchesKey]: [KeyStates.fromKeyEvent] does that clearing for
+        // number/symbol keys but *special-cases* the space key (unicode == ' '), which is exactly why
+        // a plain Space first-pick kept failing there. Use empty states directly so any plain key,
+        // Space included, matches regardless of leftover Alt.
+        val states = if (key.states != 0) rawModifierStates(event) else KeyStates.Empty
         return states.toInt() == key.states
     }
 
     /** Match by KeySym only (any modifiers) — used to detect a physical key regardless of modifiers. */
     private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
         val parsed = parseKeyString(keyString) ?: return false
-        if (parsed == ParsedKey.Sym) {
-            return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
-        }
+        if (parsed is ParsedKey.Special) return parsed.entry.matches(event.keyCode)
         return isSameKeySym(event, (parsed as ParsedKey.Ref).key)
     }
 

@@ -13,6 +13,7 @@ import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
+import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.utils.normalizeKeyString
 import splitties.dimensions.dp
@@ -48,8 +49,9 @@ import splitties.views.imageDrawable
  * key preference), so symbol keys like `$` are identified by their unicode character
  * rather than an unreliable Android keyCode.
  *
- * Stored value is a fcitx5 [Key] portableString (e.g. "Alt+space", "dollar", "Shift_L").
- * The BlackBerry SYM key (which has no fcitx5 KeySym) is stored as the special string "Sym".
+ * Stored value is a fcitx5 [Key] portableString (e.g. "Alt+space", "dollar", "Shift_L"), or the
+ * name of a [HardwareSpecialKeys] pseudo key (e.g. "Sym", "NavBack", "NavFn") for physical function
+ * keys that have no fcitx5 KeySym.
  */
 class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
 
@@ -103,9 +105,9 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
         requestFocus()
         setOnKeyListener l@{ _, _, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@l false
-            // SYM key has no fcitx5 KeySym — store as special string
-            if (event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS) {
-                setKeyString("Sym")
+            // Pseudo keys (SYM, back, recents, home, fn) have no fcitx5 KeySym — store their name.
+            HardwareSpecialKeys.entryForKeyCode(event.keyCode)?.let { entry ->
+                setKeyString(entry.name)
                 return@l true
             }
             val sym = KeySym.fromKeyEvent(event) ?: return@l false
@@ -174,9 +176,10 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
 
     init {
         // restore initial value
-        if (initialValue == "Sym") {
+        val special = HardwareSpecialKeys.entryForName(initialValue)
+        if (special != null) {
             keySym = KeySym(0)
-            currentValue = "Sym"
+            currentValue = special.name
         } else if (initialValue.isNotEmpty()) {
             val parsed = Key.parse(initialValue)
             keySym = parsed.keySym
@@ -206,7 +209,7 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
         updateDisplay()
     }
 
-    /** Set a special key string (e.g. "Sym") that has no fcitx5 Key representation. */
+    /** Set a [HardwareSpecialKeys] pseudo-key name (e.g. "Sym") that has no fcitx5 Key representation. */
     private fun setKeyString(s: String) {
         currentValue = s
         keySym = KeySym(0)
@@ -221,18 +224,16 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
             currentValue = Key.create(keySym, states).portableString
             lastKey = Key.create(keySym, states)
         }
-        // If keySym is 0 (e.g. "Sym" special key), modifier toggles are ignored
+        // If keySym is 0 (a pseudo key such as "Sym"), modifier toggles are ignored
         updateDisplay()
     }
 
     private fun updateDisplay() {
         textView.text = when {
             currentValue.isEmpty() -> ctx.getString(R.string.none)
-            currentValue == "Sym" -> "Sym"
-            else -> {
-                val key = Key.parse(currentValue)
-                key.localizedString.ifEmpty { ctx.getString(R.string.none) }
-            }
+            else -> HardwareSpecialKeys.entryForName(currentValue)
+                ?.let { ctx.getString(it.labelRes) }
+                ?: Key.parse(currentValue).localizedString.ifEmpty { ctx.getString(R.string.none) }
         }
     }
 
@@ -258,11 +259,11 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
         }
 
         /** Format a stored key string for display in preference summary. */
-        fun formatKey(keyString: String): String {
-            if (keyString.isEmpty()) return "(none)"
-            if (keyString == "Sym") return "Sym"
+        fun formatKey(ctx: Context, keyString: String): String {
+            if (keyString.isEmpty()) return ctx.getString(R.string.none)
+            HardwareSpecialKeys.entryForName(keyString)?.let { return ctx.getString(it.labelRes) }
             val key = Key.parse(normalizeKeyString(keyString))
-            return key.localizedString.ifEmpty { "(none)" }
+            return key.localizedString.ifEmpty { ctx.getString(R.string.none) }
         }
     }
 }

@@ -22,6 +22,7 @@ import android.util.LruCache
 import android.util.Size
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -64,6 +65,7 @@ import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.FcitxDaemon
 import org.fcitx.fcitx5.android.data.InputFeedbacks
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -963,8 +965,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * (setting: hardwareKeyboard.altLatchKey, default "Alt_L").
      *
      * The latch key is a bare physical key press (typically a modifier like Alt_L), so it is matched
-     * by the keysym derived from the event's keyCode. The special "Sym" string maps to the
-     * BlackBerry SYM key. An empty configured value disables latching entirely.
+     * by the keysym derived from the event's keyCode. [HardwareSpecialKeys] names (e.g. "Sym")
+     * resolve to pseudo keys that have no keysym. An empty configured value disables latching
+     * entirely.
      */
     // Self-invalidating memo of the parsed alt-latch key. Reparsing only happens when the
     // configured string actually changes (rare), instead of on every physical key press.
@@ -974,9 +977,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private fun isAltLatchKey(event: KeyEvent): Boolean {
         val keyString = AppPrefs.getInstance().hardwareKeyboard.altLatchKey.getValue()
         if (keyString.isEmpty()) return false
-        if (keyString == "Sym") {
-            return event.keyCode == KeyEvent.KEYCODE_SYM || event.keyCode == KeyEvent.KEYCODE_PICTSYMBOLS
-        }
+        HardwareSpecialKeys.entryForName(keyString)?.let { return it.matches(event.keyCode) }
         if (keyString != cachedAltLatchString) {
             cachedAltLatchString = keyString
             cachedAltLatchKey = Key.parse(normalizeKeyString(keyString))
@@ -1072,6 +1073,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Lab-page probe: record every key BEFORE any dispatch decision, so the log also covers keys
+        // a shortcut ends up consuming — and, by their absence, proves which keys never get
+        // dispatched to the IME window at all. No-op unless the Lab page turned recording on.
+        KeyProbeLog.record(event)
+
         // When the target editor requests key capture (e.g. KeyCaptureUi/KeyPreferenceUi),
         // do not consume physical key events so they reach the EditText's OnKeyListener.
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
@@ -1362,6 +1368,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        KeyProbeLog.record(event)
+
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
             return false
         }
@@ -1423,6 +1431,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         val effectiveEvent = withInjectedModifiers(event)
         return forwardKeyEvent(effectiveEvent) || super.onKeyUp(keyCode, effectiveEvent)
+    }
+
+    /**
+     * Lab-page probe only (no behaviour change): the keyboard surface's "pointer / mouse" mode
+     * reports hover and relative-axis motion here instead of through the touch path, so this is the
+     * one place those coordinates can be observed from the input method's side. The service has no
+     * `onTouchEvent` — touch reaches the IME through [TouchEventReceiverWindow] instead.
+     */
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        TouchProbeLog.record(TouchProbeLog.PATH_IME_MOTION, event)
+        return super.onGenericMotionEvent(event)
     }
 
     // Added in API level 14, deprecated in 29

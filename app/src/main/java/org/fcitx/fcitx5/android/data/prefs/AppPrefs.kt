@@ -470,7 +470,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
      */
     inner class CustomKeyboard : ManagedPreferenceInternal(sharedPreferences) {
         // 总开关：关闭后自定义键盘不可打开（状态栏⑩按钮、符号键盘⑩键隐藏，Sym 循环剔除自定义态）
-        val enabled = bool("custom_keyboard_enabled", true)
+        val enabled = bool("custom_keyboard_enabled", false)
         val keys = stringLike("custom_keyboard_keys", CustomKeyboardCodec, CustomKeyboardDefaults.keys)
     }
 
@@ -560,8 +560,9 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             SoundScheme.Classic
         )
 
-        // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L").
-        // The BlackBerry SYM key has no fcitx5 KeySym and is stored as the special string "Sym".
+        // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L"), or a
+        // [HardwareSpecialKeys] pseudo-key name (e.g. "Sym", "NavBack") for physical function keys
+        // that have no fcitx5 KeySym.
         //
         // Default values are intentionally empty: the real blackberry/tt2 defaults live in
         // [HardwareKeyProfiles.blackberry] / [HardwareKeyProfiles.tt2] (single source of truth

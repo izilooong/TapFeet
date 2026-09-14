@@ -94,9 +94,14 @@ object HardwareKeySymbolMap {
         KeyEvent.KEYCODE_M to "?"
     )
 
-    /** Returns the symbol map for the given profile id (defaults to [HardwareKeyProfiles.BLACKBERRY]). */
+    /**
+     * Returns the symbol map for the given profile id (defaults to [HardwareKeyProfiles.BLACKBERRY]).
+     * Titan2 Elite uses the exact same keycaps as the Titan2, so it shares that map by reference
+     * rather than keeping a second copy in sync.
+     */
     fun symbolMapFor(profileName: String): Map<Int, String> = when (profileName) {
-        HardwareKeyProfiles.TT2 -> tt2SymbolMap
+        HardwareKeyProfiles.TT2,
+        HardwareKeyProfiles.TITAN2_ELITE -> tt2SymbolMap
         else -> blackberrySymbolMap
     }
 

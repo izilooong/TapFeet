@@ -22,7 +22,7 @@
 | 设备系列 | 代表型号 | 适配状态 |
 | --- | --- | --- |
 | **Q25** | Q25 (BlackBerry Classic 复刻) | ✅ 深度适配 |
-| **Unihertz Titan 系列** | Titan 2 | ✅ 已适配 |
+| **Unihertz Titan 系列** | Titan 2 / Titan 2 Elite | ✅ 已适配 |
 | **BlackBerry KEY 系列** | KEYone / KEY2 / KEYle | ✅ 已适配 |
 
 > 理论上支持所有搭载实体 QWERTY 键盘的 Android 设备。以上为已实测型号，其他设备欢迎 [提交反馈](https://github.com/izilooong/TapFeet/issues)。
@@ -39,6 +39,7 @@
 
 - **Q25 / BlackBerry KEY**：5 大金刚键（⬆️ 0️⃣ 🈳 sym ⬆️）对应候选词 1~5
 - **Unihertz Titan 2**：顶部导航键 + 空格键快捷选词
+- **Unihertz Titan 2 Elite**：底排可用键按巨硬居中（4-2-1-3-5）映射 —— 空格=候选1、返回=候选2、fn=候选3、左Shift=候选4、右Shift=候选5，翻页用方向键左右。（底排的 home / 后台任务 是系统键，在系统层就被消费，任何输入法都收不到，故不参与映射）
 
 ### Alt + 数字组合键选词
 
