@@ -63,7 +63,9 @@ object HardwareKeySymbolMap {
         KeyEvent.KEYCODE_M to "."
     )
 
-    // TT2 device: same number-row symbols; letter symbols to be verified for the TT2 keycaps.
+    // TT2: these match `/system/usr/keychars/TitanKey-A71.kcm` (alt layer) key for key — a different
+    // device from the one that loads TitanKey.kcm. That file pair is why Titan2 Elite cannot reuse
+    // this map: same brand, different keycaps.
     private val tt2SymbolMap: Map<Int, String> = mapOf(
      
         KeyEvent.KEYCODE_Q to "0",
@@ -95,13 +97,50 @@ object HardwareKeySymbolMap {
     )
 
     /**
+     * Titan2 Elite, read off the device's own key-character map (`/system/usr/keychars/TitanKey.kcm`,
+     * the `alt` layer — what the keycaps actually carry) rather than inferred.
+     *
+     * It must NOT share the Titan2 map: the two differ on most of the alphabet. Measured differences
+     * vs the Titan2 preset include U/I (`_`/`-` vs swapped), O/P (`+`/`@` vs `/`/`:`), A/G (`*`/`/`
+     * vs `@`/`*`), J/H (`#`/`:` vs `+`/`#`), K/L (`'`/`"` vs swapped), the Z-X-C-V block
+     * (`7`/`8`/`9`/`?` vs `!`/`7`/`8`/`9`) and B/M (`!`/`.` vs `.`/`?`).
+     */
+    private val titan2EliteSymbolMap: Map<Int, String> = mapOf(
+        KeyEvent.KEYCODE_Q to "0",
+        KeyEvent.KEYCODE_W to "1",
+        KeyEvent.KEYCODE_E to "2",
+        KeyEvent.KEYCODE_R to "3",
+        KeyEvent.KEYCODE_T to "(",
+        KeyEvent.KEYCODE_Y to ")",
+        KeyEvent.KEYCODE_U to "_",
+        KeyEvent.KEYCODE_I to "-",
+        KeyEvent.KEYCODE_O to "+",
+        KeyEvent.KEYCODE_P to "@",
+        KeyEvent.KEYCODE_A to "*",
+        KeyEvent.KEYCODE_S to "4",
+        KeyEvent.KEYCODE_D to "5",
+        KeyEvent.KEYCODE_F to "6",
+        KeyEvent.KEYCODE_G to "/",
+        KeyEvent.KEYCODE_H to ":",
+        KeyEvent.KEYCODE_J to "#",
+        KeyEvent.KEYCODE_K to "'",
+        KeyEvent.KEYCODE_L to "\"",
+        KeyEvent.KEYCODE_Z to "7",
+        KeyEvent.KEYCODE_X to "8",
+        KeyEvent.KEYCODE_C to "9",
+        KeyEvent.KEYCODE_V to "?",
+        KeyEvent.KEYCODE_B to "!",
+        KeyEvent.KEYCODE_N to ",",
+        KeyEvent.KEYCODE_M to "."
+    )
+
+    /**
      * Returns the symbol map for the given profile id (defaults to [HardwareKeyProfiles.BLACKBERRY]).
-     * Titan2 Elite uses the exact same keycaps as the Titan2, so it shares that map by reference
-     * rather than keeping a second copy in sync.
+     * Each device has its own keycaps, so no profile shares another's map.
      */
     fun symbolMapFor(profileName: String): Map<Int, String> = when (profileName) {
-        HardwareKeyProfiles.TT2,
-        HardwareKeyProfiles.TITAN2_ELITE -> tt2SymbolMap
+        HardwareKeyProfiles.TT2 -> tt2SymbolMap
+        HardwareKeyProfiles.TITAN2_ELITE -> titan2EliteSymbolMap
         else -> blackberrySymbolMap
     }
 

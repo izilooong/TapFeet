@@ -601,6 +601,12 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
          * If any key already exists, the user has configured them (or upgraded from an older build
          * that already stored them), so we leave their values untouched — never overwrite.
          */
+        // Diagnostic-only: when the IME is active, make its window touchable over the physical
+        // keyboard's touch surface band so the Lab page (InputMethodTestFragment) can record those
+        // coordinates. Off by default — normal input is completely unaffected. See
+        // KeyboardSurfaceProbeWindow and TouchProbeLog.PATH_IME_SURFACE.
+        val captureKeyboardSurfaceTouch = bool("hw_capture_keyboard_surface", false)
+
         private val seededKeys = listOf(
             keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,
             pageNextKey, pagePrevKey, symbolPickerKey, toggleImeKey, pickerKey, altLatchKey

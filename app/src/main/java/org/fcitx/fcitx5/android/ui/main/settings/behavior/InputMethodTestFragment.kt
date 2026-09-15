@@ -16,12 +16,14 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.KeyProbeLog
 import org.fcitx.fcitx5.android.input.TouchProbeLog
 import splitties.dimensions.dp
@@ -194,6 +196,23 @@ class InputMethodTestFragment : Fragment() {
                         minWidth = 0
                         minimumWidth = 0
                         setOnClickListener { TouchProbeLog.clear() }
+                    })
+                })
+
+                // Diagnostic toggle: when ON, the IME grabs the keyboard-surface band so this page
+                // can record touches while the IME is active (see refreshKeyboardSurfaceProbe /
+                // KeyboardSurfaceProbeWindow). Off by default so normal input is untouched.
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(Switch(context).apply {
+                        text = getString(R.string.touch_probe_capture_switch)
+                        isAllCaps = false
+                        setOnCheckedChangeListener { _, checked ->
+                            AppPrefs.getInstance().hardwareKeyboard.captureKeyboardSurfaceTouch
+                                .setValue(checked)
+                        }
+                        isChecked = AppPrefs.getInstance().hardwareKeyboard.captureKeyboardSurfaceTouch
+                            .getValue()
                     })
                 })
 

@@ -35,6 +35,15 @@ object TouchProbeLog {
     const val PATH_APP_MOTION = "app:motion"
     const val PATH_IME_RECEIVER = "ime:recv"
     const val PATH_IME_MOTION = "ime:motion"
+    /**
+     * IME-side capture of the keyboard's touch surface. When the IME is shown its window is
+     * full-screen but only a thin bottom strip is touchable (`onComputeInsets` →
+     * `TOUCHABLE_INSETS_VISIBLE`), so a finger on the physical keyboard surface lands in the IME's
+     * NON-touchable band and is dropped (not forwarded to the app). [KeyboardSurfaceProbeWindow]
+     * makes that band touchable on the IME side and records here, which is the only way the Lab
+     * page can see those coordinates while the cursor sits in an input box.
+     */
+    const val PATH_IME_SURFACE = "ime:surface"
 
     data class Entry(
         val seq: Int,

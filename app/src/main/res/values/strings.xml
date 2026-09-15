@@ -36,8 +36,9 @@
     <string name="key_probe_waiting">Waiting for a key…</string>
     <string name="touch_probe_title">Keyboard Touch Surface</string>
     <string name="touch_probe_waiting">Waiting for touch…</string>
-    <string name="touch_probe_hint">Touch the keyboard surface — or switch it to pointer mode and move it. A finger and a pointer travel through different event paths, so the counter below tells you which paths actually reached us.</string>
+    <string name="touch_probe_hint">Touch the keyboard surface — or switch it to pointer mode and move it. A finger and a pointer travel through different event paths, so the counter below tells you which paths actually reached us.\nNote: while the IME is active (cursor in a box), the keyboard-surface touch lands in the IME\'s non-touchable band and is not seen here by default — flip on \"Capture keyboard surface when IME active\" above to record it on the ime:surface channel.</string>
     <string name="touch_probe_counts">Samples: %1$s</string>
+    <string name="touch_probe_capture_switch">Capture keyboard surface when IME active</string>
     <string name="touch_trail_waiting">Touch the surface…</string>
     <string name="touch_trail_ime_band">IME touchable area</string>
     <string name="ignore_sys_cursor">Ignore system cursor position</string>

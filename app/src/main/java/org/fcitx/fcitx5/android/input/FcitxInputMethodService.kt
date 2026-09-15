@@ -677,6 +677,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private var cachedNavBarBg: View? = null
 
+    /**
+     * Diagnostic-only: a PopupWindow that makes the IME side touchable over the physical keyboard's
+     * touch-surface band so the Lab page can record those coordinates while the IME is active. See
+     * [KeyboardSurfaceProbeWindow] and [refreshKeyboardSurfaceProbe]. Null unless the capture pref
+     * is on in physical-keyboard mode.
+     */
+    private var keyboardSurfaceProbeWindow: KeyboardSurfaceProbeWindow? = null
+    private var capturePrefListenerRegistered = false
+    private val captureKeyboardSurfaceListener =
+        ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshKeyboardSurfaceProbe() }
+
     override fun onComputeInsets(outInsets: Insets) {
         // When a window is revealed inside this InputView in physical-keyboard mode (the symbol
         // picker, or the number/letter keyboard switched to from within it), the InputView is a
@@ -720,6 +731,46 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         window.window?.let { w ->
             val p = w.attributes
             w.setLayout(p.width, p.height)
+        }
+    }
+
+    /**
+     * Show / hide the diagnostic keyboard-surface capture window. Only meaningful in
+     * physical-keyboard mode (the surface does not exist on a soft keyboard) and only when the user
+     * has enabled [AppPrefs.hardwareKeyboard.captureKeyboardSurfaceTouch]. When shown, the window
+     * covers the keyboard-surface band (roughly the middle of the screen, well above the IME's
+     * touchable bottom strip) so its touches reach the IME and get recorded to
+     * [TouchProbeLog.PATH_IME_SURFACE] — the Lab page reads that singleton and can finally display
+     * coordinates while the IME is active.
+     *
+     * Registering the pref listener lazily here means the Lab-page toggle takes effect immediately
+     * (no re-focus needed); the listener reference is kept as a field per ManagedPreference's
+     * "no anonymous listeners" rule.
+     */
+    private fun refreshKeyboardSurfaceProbe() {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        if (!capturePrefListenerRegistered) {
+            hw.captureKeyboardSurfaceTouch.registerOnChangeListener(captureKeyboardSurfaceListener)
+            capturePrefListenerRegistered = true
+        }
+        val enabled = hw.captureKeyboardSurfaceTouch.getValue() && !inputDeviceMgr.isVirtualKeyboard
+        // `decorView` is the service-level property (lateinit View, assigned from the inner Window
+        // in onCreate); `InputMethodService.window` is a SoftInputWindow which has no `decorView`.
+        val token = decorView
+        if (enabled && token != null) {
+            if (keyboardSurfaceProbeWindow == null) {
+                keyboardSurfaceProbeWindow = KeyboardSurfaceProbeWindow(this)
+            }
+            val dm = resources.displayMetrics
+            val w = dm.widthPixels
+            val h = dm.heightPixels
+            // Keyboard surface maps to the middle band (measured ~Y 234..920 of 1200 on the Titan);
+            // cover a generous slice so device-specific ranges still land inside.
+            val top = (h * 0.17f).toInt()
+            val bandH = (h * 0.63f).toInt()
+            keyboardSurfaceProbeWindow?.show(token, 0, top, w, bandH)
+        } else {
+            keyboardSurfaceProbeWindow?.dismiss()
         }
     }
 
@@ -1596,6 +1647,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             showStatusIcon(StatusIconMapping.fromEntry(fcitx.runImmediately { inputMethodEntryCached }))
         }
+        // Diagnostic: (re)apply the keyboard-surface capture window now that the IME is up.
+        refreshKeyboardSurfaceProbe()
     }
 
     override fun onUpdateSelection(
@@ -1885,6 +1938,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         hideStatusIcon()
         showingDialog?.dismiss()
+        // Diagnostic: tear down the keyboard-surface capture window with the input view.
+        keyboardSurfaceProbeWindow?.dismiss()
     }
 
     override fun onFinishInput() {
