@@ -607,6 +607,17 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // KeyboardSurfaceProbeWindow and TouchProbeLog.PATH_IME_SURFACE.
         val captureKeyboardSurfaceTouch = bool("hw_capture_keyboard_surface", false)
 
+        // Keyboard fly-text: in physical-keyboard mode, a swipe up the keyboard surface picks the
+        // candidate whose on-screen column the finger is over, and a left/right swipe pages
+        // candidates. On by default — it only captures the keyboard surface band (never the app
+        // area) and only acts while candidates are visible. Shares the capture window with
+        // captureKeyboardSurfaceTouch.
+        val keyboardFlyText = bool("hw_keyboard_flytext", true)
+
+        // Keyboard fly-text paging direction: swap the default mapping (left = next, right =
+        // previous) so left = previous and right = next. Only meaningful while fly-text is on.
+        val keyboardFlyTextSwapPage = bool("hw_keyboard_flytext_swap_page", false)
+
         private val seededKeys = listOf(
             keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,
             pageNextKey, pagePrevKey, symbolPickerKey, toggleImeKey, pickerKey, altLatchKey

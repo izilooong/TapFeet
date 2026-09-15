@@ -63,6 +63,11 @@
     <string name="hw_long_press_symbol_summary">长按按键快速输入键帽上的符号。</string>
     <string name="hw_long_press_symbol_threshold">长按输入符号时长</string>
     <string name="hw_long_press_symbol_threshold_summary">长按多久（300–1000 毫秒）后，按键输入键帽上的符号而非字符。</string>
+    <string name="hw_keyboard_flytext">键盘飞字</string>
+    <string name="hw_keyboard_flytext_summary">在物理键盘模式下，于键盘触摸面向上滑动，选取手指所在列（按候选词在屏幕上的位置）对应的候选词；左右滑动翻页。仅在存在可见候选词时生效。</string>
+    <string name="hw_flytext_swap_page">翻页方向互换</string>
+    <string name="hw_flytext_swap_page_summary">交换左右滑动翻页的方向。默认：左滑=下一页，右滑=上一页。</string>
+    <string name="hw_flytext_unsupported_summary">此设备没有键盘触摸面，仅 Titan 2 Elite 支持。</string>
     <string name="hw_key_sound">物理按键音</string>
     <string name="hw_key_sound_summary">按下物理按键时播放键盘按键音。音效模式（跟随系统 / 开启 / 关闭）沿用虚拟键盘的按键音设置。</string>
     <string name="hw_key_sound_volume">物理按键音音量</string>
@@ -77,7 +82,7 @@
     <string name="hw_special_back">返回</string>
     <string name="hw_special_fn">Fn</string>
     <string name="hw_enable_candidate_quick_pick">巨硬模式</string>
-    <string name="hw_enable_candidate_quick_pick_summary">由物理按键（Shift、0、Space、SYM、Shift）直接选词</string>
+    <string name="hw_enable_candidate_quick_pick_summary">由物理按键直接选词（第 1~5 候选）：%1$s</string>
     <string name="key_capture_hint">按任意键以绑定…</string>
     <string name="key_captured_format">已捕获: %1$s (%2$d)</string>
     <string name="hw_reset">恢复默认</string>
@@ -475,6 +480,7 @@
     <string name="cat_hw_profile">配置文件</string>
     <string name="cat_hw_alt">Alt 行为</string>
     <string name="cat_hw_sound_symbol">声音与符号</string>
+    <string name="cat_hw_flytext">飞字</string>
     <string name="cat_hw_keybindings">物理键绑定</string>
     <string name="dictionary">词库</string>
     <!-- Custom theme color editor (Chinese) -->

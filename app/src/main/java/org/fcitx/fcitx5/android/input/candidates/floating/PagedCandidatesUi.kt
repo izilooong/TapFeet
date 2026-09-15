@@ -111,6 +111,10 @@ class PagedCandidatesUi(
         itemAnimator = null
     }
 
+    /** The candidate list RecyclerView, exposed for hit-testing candidate on-screen rects
+     *  (keyboard fly-text). [root] is typed as [View] by the [Ui] interface, so this narrows it. */
+    val candidateList: RecyclerView get() = root as RecyclerView
+
     @SuppressLint("NotifyDataSetChanged")
     fun update(
         data: FcitxEvent.PagedCandidateEvent.Data,

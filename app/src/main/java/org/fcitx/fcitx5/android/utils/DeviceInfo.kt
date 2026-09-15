@@ -12,6 +12,23 @@ import org.fcitx.fcitx5.android.BuildConfig
 
 // Adapted from https://gist.github.com/hendrawd/01f215fd332d84793e600e7f82fc154b
 object DeviceInfo {
+
+    /**
+     * Whether this device has a "keyboard touch surface": an input device reporting BOTH the
+     * keyboard and touchpad sources — the Titan 2 Elite's keyboard face (`touchPad`,
+     * `KEYBOARD|TOUCHPAD`). This is the capability keyboard fly-text needs, so features gated on
+     * this are effectively Titan2-Elite-only while staying future-proof for any device with the
+     * same hardware trait. Source comparisons MUST use `==`, never `!= 0` (all pointer-ish sources
+     * share the 0x2 class bit — see the Titan touch-model notes).
+     */
+    fun hasKeyboardTouchSurface(): Boolean =
+        android.view.InputDevice.getDeviceIds().any { id ->
+            val d = android.view.InputDevice.getDevice(id) ?: return@any false
+            val s = d.sources
+            (s and android.view.InputDevice.SOURCE_TOUCHPAD) == android.view.InputDevice.SOURCE_TOUCHPAD &&
+                    (s and android.view.InputDevice.SOURCE_KEYBOARD) == android.view.InputDevice.SOURCE_KEYBOARD
+        }
+
     fun get(context: Context) = buildString {
         appendLine("--------- Device Info")
         appendLine("OS Name: ${Build.DISPLAY}")

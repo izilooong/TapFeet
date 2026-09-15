@@ -6,6 +6,7 @@
 package org.fcitx.fcitx5.android.input.candidates.horizontal
 
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
 import android.view.View
@@ -283,6 +284,31 @@ class HorizontalCandidateComponent :
     fun selectionIndexAtVisiblePosition(position: Int): Int? {
         if (position < 0) return null
         return adapter.selectionIndexAtDisplayPosition(position)
+    }
+
+    /**
+     * On-screen rectangles of the currently visible candidate items, each paired with the engine
+     * selection index to pass to `Fcitx.select` (the display→selection mapping honours the active
+     * arrangement, e.g. Macrohard centered reordering, exactly like the bar's own click path
+     * `select(holder.idx)`). Sorted left-to-right by on-screen X. Used by keyboard fly-text to
+     * map a swipe's X position onto a candidate. Empty when the bar is hidden or not laid out.
+     */
+    fun flyCandidateRects(): List<Pair<Int, Rect>> {
+        val rv = view
+        if (rv.visibility != View.VISIBLE || !rv.isAttachedToWindow) return emptyList()
+        val out = mutableListOf<Triple<Int, Int, Rect>>() // selectionIndex, screenLeft, rect
+        val loc = IntArray(2)
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i) ?: continue
+            if (child.visibility != View.VISIBLE) continue
+            val displayPos = rv.getChildAdapterPosition(child)
+            if (displayPos < 0) continue
+            val selIdx = adapter.selectionIndexAtDisplayPosition(displayPos) ?: continue
+            child.getLocationOnScreen(loc)
+            out.add(Triple(selIdx, loc[0], Rect(loc[0], loc[1], loc[0] + child.width, loc[1] + child.height)))
+        }
+        out.sortBy { it.second }
+        return out.map { it.first to it.third }
     }
 
     fun currentCandidatePagingMode(): Int = candidatePagingMode

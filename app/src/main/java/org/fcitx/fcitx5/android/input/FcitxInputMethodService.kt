@@ -11,6 +11,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
@@ -20,9 +21,11 @@ import android.os.SystemClock
 import android.text.InputType
 import android.util.LruCache
 import android.util.Size
+import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
+import org.fcitx.fcitx5.android.input.swipe.KeyboardFlyTextSelector
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -73,6 +76,7 @@ import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
 import org.fcitx.fcitx5.android.input.effects.CommitEffectsOverlay
+import org.fcitx.fcitx5.android.utils.DeviceInfo
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.forceShowSelf
@@ -377,9 +381,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             is FcitxEvent.CandidateListEvent -> {
                 lastCandidateListData = event.data
+                // Candidate set changed → re-evaluate fly-text arming. On this device's default
+                // config (show_candidates_window=Disabled) the engine emits THIS event and never
+                // PagedCandidateEvent, so without a refresh here the fly-text gate would never
+                // recompute and stay disarmed forever.
+                refreshFlyTextCapture()
             }
             is FcitxEvent.PagedCandidateEvent -> {
                 lastPagedCandidateData = event.data
+                // Candidate set changed (appeared / cleared / repaged) → re-evaluate whether the
+                // fly-text capture window should be shown and which candidates it maps onto.
+                refreshFlyTextCapture()
             }
             is FcitxEvent.InputPanelEvent -> {
                 // When the floating candidate window isn't rendering the composing letters
@@ -678,15 +690,71 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var cachedNavBarBg: View? = null
 
     /**
-     * Diagnostic-only: a PopupWindow that makes the IME side touchable over the physical keyboard's
-     * touch-surface band so the Lab page can record those coordinates while the IME is active. See
-     * [KeyboardSurfaceProbeWindow] and [refreshKeyboardSurfaceProbe]. Null unless the capture pref
-     * is on in physical-keyboard mode.
+     * Diagnostic + fly-text touch channel: a PopupWindow that makes the IME side touchable over
+     * the physical keyboard's touch-surface band. See [KeyboardSurfaceProbeWindow] and
+     * [refreshFlyTextCapture]. Up while the Lab capture is recording-gated, OR while fly-text is
+     * armed with visible candidates (the dispatcher verdict below forces a window to claim the
+     * band; fly-text keeps that claim transient — only while candidates are on screen).
      */
     private var keyboardSurfaceProbeWindow: KeyboardSurfaceProbeWindow? = null
     private var capturePrefListenerRegistered = false
     private val captureKeyboardSurfaceListener =
-        ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshKeyboardSurfaceProbe() }
+        ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshFlyTextCapture() }
+
+    /**
+     * The capture window blocks every tap in its band while it is up (it must receive the DOWN to
+     * probe, and a consumed DOWN is never forwarded to the app — no cross-window forwarding). A
+     * diagnostic switch alone must therefore NOT keep the window up system-wide: gate it on
+     * [TouchProbeLog.recording] (flipped by the Lab page in onResume/onPause) so the mask exists
+     * only while the user is actually testing inside the Lab page, and vanishes everywhere else.
+     */
+    private var probeRecordingListenerRegistered = false
+    private var lastRecordingState = false
+    private val probeRecordingListener = {
+        if (TouchProbeLog.recording != lastRecordingState) {
+            lastRecordingState = TouchProbeLog.recording
+            refreshFlyTextCapture()
+        }
+    }
+
+    /**
+     * "Keyboard fly-text": in physical-keyboard mode, a swipe up the keyboard surface picks the
+     * candidate whose on-screen column the finger is over, and a left/right swipe pages candidates.
+     * Touch channel: the probe popup while armed (see [refreshFlyTextCapture] for the dispatcher
+     * verdict that forces this), with the service's [onGenericMotionEvent] kept as an opportunistic
+     * hook. Created lazily because its lambda needs [resources] (attach-time) and [fcitx].
+     */
+    private lateinit var flyTextSelector: KeyboardFlyTextSelector
+    private var flyTextSelectorInitialized = false
+    private var flyTextListenerRegistered = false
+    private val flyTextListener =
+        ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshFlyTextCapture() }
+
+    /**
+     * Live state: fly-text is armed (pref on AND visible candidates, from either candidate event
+     * source — this device's config emits [FcitxEvent.CandidateListEvent], not the paged variant).
+     * Recomputed on every [refreshFlyTextCapture], read by [onGenericMotionEvent] to decide
+     * whether keyboard-surface motion belongs to the fly-text gesture.
+     */
+    private var flyTextOn = false
+    /** Tracks the last popup show state so per-keystroke refreshes don't spam the log. */
+    private var lastPopupShown = false
+    /** Tracks the last logged [flyTextOn] value; arm/disarm transitions are logged once each. */
+    private var lastFlyTextLogged = false
+
+    /**
+     * True while a keyboard-surface gesture stream should be treated as a capture/fly-text gesture
+     * rather than a "show the soft keyboard" request: the Lab "capture keyboard surface" switch is
+     * on (recording-gated probe popup up), or fly-text is armed with visible candidates (popup up
+     * for the same reason — the band must be claimed for the stream to reach the IME at all).
+     * While this holds, [onUpdateEditorToolType] suppresses the virtual-keyboard flip. Deliberately
+     * does NOT touch [onComputeInsets]: widening the touchable region to
+     * [Insets.TOUCHABLE_INSETS_FRAME] makes the IME claim the WHOLE screen (app content reports a
+     * ~full-screen IME inset and every touch outside the band dies in the IME window) — i.e. an
+     * invisible full-screen mask. The probe PopupWindow receives its own band without it, exactly
+     * like the candidates' TouchEventReceiverWindow does.
+     */
+    private var keyboardSurfaceProbing = false
 
     override fun onComputeInsets(outInsets: Insets) {
         // When a window is revealed inside this InputView in physical-keyboard mode (the symbol
@@ -735,31 +803,120 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     /**
-     * Show / hide the diagnostic keyboard-surface capture window. Only meaningful in
-     * physical-keyboard mode (the surface does not exist on a soft keyboard) and only when the user
-     * has enabled [AppPrefs.hardwareKeyboard.captureKeyboardSurfaceTouch]. When shown, the window
-     * covers the keyboard-surface band (roughly the middle of the screen, well above the IME's
-     * touchable bottom strip) so its touches reach the IME and get recorded to
-     * [TouchProbeLog.PATH_IME_SURFACE] — the Lab page reads that singleton and can finally display
-     * coordinates while the IME is active.
-     *
-     * Registering the pref listener lazily here means the Lab-page toggle takes effect immediately
-     * (no re-focus needed); the listener reference is kept as a field per ManagedPreference's
-     * "no anonymous listeners" rule.
+     * Rects for keyboard fly-text hit-testing, each paired with the engine selection index.
+     * Prefers the floating [CandidatesView]; on the config where the engine emits bulk candidate
+     * lists (show_candidates_window=Disabled → only CandidateListEvent, no PagedCandidateEvent) the
+     * floating window stays INVISIBLE and the visible surface is the InputView candidate bar, so
+     * fall back to that. Both sources return `select`-ready indexes, so [onSelect] is a plain
+     * `select(pos)` either way. One diagnostic line per empty probe keeps the active surface
+     * observable in logcat.
      */
-    private fun refreshKeyboardSurfaceProbe() {
+    private fun flyCandidateRects(): List<Pair<Int, Rect>> {
+        val floating = candidatesView?.candidateScreenRects().orEmpty()
+        if (floating.isNotEmpty()) return floating
+        val bar = inputView?.flyCandidateRects().orEmpty()
+        if (bar.isEmpty()) {
+            Timber.i(
+                "FlyText: no candidate rects (floatingVis=${candidatesView?.visibility}, " +
+                        "floatingPaged=${lastPagedCandidateData.candidates.size}, " +
+                        "barListed=${lastCandidateListData.candidates.size})"
+            )
+        }
+        return bar
+    }
+
+    /**
+     * Re-evaluate the two keyboard-surface features (both physical-keyboard-only):
+     *  1. Diagnostic capture — [AppPrefs.hardwareKeyboard.captureKeyboardSurfaceTouch] + Lab page
+     *     recording. Shows the probe popup, which records surface touches to
+     *     [TouchProbeLog.PATH_IME_SURFACE]. The popup blocks taps in its band, hence the
+     *     double gate: it must never lurk system-wide behind a forgotten switch.
+     *  2. Keyboard fly-text — [AppPrefs.hardwareKeyboard.keyboardFlyText] + visible candidates.
+     *     Plan B verdict (2026-09-15): a "pure" service channel does NOT work. getevent proved the
+     *     kernel delivers the dev=6 stream while [flyTextOn] was armed, yet the IME session
+     *     received zero events ([TouchProbeLog.PATH_IME_MOTION] silent) — the dispatcher targets
+     *     the CLASS_POSITION touch stream by window region, and without a window claiming the
+     *     keyboard band it all goes to the focused app. So fly-text NEEDS the popup for its touch
+     *     channel; the trade-off is that the band is claimed exactly while candidates are visible
+     *     (transient by construction — the popup dismisses the moment the candidates vanish).
+     *
+     * Pref listeners are registered lazily (kept as fields per ManagedPreference's "no anonymous
+     * listeners" rule) so toggling either switch takes effect immediately, no re-focus needed.
+     */
+    private fun refreshFlyTextCapture() {
         val hw = AppPrefs.getInstance().hardwareKeyboard
         if (!capturePrefListenerRegistered) {
             hw.captureKeyboardSurfaceTouch.registerOnChangeListener(captureKeyboardSurfaceListener)
             capturePrefListenerRegistered = true
         }
-        val enabled = hw.captureKeyboardSurfaceTouch.getValue() && !inputDeviceMgr.isVirtualKeyboard
+        if (!flyTextListenerRegistered) {
+            hw.keyboardFlyText.registerOnChangeListener(flyTextListener)
+            flyTextListenerRegistered = true
+        }
+        if (!probeRecordingListenerRegistered) {
+            TouchProbeLog.addListener(probeRecordingListener)
+            probeRecordingListenerRegistered = true
+        }
+        // Neither gate uses !isVirtualKeyboard: on this device the candidates-window mode
+        // (show_candidates_window) defaults to Disabled, whose evaluate* paths FORCE
+        // isVirtualKeyboard=true while the user is in fact typing on the physical keyboard with
+        // the soft keyboard hidden — so that flag is NOT a reliable "physical mode" indicator here.
+        val captureOn = hw.captureKeyboardSurfaceTouch.getValue() && TouchProbeLog.recording
+        flyTextOn = hw.keyboardFlyText.getValue() &&
+                DeviceInfo.hasKeyboardTouchSurface() &&
+                (lastPagedCandidateData.candidates.isNotEmpty() ||
+                        lastCandidateListData.candidates.isNotEmpty())
+        keyboardSurfaceProbing = captureOn || flyTextOn
+        // Log the armed state on transitions only (candidates appearing/vanishing, not every
+        // keystroke) — with Plan B the popup is diagnostic-only, so without this line the fly-text
+        // arming is invisible in logcat and the service-channel experiment can't be judged.
+        if (flyTextOn != lastFlyTextLogged) {
+            lastFlyTextLogged = flyTextOn
+            Timber.i(
+                if (flyTextOn) "FlyText: ARMED (service channel) captureOn=$captureOn"
+                else "FlyText: DISARMED captureOn=$captureOn"
+            )
+        }
+
+        // Lazily build the selector (needs resources + fcitx, available at runtime). Built as soon
+        // as fly-text arms — the service channel needs it even when the popup never shows.
+        if (flyTextOn && !flyTextSelectorInitialized) {
+            flyTextSelector = KeyboardFlyTextSelector(
+                density = resources.displayMetrics.density,
+                candidateRectsProvider = { flyCandidateRects() },
+                onSelect = { pos ->
+                    // Route through the bar's tap path so the fly animation fires like a normal
+                    // pick; fall back to a plain engine select when the index isn't on the bar
+                    // (stale rects, or the rects came from the floating CandidatesView).
+                    if (inputView?.flySelectSelectionIndex(pos) != true) {
+                        postFcitxJob { select(pos) }
+                    }
+                },
+                onPage = { dir ->
+                    // Honours the user's "swap page swipe direction" toggle, then pages the
+                    // candidate bar locally for bulk lists (engine paging has nothing to move
+                    // there); only falls back to engine paging for the floating window.
+                    val d = if (AppPrefs.getInstance().hardwareKeyboard
+                            .keyboardFlyTextSwapPage.getValue()
+                    ) -dir else dir
+                    if (inputView?.flyPageCandidates(d) != true) {
+                        postFcitxJob { offsetCandidatePage(d) }
+                    }
+                }
+            )
+            flyTextSelectorInitialized = true
+        }
+
         // `decorView` is the service-level property (lateinit View, assigned from the inner Window
         // in onCreate); `InputMethodService.window` is a SoftInputWindow which has no `decorView`.
         val token = decorView
-        if (enabled && token != null) {
+        if ((captureOn || flyTextOn) && token != null) {
             if (keyboardSurfaceProbeWindow == null) {
                 keyboardSurfaceProbeWindow = KeyboardSurfaceProbeWindow(this)
+            }
+            // Diagnostic capture always records; fly-text only consumes when there are candidates.
+            keyboardSurfaceProbeWindow?.onTouch = { event ->
+                if (flyTextOn) flyTextSelector.onTouchEvent(event)
             }
             val dm = resources.displayMetrics
             val w = dm.widthPixels
@@ -769,8 +926,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             val top = (h * 0.17f).toInt()
             val bandH = (h * 0.63f).toInt()
             keyboardSurfaceProbeWindow?.show(token, 0, top, w, bandH)
+            if (!lastPopupShown) {
+                lastPopupShown = true
+                Timber.i("FlyText: capture window SHOWN captureOn=$captureOn flyTextOn=$flyTextOn")
+            }
         } else {
-            keyboardSurfaceProbeWindow?.dismiss()
+            if (lastPopupShown) {
+                keyboardSurfaceProbeWindow?.dismiss()
+                lastPopupShown = false
+                Timber.i("FlyText: capture window DISMISSED captureOn=$captureOn flyTextOn=$flyTextOn")
+            }
         }
     }
 
@@ -1485,13 +1650,27 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     /**
-     * Lab-page probe only (no behaviour change): the keyboard surface's "pointer / mouse" mode
-     * reports hover and relative-axis motion here instead of through the touch path, so this is the
-     * one place those coordinates can be observed from the input method's side. The service has no
-     * `onTouchEvent` — touch reaches the IME through [TouchEventReceiverWindow] instead.
+     * Two channels meet here:
+     *  - Lab-page probe: the keyboard surface's "pointer / mouse" mode reports hover and
+     *    relative-axis motion here instead of through the touch path.
+     *  - Keyboard fly-text: opportunistic only. The Plan B experiment (2026-09-15) proved the
+     *    dispatcher does NOT route the keyboard-surface CLASS_POSITION stream to the IME session
+     *    without a window claiming the band — the real touch channel is the probe popup, fed in
+     *    [refreshFlyTextCapture]. This hook stays armed so any ROM/mode that does deliver the
+     *    stream here still drives the selector.
      */
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         TouchProbeLog.record(TouchProbeLog.PATH_IME_MOTION, event)
+        // Only the keyboard-surface touch stream (SOURCE_TOUCHPAD == 0x100008, the source the
+        // device reports for dev=6 while the IME is active) belongs to fly-text; hover / scroll
+        // from other devices must keep falling through to super. Selector#onTouchEvent is void —
+        // arming ([flyTextOn]) is the sole consumption decision, per the "==" source rule.
+        if (flyTextSelectorInitialized && flyTextOn &&
+            event.source == InputDevice.SOURCE_TOUCHPAD
+        ) {
+            flyTextSelector.onTouchEvent(event)
+            return true
+        }
         return super.onGenericMotionEvent(event)
     }
 
@@ -1506,6 +1685,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     @RequiresApi(34)
     override fun onUpdateEditorToolType(toolType: Int) {
         super.onUpdateEditorToolType(toolType)
+        // While the keyboard-surface capture window is up, a finger touch (screen OR keyboard
+        // surface) is a capture gesture — not a request to summon the soft keyboard. Skip the
+        // mode flip so the gesture can't dismiss/reconfigure the capture setup mid-swipe.
+        if (keyboardSurfaceProbing) return
         inputDeviceMgr.evaluateOnUpdateEditorToolType(toolType, this)
     }
 
@@ -1648,7 +1831,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             showStatusIcon(StatusIconMapping.fromEntry(fcitx.runImmediately { inputMethodEntryCached }))
         }
         // Diagnostic: (re)apply the keyboard-surface capture window now that the IME is up.
-        refreshKeyboardSurfaceProbe()
+        refreshFlyTextCapture()
     }
 
     override fun onUpdateSelection(
@@ -1940,6 +2123,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         showingDialog?.dismiss()
         // Diagnostic: tear down the keyboard-surface capture window with the input view.
         keyboardSurfaceProbeWindow?.dismiss()
+        keyboardSurfaceProbing = false
+        // Drop any in-flight fly-text gesture so a stale slide can't latch the next session.
+        if (flyTextSelectorInitialized) flyTextSelector.reset()
     }
 
     override fun onFinishInput() {
@@ -1971,6 +2157,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         prefs.candidates.unregisterOnChangeListener(recreateCandidatesViewListener)
         ThemeManager.removeOnChangedListener(onThemeChangeListener)
+        if (probeRecordingListenerRegistered) {
+            TouchProbeLog.removeListener(probeRecordingListener)
+            probeRecordingListenerRegistered = false
+        }
         effectsOverlay?.release()
         effectsOverlay = null
         super.onDestroy()

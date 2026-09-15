@@ -21,11 +21,23 @@ import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
+import org.fcitx.fcitx5.android.ui.main.settings.KeyCaptureUi
+import org.fcitx.fcitx5.android.utils.DeviceInfo
 
 class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
     private lateinit var hw: AppPrefs.HardwareKeyboard
     private val keyPrefs = mutableListOf<KeyCapturePreference>()
+
+    /** The 巨硬 quick-pick master switch; its summary shows the LIVE key bindings (task: 键位描述). */
+    private lateinit var quickPickSwitch: SwitchPreference
+
+    /** The fly-text switches; the swap toggle is only enabled while fly-text itself is on. */
+    private lateinit var flyTextSwitch: SwitchPreference
+    private lateinit var flyTextSwapSwitch: SwitchPreference
+
+    /** Whether this device has the keyboard touch surface fly-text needs (Titan 2 Elite). */
+    private var flyTextSupported: Boolean = false
 
     /**
      * References to the candidate2-5 [KeyCapturePreference] views. Their visibility is driven by
@@ -46,6 +58,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
         val profileScreen = preferenceManager.createPreferenceScreen(context)
+        val flyTextScreen = preferenceManager.createPreferenceScreen(context)
         val altScreen = preferenceManager.createPreferenceScreen(context)
         val soundScreen = preferenceManager.createPreferenceScreen(context)
 
@@ -82,19 +95,55 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
         // 底排物理键快速选字开关：仅控制"物理键是否选词"，与候选栏排列顺序无关
         // （排列顺序在"候选栏选项 → Candidate arrangement"中设置）。
-        val quickPickSwitch = SwitchPreference(context).apply {
+        // 摘要动态显示当前配置的实际键位（随预设/开关联动刷新），不再硬编码某一版的键位。
+        quickPickSwitch = SwitchPreference(context).apply {
             key = hw.enableCandidateQuickPick.key
             title = getString(R.string.hw_enable_candidate_quick_pick)
-            summary = getString(R.string.hw_enable_candidate_quick_pick_summary)
             setDefaultValue(hw.enableCandidateQuickPick.getValue())
             isChecked = hw.enableCandidateQuickPick.getValue()
             isIconSpaceReserved = false
         }
+        updateQuickPickSummary()
         quickPickSwitch.setOnPreferenceChangeListener { _, newValue ->
             applyQuickPick(newValue as Boolean)
             true
         }
         profileScreen.addPreference(quickPickSwitch)
+
+        // —— 飞字独立 Tab ——
+        // 键盘飞字依赖"键盘触摸面"（KEYBOARD|TOUCHPAD 复合源，Titan 2 Elite 的键盘面）。
+        // 没有该硬件能力的设备：整个 Tab 内的开关禁用，并说明原因；运行时 service 侧同样
+        // 以该能力闸门兜底（flyTextOn），防止继承的 true 值在无触摸面的设备上产生遮罩。
+        flyTextSupported = DeviceInfo.hasKeyboardTouchSurface()
+        flyTextSwitch = SwitchPreference(context).apply {
+            key = hw.keyboardFlyText.key
+            title = getString(R.string.hw_keyboard_flytext)
+            summary = getString(R.string.hw_keyboard_flytext_summary)
+            setDefaultValue(hw.keyboardFlyText.getValue())
+            isChecked = hw.keyboardFlyText.getValue()
+            isIconSpaceReserved = false
+        }
+        flyTextSwapSwitch = SwitchPreference(context).apply {
+            key = hw.keyboardFlyTextSwapPage.key
+            title = getString(R.string.hw_flytext_swap_page)
+            summary = getString(R.string.hw_flytext_swap_page_summary)
+            setDefaultValue(hw.keyboardFlyTextSwapPage.getValue())
+            isChecked = hw.keyboardFlyTextSwapPage.getValue()
+            isIconSpaceReserved = false
+            // Sub-toggle only meaningful while fly-text is on (and the device supports it at all).
+            isEnabled = flyTextSupported && hw.keyboardFlyText.getValue()
+        }
+        if (!flyTextSupported) {
+            flyTextSwitch.isEnabled = false
+            flyTextSwitch.summary = getString(R.string.hw_keyboard_flytext_summary) + "\n" +
+                    getString(R.string.hw_flytext_unsupported_summary)
+        }
+        flyTextSwitch.setOnPreferenceChangeListener { _, newValue ->
+            flyTextSwapSwitch.isEnabled = flyTextSupported && (newValue as Boolean)
+            true
+        }
+        flyTextScreen.addPreference(flyTextSwitch)
+        flyTextScreen.addPreference(flyTextSwapSwitch)
 
         // Master toggle: double-tap left Alt to latch the Alt modifier.
         val altLatchSwitch = SwitchPreference(context).apply {
@@ -327,6 +376,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
         screens = listOf(
             getString(R.string.cat_hw_profile) to profileScreen,
+            getString(R.string.cat_hw_flytext) to flyTextScreen,
             getString(R.string.cat_hw_alt) to altScreen,
             getString(R.string.cat_hw_sound_symbol) to soundScreen
         )
@@ -339,6 +389,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         HardwareKeyProfiles.applyProfile(name, hw)
         keyPrefs.forEach { it.refresh() }
         setCandidateShortcutVisibility(hw.enableCandidateQuickPick.getValue())
+        updateQuickPickSummary()
     }
 
     /**
@@ -359,6 +410,20 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         setCandidateShortcutVisibility(enabled)
         keyPrefs.forEach { it.refresh() }
+        updateQuickPickSummary()
+    }
+
+    /**
+     * 巨硬模式摘要显示当前实际配置的键位（第 1~5 候选依次列出），随预设切换与快速选字开关
+     * 联动刷新。键名渲染复用 [KeyCaptureUi.formatKey]（伪按键 Sym/NavBack 等有本地化名），
+     * 与下方各行 KeyCapturePreference 的摘要渲染保持一致；未绑定的键显示为"无"。
+     */
+    private fun updateQuickPickSummary() {
+        val keys = listOf(
+            hw.candidate1Key, hw.candidate2Key, hw.candidate3Key,
+            hw.candidate4Key, hw.candidate5Key
+        ).joinToString("、") { KeyCaptureUi.formatKey(requireContext(), it.getValue()) }
+        quickPickSwitch.summary = getString(R.string.hw_enable_candidate_quick_pick_summary, keys)
     }
 
     private fun setCandidateShortcutVisibility(visible: Boolean) {

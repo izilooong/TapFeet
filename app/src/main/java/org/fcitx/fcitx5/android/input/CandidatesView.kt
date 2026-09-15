@@ -6,6 +6,7 @@
 package org.fcitx.fcitx5.android.input
 
 import android.annotation.SuppressLint
+import android.graphics.Rect
 import android.os.Build
 import android.view.KeyEvent
 import android.view.View
@@ -274,6 +275,52 @@ class CandidatesView(
         visibility == VISIBLE && paged.candidates.isNotEmpty()
 
     private fun visibleCandidateCount(): Int = paged.candidates.size
+
+    /**
+     * On-screen rectangles of the currently visible candidate items, in absolute screen coordinates,
+     * each paired with the engine selection index to pass to `Fcitx.select`. Used by keyboard
+     * fly-text to map a swipe's X position onto the candidate whose column the finger is over. The
+     * rectangles follow the candidate bar's real layout (center-justified / wrapped / multi-column),
+     * so the mapping honours whatever arrangement is active — including the Microsoft-style centered
+     * first pick. Returns an empty list when the window is not visible or not yet laid out (no rects
+     * to hit-test against).
+     */
+    internal fun candidateScreenRects(): List<Pair<Int, Rect>> {
+        if (visibility != VISIBLE) return emptyList()
+        val rv = candidatesUi.candidateList
+        if (rv.visibility != VISIBLE) return emptyList()
+        val out = mutableListOf<Triple<Int, Int, Rect>>() // position, screenLeft, rect
+        val loc = IntArray(2)
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i) ?: continue
+            if (child.visibility != VISIBLE) continue
+            val pos = rv.getChildAdapterPosition(child)
+            if (pos < 0) continue
+            child.getLocationOnScreen(loc)
+            out.add(Triple(pos, loc[0], Rect(loc[0], loc[1], loc[0] + child.width, loc[1] + child.height)))
+        }
+        out.sortBy { it.second }
+        if (out.isNotEmpty()) return out.map { it.first to it.third }
+
+        // RecyclerView children weren't laid out / attached yet (can happen if a swipe lands in the
+        // first frame after candidates appear). Fall back to dividing the candidate bar's own
+        // on-screen span into one equal column per candidate, so an up-swipe still picks the
+        // nearest word instead of doing nothing. Centre-justified layouts aren't honoured here, but
+        // it's strictly better than a dead gesture.
+        if (paged.candidates.isEmpty()) return emptyList()
+        getLocationOnScreen(loc)
+        val n = paged.candidates.size
+        val colW = width.toFloat() / n
+        val startX = loc[0].toFloat()
+        val top = loc[1]
+        val bottom = loc[1] + height
+        return (0 until n).map { i ->
+            i to Rect(
+                (startX + i * colW).toInt(), top,
+                (startX + (i + 1) * colW).toInt(), bottom
+            )
+        }
+    }
 
     private fun selectAtVisiblePosition(position: Int): Boolean {
         if (position !in 0 until paged.candidates.size) return false

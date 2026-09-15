@@ -63,6 +63,11 @@
     <string name="hw_long_press_symbol_summary">Hold a letter/number key ~0.4s to input its keycap symbol; a quick tap types the character as usual.</string>
     <string name="hw_long_press_symbol_threshold">Long-press symbol duration</string>
     <string name="hw_long_press_symbol_threshold_summary">How long (300–1000 ms) a key must be held before it inputs its keycap symbol instead of the character.</string>
+    <string name="hw_keyboard_flytext">Keyboard fly-text</string>
+    <string name="hw_keyboard_flytext_summary">In physical-keyboard mode, swipe up the keyboard surface to pick the candidate under your finger (by its on-screen column); swipe left/right to page candidates. Only acts while candidates are visible.</string>
+    <string name="hw_flytext_swap_page">Swap page swipe direction</string>
+    <string name="hw_flytext_swap_page_summary">Swap the left/right paging direction. Default: swipe left = next page, swipe right = previous page.</string>
+    <string name="hw_flytext_unsupported_summary">This device has no keyboard touch surface (Titan 2 Elite only).</string>
     <string name="hw_key_sound">Physical key sound</string>
     <string name="hw_key_sound_summary">Play the keyboard click sound when a physical key is pressed. The sound mode (following system / on / off) follows the on-screen keyboard settings.</string>
     <string name="hw_key_sound_volume">Physical key sound volume</string>
@@ -81,7 +86,7 @@
     <string name="hw_candidate_display_mode_macrohard">Macrohard</string>
     <string name="hw_candidate_display_mode_linear">Linear</string>
     <string name="hw_enable_candidate_quick_pick">Bottom-row quick-pick</string>
-    <string name="hw_enable_candidate_quick_pick_summary">Let physical keys (0, SYM, Shift) pick candidates. Independent of the candidate arrangement.</string>
+    <string name="hw_enable_candidate_quick_pick_summary">Physical keys pick candidates (1st–5th): %1$s</string>
     <string name="key_capture_hint">Press any key to bind…</string>
     <string name="key_captured_format">Captured: %1$s (%2$d)</string>
     <string name="hw_reset">Reset to default</string>
@@ -482,6 +487,7 @@
     <string name="cat_hw_profile">Profile</string>
     <string name="cat_hw_alt">Alt Behavior</string>
     <string name="cat_hw_sound_symbol">Sound &amp; Symbols</string>
+    <string name="cat_hw_flytext">Fly Text</string>
     <string name="cat_hw_keybindings">Key Bindings</string>
     <string name="dictionary">Dictionaries</string>
     <!-- Custom theme color editor -->

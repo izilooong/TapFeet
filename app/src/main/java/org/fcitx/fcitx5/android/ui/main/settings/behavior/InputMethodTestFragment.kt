@@ -200,7 +200,7 @@ class InputMethodTestFragment : Fragment() {
                 })
 
                 // Diagnostic toggle: when ON, the IME grabs the keyboard-surface band so this page
-                // can record touches while the IME is active (see refreshKeyboardSurfaceProbe /
+                // can record touches while the IME is active (see refreshFlyTextCapture /
                 // KeyboardSurfaceProbeWindow). Off by default so normal input is untouched.
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL

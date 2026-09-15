@@ -29,10 +29,39 @@ import android.widget.PopupWindow
  * normal input is untouched.
  */
 class KeyboardSurfaceProbeWindow(context: Context) {
+    /**
+     * Optional downstream consumer of captured touches. The window always records to
+     * [TouchProbeLog.PATH_IME_SURFACE] (so the Lab page sees the surface samples regardless); this
+     * hook lets a feature (e.g. keyboard fly-text) act on the same stream. Set to `{}` when no
+     * feature wants the touches, so capture stays purely diagnostic.
+     */
+    var onTouch: (MotionEvent) -> Unit = {}
+
     private val window = PopupWindow(object : View(context) {
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(event: MotionEvent?): Boolean {
-            event?.let { TouchProbeLog.record(TouchProbeLog.PATH_IME_SURFACE, it) }
+            event?.let {
+                TouchProbeLog.record(TouchProbeLog.PATH_IME_SURFACE, it)
+                onTouch(it)
+            }
+            return true
+        }
+
+        /**
+         * The keyboard surface's stream does NOT always come in as a touch. While an IME is
+         * showing, the device (dev=6 "touchPad") reports its samples with
+         * `source=SOURCE_TOUCHPAD` (0x100008, CLASS_POSITION — not CLASS_POINTER) and absolute
+         * display coordinates; atrace proved these reach this window's ViewRootImpl but are
+         * routed through the generic-motion path (`ViewPostImeInputStage` never calls
+         * [onTouchEvent] for them), so a touch-only override saw nothing — which read as "the
+         * IME swallows keyboard-surface touches". Recording here as well closes that gap; the
+         * actions are still DOWN/MOVE/UP, so downstream consumers need no changes.
+         */
+        override fun dispatchGenericMotionEvent(event: MotionEvent?): Boolean {
+            event?.let {
+                TouchProbeLog.record(TouchProbeLog.PATH_IME_SURFACE, it)
+                onTouch(it)
+            }
             return true
         }
     }).apply {

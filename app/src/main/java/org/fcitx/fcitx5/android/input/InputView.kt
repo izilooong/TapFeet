@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.input
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.os.Build
 import android.view.KeyEvent
 import android.view.View
@@ -583,6 +584,47 @@ class InputView(
             service.finishComposing()
             service.commitText(candidate.text)
         }
+        return true
+    }
+
+    /**
+     * Keyboard fly-text support: on-screen rects of the visible candidate-bar items, each paired
+     * with the engine selection index (delegates to [HorizontalCandidateComponent.flyCandidateRects]).
+     * Empty when the bar isn't showing — the caller falls back to the floating CandidatesView.
+     */
+    internal fun flyCandidateRects(): List<Pair<Int, Rect>> = horizontalCandidate.flyCandidateRects()
+
+    /**
+     * Keyboard fly-text selection: select the candidate with the given engine selection index,
+     * reusing the full tap path ([selectCandidateAtVisiblePosition]) so the fly animation, paging
+     * mode refresh and commit fallback all fire exactly like a bar tap / hardware key pick.
+     * The index is matched back to a visible position via the adapter's display→selection mapping.
+     * Returns false when the index isn't visible on the bar (caller falls back to a plain select,
+     * e.g. the floating CandidatesView path, which has no fly animation of its own).
+     */
+    internal fun flySelectSelectionIndex(selectionIndex: Int): Boolean {
+        if (selectionIndex < 0) return false
+        val rv = horizontalCandidate.view
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i) ?: continue
+            val displayPos = rv.getChildAdapterPosition(child)
+            if (displayPos < 0) continue
+            if (horizontalCandidate.selectionIndexAtVisiblePosition(displayPos) == selectionIndex) {
+                return selectCandidateAtVisiblePosition(displayPos)
+            }
+        }
+        return false
+    }
+
+    /**
+     * Keyboard fly-text paging: page the candidate bar locally ([HorizontalCandidateComponent.page]
+     * handles the bar's local paging for bulk candidate lists, where the engine-level
+     * offsetCandidatePage has nothing to move). Returns false when the bar has no candidates so the
+     * caller can fall back to the engine-level paging for the floating CandidatesView.
+     */
+    internal fun flyPageCandidates(direction: Int): Boolean {
+        if (horizontalCandidate.visibleCandidateCount() <= 0) return false
+        horizontalCandidate.page(direction)
         return true
     }
 
