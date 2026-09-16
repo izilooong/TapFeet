@@ -41,6 +41,21 @@
     <string name="touch_probe_capture_switch">IME激活时抓取键盘面</string>
     <string name="touch_trail_waiting">触摸键盘面…</string>
     <string name="touch_trail_ime_band">输入法可触区</string>
+    <string name="touch_gesture_waiting">在键盘触摸面上滑动，这里显示手势判读结果。</string>
+    <string name="touch_gesture_line">手势：%1$s · %2$s · 位移 %3$s · %4$d ms · 峰值 %5$s · %6$d 样本</string>
+    <string name="touch_gesture_dir_action">%1$s → %2$s</string>
+    <string name="touch_gesture_dir_up">上滑</string>
+    <string name="touch_gesture_dir_down">下滑</string>
+    <string name="touch_gesture_dir_left">左滑</string>
+    <string name="touch_gesture_dir_right">右滑</string>
+    <string name="touch_gesture_action_pick">选词</string>
+    <string name="touch_gesture_action_ignore">忽略</string>
+    <string name="touch_gesture_action_next">下一页</string>
+    <string name="touch_gesture_action_prev">上一页</string>
+    <string name="touch_gesture_below">未达阈值 —— 需 %1$s，实际 %2$s</string>
+    <string name="touch_gesture_src_surface">键盘面 dev=%1$d</string>
+    <string name="touch_gesture_src_screen">屏幕 dev=%1$d</string>
+    <string name="touch_gesture_counts">键盘面：↑%1$d ↓%2$d ←%3$d →%4$d · 未达阈值 %5$d</string>
     <string name="ignore_sys_cursor">忽略系统光标位置</string>
     <string name="hardware_keyboard">物理键盘</string>
     <string name="candidate_key_1">首选字</string>
@@ -64,7 +79,8 @@
     <string name="hw_long_press_symbol_threshold">长按输入符号时长</string>
     <string name="hw_long_press_symbol_threshold_summary">长按多久（300–1000 毫秒）后，按键输入键帽上的符号而非字符。</string>
     <string name="hw_keyboard_flytext">键盘飞字</string>
-    <string name="hw_keyboard_flytext_summary">在物理键盘模式下，于键盘触摸面向上滑动，选取手指所在列（按候选词在屏幕上的位置）对应的候选词；左右滑动翻页。仅在存在可见候选词时生效。</string>
+    <string name="hw_keyboard_flytext_summary">在物理键盘模式下，于键盘触摸面向上滑动，选取手指所在列（按候选词在屏幕上的位置）对应的候选词；左右滑动翻页。仅在按键后的「飞字有效时间」内可以滑动，超时后键盘触摸面即被释放、屏幕恢复可点击，故滑动前请先按一下键盘。</string>
+    <string name="hw_flytext_hold">飞字有效时间</string>
     <string name="hw_flytext_swap_page">翻页方向互换</string>
     <string name="hw_flytext_swap_page_summary">交换左右滑动翻页的方向。默认：左滑=下一页，右滑=上一页。</string>
     <string name="hw_flytext_unsupported_summary">此设备没有键盘触摸面，仅 Titan 2 Elite 支持。</string>

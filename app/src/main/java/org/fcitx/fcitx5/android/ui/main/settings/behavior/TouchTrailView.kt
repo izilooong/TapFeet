@@ -11,7 +11,6 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
-import android.view.MotionEvent
 import android.view.View
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.input.TouchProbeLog
@@ -50,12 +49,6 @@ class TouchTrailView @JvmOverloads constructor(
                 invalidate()
             }
         }
-
-    private class Stroke(
-        val points: List<TouchProbeLog.Entry>,
-        val cancelled: Boolean,
-        val ongoing: Boolean,
-    )
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -181,7 +174,8 @@ class TouchTrailView @JvmOverloads constructor(
     }
 
     private fun drawTraces(canvas: Canvas, sw: Float, sh: Float, lineW: Float, textPx: Float) {
-        val strokes = buildStrokes()
+        // Shared with the text read-out, so the strokes drawn here are the strokes it judges.
+        val strokes = buildTouchStrokes(TouchProbeLog.snapshot())
         if (strokes.isEmpty()) {
             textPaint.color = COLOR_MUTED
             textPaint.textSize = textPx
@@ -248,37 +242,6 @@ class TouchTrailView @JvmOverloads constructor(
                 )
             }
         }
-    }
-
-    /**
-     * Splits the probe backlog into one stroke per gesture. [TouchProbeLog.snapshot] is newest-first,
-     * so it is walked in reverse to rebuild chronological order.
-     */
-    private fun buildStrokes(): List<Stroke> {
-        val ordered = TouchProbeLog.snapshot().asReversed()
-        val strokes = ArrayList<Stroke>()
-        var current: MutableList<TouchProbeLog.Entry>? = null
-        for (entry in ordered) {
-            when (entry.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    current?.let { if (it.size > 1) strokes.add(Stroke(it, false, true)) }
-                    current = ArrayList<TouchProbeLog.Entry>(96).apply { add(entry) }
-                }
-
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val open = current
-                    if (open != null) {
-                        open.add(entry)
-                        strokes.add(Stroke(open, entry.action == MotionEvent.ACTION_CANCEL, false))
-                        current = null
-                    }
-                }
-
-                else -> current?.add(entry)
-            }
-        }
-        current?.let { if (it.size > 1) strokes.add(Stroke(it, false, true)) }
-        return strokes
     }
 
     /**

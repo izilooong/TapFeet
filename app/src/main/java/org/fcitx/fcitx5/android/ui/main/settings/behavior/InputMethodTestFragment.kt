@@ -26,6 +26,8 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.KeyProbeLog
 import org.fcitx.fcitx5.android.input.TouchProbeLog
+import org.fcitx.fcitx5.android.input.swipe.SWIPE_SLOP_DP
+import org.fcitx.fcitx5.android.input.swipe.SwipeDirection
 import splitties.dimensions.dp
 import splitties.views.backgroundColor
 import splitties.views.padding
@@ -42,6 +44,7 @@ class InputMethodTestFragment : Fragment() {
     private lateinit var touchCoordText: TextView
     private lateinit var touchInfoText: TextView
     private lateinit var touchCountsText: TextView
+    private lateinit var touchGestureText: TextView
     private lateinit var touchLogText: TextView
     private lateinit var touchTrailView: TouchTrailView
 
@@ -264,6 +267,18 @@ class InputMethodTestFragment : Fragment() {
                     })
                 })
 
+                // Gesture verdict — the one question the canvas cannot answer by itself: "would the
+                // keyboard have acted on that swipe?". Judged with the SHIPPED thresholds and axis
+                // rule (see TouchGestures), so a swipe that reads "below threshold" here is a swipe
+                // the fly-text feature would also have ignored.
+                touchGestureText = TextView(context).apply {
+                    textAppearance = android.R.style.TextAppearance_Material_Body2
+                    setTextColor(0xFF1B3A5C.toInt())
+                    setPadding(0, dp(6), 0, 0)
+                    setText(R.string.touch_gesture_waiting)
+                }
+                addView(touchGestureText)
+
                 addView(TextView(context).apply {
                     setText(R.string.touch_probe_hint)
                     textAppearance = android.R.style.TextAppearance_Material_Caption
@@ -469,7 +484,89 @@ class InputMethodTestFragment : Fragment() {
                 .joinToString("  ") { "${it.key}=${it.value}" }
                 .ifEmpty { "-" }
         )
+        renderGesture()
     }
+
+    /**
+     * Gesture verdict for the newest stroke, plus the keyboard-surface tally.
+     *
+     * Runs on every sample, like the rest of the head read-out: a swipe has to be judged while the
+     * finger is still moving, and walking the (800-sample-capped) backlog costs nothing beside
+     * drawing the canvas, which rebuilds the same strokes on every frame.
+     */
+    private fun renderGesture() {
+        if (!isAdded || !::touchGestureText.isInitialized) return
+        val density = resources.displayMetrics.density
+        val slopPx = SWIPE_SLOP_DP * density
+        val report = buildGestureReport(TouchProbeLog.snapshot(), slopPx)
+
+        val latest = report.latest
+        if (latest == null) {
+            touchGestureText.text = getString(R.string.touch_gesture_waiting)
+            return
+        }
+        val head = getString(
+            R.string.touch_gesture_line,
+            directionLabel(latest.direction, slopPx, latest.travelPx, density),
+            sourceLabel(latest.keyboardSurface, latest.deviceId),
+            travelLabel(latest.travelPx, density),
+            latest.durationMs,
+            "${latest.peakPxPerSec.toInt()}px/s",
+            latest.samples
+        )
+        val counts = report.counts
+        touchGestureText.text = head + "\n" + getString(
+            R.string.touch_gesture_counts,
+            counts.up, counts.down, counts.left, counts.right, counts.belowThreshold
+        )
+    }
+
+    /**
+     * The verdict in the terms the feature acts on — the same mapping fly-text uses, including the
+     * "swap page swipe direction" preference, so the panel never claims a page direction the keyboard
+     * would not actually take.
+     */
+    private fun directionLabel(
+        direction: SwipeDirection?,
+        slopPx: Float,
+        travelPx: Float,
+        density: Float,
+    ): String = when (direction) {
+        SwipeDirection.UP -> dirAction(R.string.touch_gesture_dir_up, R.string.touch_gesture_action_pick)
+        SwipeDirection.DOWN ->
+            dirAction(R.string.touch_gesture_dir_down, R.string.touch_gesture_action_ignore)
+
+        SwipeDirection.LEFT, SwipeDirection.RIGHT -> {
+            // Default: left = next page, right = previous. The swap toggle mirrors it.
+            val swapped = AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextSwapPage.getValue()
+            val next = (direction == SwipeDirection.LEFT) != swapped
+            dirAction(
+                if (direction == SwipeDirection.LEFT) R.string.touch_gesture_dir_left
+                else R.string.touch_gesture_dir_right,
+                if (next) R.string.touch_gesture_action_next
+                else R.string.touch_gesture_action_prev
+            )
+        }
+
+        // Never travelled far enough: spell out both numbers, because "how short" is the whole
+        // diagnosis (the feature's threshold is invisible otherwise).
+        null -> getString(
+            R.string.touch_gesture_below,
+            travelLabel(slopPx, density),
+            travelLabel(travelPx, density)
+        )
+    }
+
+    private fun dirAction(directionRes: Int, actionRes: Int): String =
+        getString(R.string.touch_gesture_dir_action, getString(directionRes), getString(actionRes))
+
+    private fun sourceLabel(keyboardSurface: Boolean, deviceId: Int): String = getString(
+        if (keyboardSurface) R.string.touch_gesture_src_surface else R.string.touch_gesture_src_screen,
+        deviceId
+    )
+
+    private fun travelLabel(px: Float, density: Float): String =
+        "${px.toInt()}px (${(px / density).toInt()}dp)"
 
     /** The scrolling sample list — throttled, see [onTouchProbeChanged]. */
     private fun renderTouchDetail() {

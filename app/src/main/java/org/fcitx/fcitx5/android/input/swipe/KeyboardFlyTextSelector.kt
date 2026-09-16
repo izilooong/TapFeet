@@ -47,6 +47,15 @@ class KeyboardFlyTextSelector(
     private val slopPx: Float get() = SWIPE_SLOP_DP * density
 
     /**
+     * True while a finger is down on the keyboard surface (between DOWN and UP/CANCEL).
+     *
+     * The service uses this to hold the capture window open past its expiry deadline: dropping the
+     * claiming window mid-gesture would hand the remaining MOVEs to the app and silently kill a
+     * slow swipe. A gesture that was already classified (or was reset) counts as NOT active.
+     */
+    val gestureActive: Boolean get() = downTime != 0L
+
+    /**
      * If a touch source only streams MOVE (no UP), the latched [classified] flag would otherwise
      * survive forever. Expire it after this quiet window so a fresh gesture starts clean.
      */
@@ -70,29 +79,33 @@ class KeyboardFlyTextSelector(
                 if (classified || downTime == 0L) return
                 val dx = event.rawX - downX
                 val dy = event.rawY - downY
-                if (kotlin.math.hypot(dx, dy) < slopPx) return // not far enough yet
-
-                if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
-                    // Vertical-dominant. Only an UP-swipe selects a candidate; a down-swipe is a
-                    // no-op (no "scroll candidates" gesture — keep the model simple and safe).
-                    if (dy < 0) {
+                // The verdict — and the slop gate — come from the shared classifier, so the Lab page's
+                // gesture readout reports exactly what happens here (see [swipeDirection]).
+                when (swipeDirection(dx, dy, slopPx)) {
+                    null -> return // not far enough yet
+                    SwipeDirection.UP -> {
                         val rects = candidateRectsProvider()
                         val idx = candidateIndexAtX(event.rawX, rects)
                         Timber.i("FlyText: up-swipe over ${rects.size} rects → idx=$idx (rawX=${event.rawX})")
                         if (idx >= 0) {
                             onSelect(idx)
                         }
-                    } else {
-                        Timber.i("FlyText: down-swipe (ignored)")
                     }
-                    classified = true
-                } else {
-                    // Horizontal-dominant → page. Left swipe (dx < 0) = next, right = previous.
-                    val dir = if (dx > 0) -1 else 1
-                    Timber.i("FlyText: page dir=$dir (rawX=${event.rawX})")
-                    onPage(dir)
-                    classified = true
+                    // Only an UP-swipe selects a candidate; a down-swipe is a no-op (no "scroll
+                    // candidates" gesture — keep the model simple and safe).
+                    SwipeDirection.DOWN -> Timber.i("FlyText: down-swipe (ignored)")
+                    // Left swipe (dx < 0) = next page, right = previous (the swap pref is applied by
+                    // the service).
+                    SwipeDirection.LEFT -> {
+                        Timber.i("FlyText: page dir=1 (rawX=${event.rawX})")
+                        onPage(1)
+                    }
+                    SwipeDirection.RIGHT -> {
+                        Timber.i("FlyText: page dir=-1 (rawX=${event.rawX})")
+                        onPage(-1)
+                    }
                 }
+                classified = true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> reset()
         }

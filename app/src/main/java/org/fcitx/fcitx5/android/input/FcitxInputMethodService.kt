@@ -693,8 +693,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * Diagnostic + fly-text touch channel: a PopupWindow that makes the IME side touchable over
      * the physical keyboard's touch-surface band. See [KeyboardSurfaceProbeWindow] and
      * [refreshFlyTextCapture]. Up while the Lab capture is recording-gated, OR while fly-text is
-     * armed with visible candidates (the dispatcher verdict below forces a window to claim the
-     * band; fly-text keeps that claim transient — only while candidates are on screen).
+     * armed (the dispatcher verdict below forces a window to claim the band; fly-text keeps that
+     * claim transient — only within [flyTextHoldMs] of the last keystroke, see [flyTextClaimUntil]).
      */
     private var keyboardSurfaceProbeWindow: KeyboardSurfaceProbeWindow? = null
     private var capturePrefListenerRegistered = false
@@ -731,6 +731,32 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshFlyTextCapture() }
 
     /**
+     * Consumer of the capture window's touches (installed as its `onTouch` in
+     * [refreshFlyTextCapture]). A field rather than a lambda rebuilt per refresh: the refresh runs
+     * on every keystroke and, through the claim extension below, on every touch frame of a swipe.
+     */
+    private val surfaceTouchListener = { event: MotionEvent ->
+        // Every captured touch extends the claim, otherwise a slow swipe whose finger rests for
+        // longer than the hold window would have the claiming window pulled out from under it.
+        if (flyTextOn) armFlyTextClaim()
+        // Feed the selector while armed — and also while a gesture it already owns is still in
+        // flight: dismissal is deliberately held back while a finger is down (see
+        // [refreshFlyTextCapture]), so that gesture must keep seeing events, and crucially must see
+        // the UP/CANCEL that resets its state (otherwise `gestureActive` stays latched and blocks
+        // the dismissal forever). Never fed while the Lab diagnostic capture alone is up.
+        if (flyTextSelectorInitialized && (flyTextOn || flyTextSelector.gestureActive)) {
+            flyTextSelector.onTouchEvent(event)
+        }
+        // The claim expired mid-gesture: with the finger now up, let the pending dismissal run
+        // instead of leaving the band claimed until the next keystroke.
+        if (!flyTextOn && (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL)
+        ) {
+            refreshFlyTextCapture()
+        }
+    }
+
+    /**
      * Live state: fly-text is armed (pref on AND visible candidates, from either candidate event
      * source — this device's config emits [FcitxEvent.CandidateListEvent], not the paged variant).
      * Recomputed on every [refreshFlyTextCapture], read by [onGenericMotionEvent] to decide
@@ -743,10 +769,57 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var lastFlyTextLogged = false
 
     /**
+     * Uptime deadline (ms) until which the fly-text claim may exist; a value in the past means "no
+     * live claim".
+     *
+     * Why a deadline at all: claiming the keyboard-surface band with a PopupWindow is the ONLY way
+     * the IME ever sees touches there (regional ownership — see [refreshFlyTextCapture]), and a
+     * claiming window eats those touches. While candidates were visible the window therefore
+     * stayed up almost the whole time, which made the app's screen untappable ("有候选词就有一层
+     * 遮罩"). Bounding the claim to a short window after each keystroke keeps fly-text usable while
+     * giving the screen back to the app the moment the user stops typing.
+     */
+    private var flyTextClaimUntil = 0L
+
+    /** Fires when the claim window expires → re-evaluate (drops the window even if candidates stay). */
+    private val flyTextExpiryRunnable = Runnable { refreshFlyTextCapture() }
+
+    /** Why the claim is currently not live; carried into the DISARMED log line (diagnostics). */
+    private var flyTextDisarmReason = "none"
+
+    /** Claim duration from prefs: how long the surface stays claimed after the last keystroke. */
+    private fun flyTextHoldMs(): Long =
+        AppPrefs.getInstance().hardwareKeyboard.flyTextHoldMs.getValue().toLong()
+
+    /**
+     * (Re)open the fly-text claim window for [flyTextHoldMs] from now. Called on every fresh
+     * physical keystroke and on every touch the claim window captures (so a slow swipe can't be cut
+     * off mid-gesture). Cheap when the claim is already live: the popup's geometry is unchanged, so
+     * [KeyboardSurfaceProbeWindow.show] skips the WMS relayout.
+     */
+    private fun armFlyTextClaim() {
+        val ttl = flyTextHoldMs()
+        val wasExpired = SystemClock.uptimeMillis() >= flyTextClaimUntil
+        flyTextClaimUntil = SystemClock.uptimeMillis() + ttl
+        mainHandler.removeCallbacks(flyTextExpiryRunnable)
+        mainHandler.postDelayed(flyTextExpiryRunnable, ttl)
+        // Log once per typing burst (expired → live), not once per key: this is the line that makes
+        // the gating visible in logcat without flooding it at typing speed.
+        if (wasExpired) Timber.i("FlyText: claim armed hold=${ttl}ms")
+        refreshFlyTextCapture()
+    }
+
+    /** Drop the claim and cancel its expiry callback (input session ended / service destroyed). */
+    private fun clearFlyTextClaim() {
+        flyTextClaimUntil = 0L
+        mainHandler.removeCallbacks(flyTextExpiryRunnable)
+    }
+
+    /**
      * True while a keyboard-surface gesture stream should be treated as a capture/fly-text gesture
      * rather than a "show the soft keyboard" request: the Lab "capture keyboard surface" switch is
-     * on (recording-gated probe popup up), or fly-text is armed with visible candidates (popup up
-     * for the same reason — the band must be claimed for the stream to reach the IME at all).
+     * on (recording-gated probe popup up), or fly-text is armed (claim live, see [flyTextClaimUntil]
+     * — the band must be claimed for the stream to reach the IME at all).
      * While this holds, [onUpdateEditorToolType] suppresses the virtual-keyboard flip. Deliberately
      * does NOT touch [onComputeInsets]: widening the touchable region to
      * [Insets.TOUCHABLE_INSETS_FRAME] makes the IME claim the WHOLE screen (app content reports a
@@ -831,14 +904,19 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      *     recording. Shows the probe popup, which records surface touches to
      *     [TouchProbeLog.PATH_IME_SURFACE]. The popup blocks taps in its band, hence the
      *     double gate: it must never lurk system-wide behind a forgotten switch.
-     *  2. Keyboard fly-text — [AppPrefs.hardwareKeyboard.keyboardFlyText] + visible candidates.
-     *     Plan B verdict (2026-09-15): a "pure" service channel does NOT work. getevent proved the
-     *     kernel delivers the dev=6 stream while [flyTextOn] was armed, yet the IME session
-     *     received zero events ([TouchProbeLog.PATH_IME_MOTION] silent) — the dispatcher targets
-     *     the CLASS_POSITION touch stream by window region, and without a window claiming the
-     *     keyboard band it all goes to the focused app. So fly-text NEEDS the popup for its touch
-     *     channel; the trade-off is that the band is claimed exactly while candidates are visible
-     *     (transient by construction — the popup dismisses the moment the candidates vanish).
+     *  2. Keyboard fly-text — [AppPrefs.hardwareKeyboard.keyboardFlyText] + visible candidates
+     *     + a live claim ([flyTextClaimUntil]). Plan B verdict (2026-09-15): a "pure" service
+     *     channel does NOT work. getevent proved the kernel delivers the dev=6 stream while
+     *     [flyTextOn] was armed, yet the IME session received zero events
+     *     ([TouchProbeLog.PATH_IME_MOTION] silent) — the dispatcher targets the CLASS_POSITION
+     *     touch stream by window region, and without a window claiming the keyboard band it all
+     *     goes to the focused app. So fly-text NEEDS the popup for its touch channel; the
+     *     trade-off is that claiming the band eats the app's touches there. That is bounded in
+     *     TIME: the window is up only within [flyTextHoldMs] of the last keystroke, so the screen
+     *     becomes tappable again while candidates are still showing. Touch activity on the surface
+     *     (see the popup's onTouch below, which re-arms the claim) extends the deadline, so a slow
+     *     swipe is never cut off mid-gesture, and a finger that is still down blocks the dismissal
+     *     outright.
      *
      * Pref listeners are registered lazily (kept as fields per ManagedPreference's "no anonymous
      * listeners" rule) so toggling either switch takes effect immediately, no re-focus needed.
@@ -862,20 +940,34 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // isVirtualKeyboard=true while the user is in fact typing on the physical keyboard with
         // the soft keyboard hidden — so that flag is NOT a reliable "physical mode" indicator here.
         val captureOn = hw.captureKeyboardSurfaceTouch.getValue() && TouchProbeLog.recording
+        // The fly-text claim is TIME-BOUNDED: it exists only within flyTextHoldMs of the last
+        // keystroke (armed in onKeyDown, extended by surface touches below). The Lab diagnostic
+        // capture above is deliberately NOT bounded — it is an explicit, double-gated mode.
+        val hasCandidates = lastPagedCandidateData.candidates.isNotEmpty() ||
+                lastCandidateListData.candidates.isNotEmpty()
+        val claimLive = SystemClock.uptimeMillis() < flyTextClaimUntil
         flyTextOn = hw.keyboardFlyText.getValue() &&
                 DeviceInfo.hasKeyboardTouchSurface() &&
-                (lastPagedCandidateData.candidates.isNotEmpty() ||
-                        lastCandidateListData.candidates.isNotEmpty())
+                hasCandidates && claimLive
+        flyTextDisarmReason = when {
+            !hw.keyboardFlyText.getValue() -> "pref-off"
+            !DeviceInfo.hasKeyboardTouchSurface() -> "unsupported"
+            !hasCandidates -> "no-candidates"
+            !claimLive -> "expired"
+            else -> "none"
+        }
         keyboardSurfaceProbing = captureOn || flyTextOn
-        // Log the armed state on transitions only (candidates appearing/vanishing, not every
-        // keystroke) — with Plan B the popup is diagnostic-only, so without this line the fly-text
-        // arming is invisible in logcat and the service-channel experiment can't be judged.
+        // Log the armed state on transitions only (not every keystroke), with the reason spelled
+        // out: since the deadline was introduced, "DISARMED" no longer means "no candidates" — it
+        // is most often "expired", which is exactly what the user asked for.
         if (flyTextOn != lastFlyTextLogged) {
             lastFlyTextLogged = flyTextOn
-            Timber.i(
-                if (flyTextOn) "FlyText: ARMED (service channel) captureOn=$captureOn"
-                else "FlyText: DISARMED captureOn=$captureOn"
-            )
+            if (flyTextOn) {
+                val left = (flyTextClaimUntil - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+                Timber.i("FlyText: ARMED captureOn=$captureOn claimMs=$left")
+            } else {
+                Timber.i("FlyText: DISARMED reason=$flyTextDisarmReason captureOn=$captureOn")
+            }
         }
 
         // Lazily build the selector (needs resources + fcitx, available at runtime). Built as soon
@@ -914,10 +1006,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (keyboardSurfaceProbeWindow == null) {
                 keyboardSurfaceProbeWindow = KeyboardSurfaceProbeWindow(this)
             }
-            // Diagnostic capture always records; fly-text only consumes when there are candidates.
-            keyboardSurfaceProbeWindow?.onTouch = { event ->
-                if (flyTextOn) flyTextSelector.onTouchEvent(event)
-            }
+            // Diagnostic capture always records; fly-text consumes only while armed.
+            keyboardSurfaceProbeWindow?.onTouch = surfaceTouchListener
             val dm = resources.displayMetrics
             val w = dm.widthPixels
             val h = dm.heightPixels
@@ -930,11 +1020,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 lastPopupShown = true
                 Timber.i("FlyText: capture window SHOWN captureOn=$captureOn flyTextOn=$flyTextOn")
             }
-        } else {
-            if (lastPopupShown) {
+        } else if (lastPopupShown) {
+            // While a finger is still down, the gesture's remaining MOVEs must stay with the IME:
+            // dismissing the claiming window now would hand them to the app and kill the gesture
+            // (the surface touch would then reach nothing at all). The finger's own touch activity
+            // re-arms the deadline, so the expiry path below is re-evaluated right after the UP.
+            val midGesture = flyTextSelectorInitialized && flyTextSelector.gestureActive
+            if (!midGesture) {
                 keyboardSurfaceProbeWindow?.dismiss()
                 lastPopupShown = false
-                Timber.i("FlyText: capture window DISMISSED captureOn=$captureOn flyTextOn=$flyTextOn")
+                Timber.i("FlyText: capture window DISMISSED reason=$flyTextDisarmReason captureOn=$captureOn")
             }
         }
     }
@@ -1293,6 +1388,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // a shortcut ends up consuming — and, by their absence, proves which keys never get
         // dispatched to the IME window at all. No-op unless the Lab page turned recording on.
         KeyProbeLog.record(event)
+
+        // Any fresh physical keystroke (re)opens the keyboard-surface claim window for a short
+        // while — that window is the only period in which fly-text can see a swipe (and the only
+        // period the band is stolen from the app). Auto-repeat is skipped: a held key is not a new
+        // keystroke, and arming on repeats would keep the band claimed as long as a key is down.
+        // Deliberately BEFORE the KeyCaptureFlag early-return so typing in the capture page counts.
+        if (event.repeatCount == 0) armFlyTextClaim()
 
         // When the target editor requests key capture (e.g. KeyCaptureUi/KeyPreferenceUi),
         // do not consume physical key events so they reach the EditText's OnKeyListener.
@@ -2123,6 +2225,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         showingDialog?.dismiss()
         // Diagnostic: tear down the keyboard-surface capture window with the input view.
         keyboardSurfaceProbeWindow?.dismiss()
+        // `lastPopupShown` must be cleared here too: this path dismisses the window directly (not
+        // through the refresh branch that normally resets the flag), so leaving it true would
+        // suppress the next SHOWN log line for the whole following session.
+        lastPopupShown = false
+        // A pending claim expiry would re-show the window after the session is gone.
+        clearFlyTextClaim()
         keyboardSurfaceProbing = false
         // Drop any in-flight fly-text gesture so a stale slide can't latch the next session.
         if (flyTextSelectorInitialized) flyTextSelector.reset()
@@ -2161,6 +2269,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             TouchProbeLog.removeListener(probeRecordingListener)
             probeRecordingListenerRegistered = false
         }
+        // Cancel the pending claim expiry and take the claiming window down: a stray callback firing
+        // after destroy would otherwise re-show a popup that eats touches with no service behind it.
+        clearFlyTextClaim()
+        keyboardSurfaceProbeWindow?.dismiss()
         effectsOverlay?.release()
         effectsOverlay = null
         super.onDestroy()

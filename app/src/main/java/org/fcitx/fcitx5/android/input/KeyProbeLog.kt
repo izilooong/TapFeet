@@ -33,6 +33,13 @@ object KeyProbeLog {
         val time: Long,
         val keyCode: Int,
         val scanCode: Int,
+        /**
+         * Emitting input device. A real device id means the kernel/firmware produced the key; the
+         * virtual keyboard's id (`0`), or `-1`, means an app injected it
+         * (`InputManager.injectInputEvent`) — the discrimination that matters as soon as a keyCode
+         * has no name in the platform's table.
+         */
+        val deviceId: Int,
         val action: Int,
         val metaState: Int,
         val repeatCount: Int,
@@ -42,12 +49,19 @@ object KeyProbeLog {
         val isShortcutKey: Boolean,
     ) {
         /**
-         * `#seq ACTION NAME code=.. scan=.. [pseudo=.. shortcut repeat=.. meta=..]`
+         * `#seq ACTION NAME code=.. scan=.. dev=.. [pseudo=.. shortcut repeat=.. meta=.. unmapped]`
          *
          * `pseudo=` names the [HardwareSpecialKeys] entry the key resolves to — the thing a physical
          * function-key binding depends on — and `shortcut` marks keys claimed by any configured
          * hardware shortcut. A key the user presses but which never shows up here did not reach the
          * input method at all.
+         *
+         * `unmapped` marks a keyCode the platform has no name for — an OEM/vendor code, i.e. one
+         * beyond the platform's own key table (which stops a little past 300). On these keyboards
+         * such an event is the firmware turning a hardware *gesture* into a key, which is why it must
+         * not be mistaken for a gesture source: it carries no distance, velocity or direction
+         * history, and its trigger threshold lives in the firmware. The touch-surface probe is the
+         * channel that answers gesture questions.
          */
         fun toLine(): String {
             val actionName = when (action) {
@@ -55,15 +69,20 @@ object KeyProbeLog {
                 KeyEvent.ACTION_UP -> "UP"
                 else -> "ACTION_$action"
             }
+            val name = KeyEvent.keyCodeToString(keyCode)
+            // No symbolic name ⇒ the platform does not know this code: keyCodeToString falls back to
+            // the bare number, which in the log is otherwise indistinguishable from a real key name.
+            val unmapped = name == keyCode.toString()
             val notes = buildList {
                 specialName?.let { add("pseudo=$it") }
                 if (isShortcutKey) add("shortcut")
                 if (repeatCount > 0) add("repeat=$repeatCount")
                 if (metaState != 0) add("meta=0x${metaState.toString(16)}")
+                if (unmapped) add("unmapped")
             }
             return buildString {
-                append("#$seq $actionName ${KeyEvent.keyCodeToString(keyCode)}")
-                append(" code=$keyCode scan=$scanCode")
+                append("#$seq $actionName $name")
+                append(" code=$keyCode scan=$scanCode dev=$deviceId")
                 if (notes.isNotEmpty()) append(" [${notes.joinToString(" ")}]")
             }
         }
@@ -96,6 +115,7 @@ object KeyProbeLog {
             time = SystemClock.elapsedRealtime(),
             keyCode = event.keyCode,
             scanCode = event.scanCode,
+            deviceId = event.deviceId,
             action = event.action,
             metaState = event.metaState,
             repeatCount = event.repeatCount,

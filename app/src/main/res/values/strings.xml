@@ -41,6 +41,21 @@
     <string name="touch_probe_capture_switch">Capture keyboard surface when IME active</string>
     <string name="touch_trail_waiting">Touch the surface…</string>
     <string name="touch_trail_ime_band">IME touchable area</string>
+    <string name="touch_gesture_waiting">Swipe on the keyboard surface — the gesture verdict appears here.</string>
+    <string name="touch_gesture_line">Gesture: %1$s · %2$s · travel %3$s · %4$d ms · peak %5$s · %6$d samples</string>
+    <string name="touch_gesture_dir_action">%1$s → %2$s</string>
+    <string name="touch_gesture_dir_up">up-swipe</string>
+    <string name="touch_gesture_dir_down">down-swipe</string>
+    <string name="touch_gesture_dir_left">left-swipe</string>
+    <string name="touch_gesture_dir_right">right-swipe</string>
+    <string name="touch_gesture_action_pick">pick candidate</string>
+    <string name="touch_gesture_action_ignore">ignored</string>
+    <string name="touch_gesture_action_next">next page</string>
+    <string name="touch_gesture_action_prev">previous page</string>
+    <string name="touch_gesture_below">below threshold — needs %1$s, moved %2$s</string>
+    <string name="touch_gesture_src_surface">keyboard surface dev=%1$d</string>
+    <string name="touch_gesture_src_screen">screen dev=%1$d</string>
+    <string name="touch_gesture_counts">Keyboard surface: ↑%1$d ↓%2$d ←%3$d →%4$d · below threshold %5$d</string>
     <string name="ignore_sys_cursor">Ignore system cursor position</string>
     <string name="hardware_keyboard">Physical Keyboard</string>
     <string name="candidate_key_1">First candidate</string>
@@ -64,7 +79,8 @@
     <string name="hw_long_press_symbol_threshold">Long-press symbol duration</string>
     <string name="hw_long_press_symbol_threshold_summary">How long (300–1000 ms) a key must be held before it inputs its keycap symbol instead of the character.</string>
     <string name="hw_keyboard_flytext">Keyboard fly-text</string>
-    <string name="hw_keyboard_flytext_summary">In physical-keyboard mode, swipe up the keyboard surface to pick the candidate under your finger (by its on-screen column); swipe left/right to page candidates. Only acts while candidates are visible.</string>
+    <string name="hw_keyboard_flytext_summary">In physical-keyboard mode, swipe up the keyboard surface to pick the candidate under your finger (by its on-screen column); swipe left/right to page candidates. Swiping only works inside the fly-text time window below after a keystroke — outside it the surface is released and the screen stays tappable, so press a key before a swipe.</string>
+    <string name="hw_flytext_hold">Fly-text time window</string>
     <string name="hw_flytext_swap_page">Swap page swipe direction</string>
     <string name="hw_flytext_swap_page_summary">Swap the left/right paging direction. Default: swipe left = next page, swipe right = previous page.</string>
     <string name="hw_flytext_unsupported_summary">This device has no keyboard touch surface (Titan 2 Elite only).</string>

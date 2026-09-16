@@ -13,6 +13,29 @@ import android.graphics.Rect
  */
 const val SWIPE_SLOP_DP = 24
 
+/** The four swipes the keyboard surface recognises. */
+enum class SwipeDirection { UP, DOWN, LEFT, RIGHT }
+
+/**
+ * Classify a touch travel (`dx`, `dy` from the gesture's DOWN point, in px) as one of the four
+ * swipes, or `null` while it is still under [slopPx] — i.e. while the gesture is undecided.
+ *
+ * This is THE gesture rule of the feature: [KeyboardFlyTextSelector] acts on exactly this verdict
+ * (up = pick the candidate under the finger, down = ignored, left/right = page), and the Lab page's
+ * gesture readout uses the same function, so what the Lab page reports is what the keyboard would
+ * actually do — no second, drifting copy of the thresholds.
+ *
+ * The dominant axis decides; a perfect diagonal counts as horizontal (strict `>` on the vertical
+ * component), which matches how the selector has always classified them.
+ */
+fun swipeDirection(dx: Float, dy: Float, slopPx: Float): SwipeDirection? {
+    if (kotlin.math.hypot(dx, dy) < slopPx) return null
+    if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
+        return if (dy < 0f) SwipeDirection.UP else SwipeDirection.DOWN
+    }
+    return if (dx < 0f) SwipeDirection.LEFT else SwipeDirection.RIGHT
+}
+
 /**
  * Map an X coordinate on the keyboard surface to a candidate to select.
  *

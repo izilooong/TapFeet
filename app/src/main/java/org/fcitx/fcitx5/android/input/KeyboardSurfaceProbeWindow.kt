@@ -27,6 +27,12 @@ import android.widget.PopupWindow
  * probe, not an input path, so it never forwards to a real view. Gated by
  * [org.fcitx.fcitx5.android.data.prefs.AppPrefs.hardwareKeyboard.captureKeyboardSurfaceTouch];
  * normal input is untouched.
+ *
+ * Because claiming the band necessarily steals touches from the app underneath, the fly-text
+ * consumer keeps its claim TIME-BOUNDED (see `FcitxInputMethodService.refreshFlyTextCapture`): the
+ * window is up only within a few hundred ms of the last physical keystroke, then it drops and the
+ * app's screen becomes tappable again. The Lab diagnostic capture is a deliberate explicit mode and
+ * is NOT time-bounded.
  */
 class KeyboardSurfaceProbeWindow(context: Context) {
     /**
@@ -73,11 +79,30 @@ class KeyboardSurfaceProbeWindow(context: Context) {
 
     private var showing = false
 
+    // Last geometry handed to the window manager. `show()` is called on every keystroke (the
+    // fly-text claim is re-armed per key), and an unconditional `window.update()` triggers a WMS
+    // relayout each time — so identical geometry is a no-op. Geometry changes (rotation, a
+    // different display size) still go through.
+    private var lastX = Int.MIN_VALUE
+    private var lastY = Int.MIN_VALUE
+    private var lastW = 0
+    private var lastH = 0
+
     fun show(token: View, x: Int, y: Int, w: Int, h: Int) {
         showing = true
         if (window.isShowing) {
-            window.update(x, y, w, h)
+            if (x != lastX || y != lastY || w != lastW || h != lastH) {
+                lastX = x
+                lastY = y
+                lastW = w
+                lastH = h
+                window.update(x, y, w, h)
+            }
         } else {
+            lastX = x
+            lastY = y
+            lastW = w
+            lastH = h
             window.width = w
             window.height = h
             window.showAtLocation(token, Gravity.TOP or Gravity.START, x, y)

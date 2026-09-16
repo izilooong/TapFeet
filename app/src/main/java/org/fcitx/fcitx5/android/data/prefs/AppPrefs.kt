@@ -618,6 +618,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // previous) so left = previous and right = next. Only meaningful while fly-text is on.
         val keyboardFlyTextSwapPage = bool("hw_keyboard_flytext_swap_page", false)
 
+        // How long (ms) fly-text stays available after the last physical keystroke — the window in
+        // which a swipe on the keyboard surface can pick/page candidates. Bounded by design: claiming
+        // the keyboard-surface band necessarily eats touches in it, so the window must not lurk while
+        // the user is just reading candidates — once this expires the app's screen becomes tappable
+        // again. Surface touch activity extends it, so a slow swipe is never cut off mid-gesture.
+        // Default 1200ms; 300–3000 tunable.
+        val flyTextHoldMs = int(R.string.hw_flytext_hold, "hw_flytext_hold_ms", 1200, 300, 3000, "ms")
+
         private val seededKeys = listOf(
             keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,
             pageNextKey, pagePrevKey, symbolPickerKey, toggleImeKey, pickerKey, altLatchKey
