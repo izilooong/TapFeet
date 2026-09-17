@@ -16,7 +16,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -202,22 +201,10 @@ class InputMethodTestFragment : Fragment() {
                     })
                 })
 
-                // Diagnostic toggle: when ON, the IME grabs the keyboard-surface band so this page
-                // can record touches while the IME is active (see refreshFlyTextCapture /
-                // KeyboardSurfaceProbeWindow). Off by default so normal input is untouched.
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    addView(Switch(context).apply {
-                        text = getString(R.string.touch_probe_capture_switch)
-                        isAllCaps = false
-                        setOnCheckedChangeListener { _, checked ->
-                            AppPrefs.getInstance().hardwareKeyboard.captureKeyboardSurfaceTouch
-                                .setValue(checked)
-                        }
-                        isChecked = AppPrefs.getInstance().hardwareKeyboard.captureKeyboardSurfaceTouch
-                            .getValue()
-                    })
-                })
+                // No capture switch any more: the keyboard surface's samples arrive on the IME
+                // window's own generic-motion channel (FcitxInputMethodService
+                // .installDecorMotionListener), which needs no window claim and no mask, and is
+                // recorded whenever this page is in the foreground (TouchProbeLog.recording).
 
                 // Canvas on the left, read-outs on the right. The display is portrait while this panel
                 // is wide, so a full-width canvas would spend most of its box on letterboxing — see

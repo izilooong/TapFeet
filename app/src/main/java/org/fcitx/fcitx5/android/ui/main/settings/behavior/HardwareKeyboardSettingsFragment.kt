@@ -36,9 +36,6 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
     private lateinit var flyTextSwitch: SwitchPreference
     private lateinit var flyTextSwapSwitch: SwitchPreference
 
-    /** How long the keyboard surface stays claimed after the last keystroke (ms). */
-    private lateinit var flyTextHoldPref: DialogSeekBarPreference
-
     /** Whether this device has the keyboard touch surface fly-text needs (Titan 2 Elite). */
     private var flyTextSupported: Boolean = false
 
@@ -109,8 +106,8 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
         // —— 飞字独立 Tab ——
         // 键盘飞字依赖"键盘触摸面"（KEYBOARD|TOUCHPAD 复合源，Titan 2 Elite 的键盘面）。
-        // 没有该硬件能力的设备：整个 Tab 内的开关禁用，并说明原因；运行时 service 侧同样
-        // 以该能力闸门兜底（flyTextOn），防止继承的 true 值在无触摸面的设备上产生遮罩。
+        // 没有该硬件能力的设备：整个 Tab 内的开关禁用，并说明原因；运行时 service 侧同样以该能力
+        // 闸门兜底（flyTextOn），避免继承的 true 值在无触摸面的设备上留下一个永不生效的开关。
         flyTextSupported = DeviceInfo.hasKeyboardTouchSurface()
         flyTextSwitch = SwitchPreference(context).apply {
             key = hw.keyboardFlyText.key
@@ -135,34 +132,13 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             flyTextSwitch.summary = getString(R.string.hw_keyboard_flytext_summary) + "\n" +
                     getString(R.string.hw_flytext_unsupported_summary)
         }
-        // How long fly-text stays available after the last keystroke — the window inside which a
-        // swipe on the keyboard surface picks/pages candidates. Claiming the band necessarily eats
-        // touches in it, so this doubles as how long the screen stays occupied after typing stops.
-        // Same control (and same constant-default caveat) as the long-press-symbol duration further
-        // down this file.
-        flyTextHoldPref = DialogSeekBarPreference(context).apply {
-            key = hw.flyTextHoldMs.key
-            title = getString(R.string.hw_flytext_hold)
-            dialogTitle = getString(R.string.hw_flytext_hold)
-            setDefaultValue(hw.flyTextHoldMs.defaultValue)
-            min = 300
-            max = 3000
-            step = 100
-            unit = "ms"
-            summaryProvider = DialogSeekBarPreference.SimpleSummaryProvider
-            isIconSpaceReserved = false
-            isSingleLineTitle = false
-            isEnabled = flyTextSupported && hw.keyboardFlyText.getValue()
-        }
         flyTextSwitch.setOnPreferenceChangeListener { _, newValue ->
             val on = newValue as Boolean
             flyTextSwapSwitch.isEnabled = flyTextSupported && on
-            flyTextHoldPref.isEnabled = flyTextSupported && on
             true
         }
         flyTextScreen.addPreference(flyTextSwitch)
         flyTextScreen.addPreference(flyTextSwapSwitch)
-        flyTextScreen.addPreference(flyTextHoldPref)
 
         // Master toggle: double-tap left Alt to latch the Alt modifier.
         val altLatchSwitch = SwitchPreference(context).apply {

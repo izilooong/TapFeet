@@ -11,7 +11,8 @@ import timber.log.Timber
 
 /**
  * Gesture state machine for the "keyboard fly-text" feature: physical-keyboard mode only, driven by
- * touches the IME captures over the keyboard surface (see [org.fcitx.fcitx5.android.input.KeyboardSurfaceProbeWindow]).
+ * the keyboard surface's motion samples as the IME receives them on its own window
+ * (`FcitxInputMethodService.installDecorMotionListener`).
  *
  * Two gestures:
  *  - **Up-swipe** (vertical-dominant, upward): pick the candidate whose on-screen column the finger
@@ -20,7 +21,7 @@ import timber.log.Timber
  *
  * Coordinates: candidate rects are absolute screen coordinates ([android.view.View.getLocationOnScreen]),
  * so the incoming [MotionEvent] must be tested against [MotionEvent.getRawX] / [MotionEvent.getRawY]
- * (NOT [MotionEvent.getX], which is relative to the capture window). The provider is queried at
+ * (NOT [MotionEvent.getX], which is relative to the receiving view). The provider is queried at
  * gesture-classify time so rects are always fresh, not a stale snapshot.
  *
  * Robustness: some touch sources stream MOVE but never UP, which would otherwise leave the state
@@ -29,7 +30,7 @@ import timber.log.Timber
  * lock candidate selection.
  *
  * Pure function + callbacks: this class holds no Android context beyond what the caller injects, and
- * never forwards touches anywhere (the capture window stays the only touch sink).
+ * never forwards touches anywhere (the caller consumes them).
  */
 class KeyboardFlyTextSelector(
     private val density: Float,
@@ -49,9 +50,10 @@ class KeyboardFlyTextSelector(
     /**
      * True while a finger is down on the keyboard surface (between DOWN and UP/CANCEL).
      *
-     * The service uses this to hold the capture window open past its expiry deadline: dropping the
-     * claiming window mid-gesture would hand the remaining MOVEs to the app and silently kill a
-     * slow swipe. A gesture that was already classified (or was reset) counts as NOT active.
+     * The caller uses this to keep feeding onTouchEvent even after fly-text is disarmed (e.g. the
+     * candidates vanished mid-swipe): a gesture already in flight must still see its UP/CANCEL, or
+     * the latched state would misread the next gesture. A gesture that was already classified (or
+     * was reset) counts as NOT active.
      */
     val gestureActive: Boolean get() = downTime != 0L
 

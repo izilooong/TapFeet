@@ -615,30 +615,15 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
          * If any key already exists, the user has configured them (or upgraded from an older build
          * that already stored them), so we leave their values untouched — never overwrite.
          */
-        // Diagnostic-only: when the IME is active, make its window touchable over the physical
-        // keyboard's touch surface band so the Lab page (InputMethodTestFragment) can record those
-        // coordinates. Off by default — normal input is completely unaffected. See
-        // KeyboardSurfaceProbeWindow and TouchProbeLog.PATH_IME_SURFACE.
-        val captureKeyboardSurfaceTouch = bool("hw_capture_keyboard_surface", false)
-
         // Keyboard fly-text: in physical-keyboard mode, a swipe up the keyboard surface picks the
         // candidate whose on-screen column the finger is over, and a left/right swipe pages
-        // candidates. On by default — it only captures the keyboard surface band (never the app
-        // area) and only acts while candidates are visible. Shares the capture window with
-        // captureKeyboardSurfaceTouch.
+        // candidates. On by default — it only acts while candidates are visible, and it consumes the
+        // surface's own motion stream (never screen touches), so nothing has to be masked.
         val keyboardFlyText = bool("hw_keyboard_flytext", true)
 
         // Keyboard fly-text paging direction: swap the default mapping (left = next, right =
         // previous) so left = previous and right = next. Only meaningful while fly-text is on.
         val keyboardFlyTextSwapPage = bool("hw_keyboard_flytext_swap_page", false)
-
-        // How long (ms) fly-text stays available after the last physical keystroke — the window in
-        // which a swipe on the keyboard surface can pick/page candidates. Bounded by design: claiming
-        // the keyboard-surface band necessarily eats touches in it, so the window must not lurk while
-        // the user is just reading candidates — once this expires the app's screen becomes tappable
-        // again. Surface touch activity extends it, so a slow swipe is never cut off mid-gesture.
-        // Default 1200ms; 300–3000 tunable.
-        val flyTextHoldMs = int(R.string.hw_flytext_hold, "hw_flytext_hold_ms", 1200, 300, 3000, "ms")
 
         private val seededKeys = listOf(
             keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,

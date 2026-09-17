@@ -14,6 +14,18 @@ import org.fcitx.fcitx5.android.BuildConfig
 object DeviceInfo {
 
     /**
+     * Device id of the keyboard touch surface, or null when there is none. The single place the
+     * detection lives, so [hasKeyboardTouchSurface] (a boolean) and [keyboardSurfaceYRange] (its
+     * geometry) can never drift apart — they are two questions about the same device.
+     */
+    private fun keyboardTouchSurfaceDeviceId(): Int? =
+        android.view.InputDevice.getDeviceIds().firstOrNull { id ->
+            val s = android.view.InputDevice.getDevice(id)?.sources ?: return@firstOrNull false
+            (s and android.view.InputDevice.SOURCE_TOUCHPAD) == android.view.InputDevice.SOURCE_TOUCHPAD &&
+                    (s and android.view.InputDevice.SOURCE_KEYBOARD) == android.view.InputDevice.SOURCE_KEYBOARD
+        }
+
+    /**
      * Whether this device has a "keyboard touch surface": an input device reporting BOTH the
      * keyboard and touchpad sources — the Titan 2 Elite's keyboard face (`touchPad`,
      * `KEYBOARD|TOUCHPAD`). This is the capability keyboard fly-text needs, so features gated on
@@ -21,13 +33,30 @@ object DeviceInfo {
      * same hardware trait. Source comparisons MUST use `==`, never `!= 0` (all pointer-ish sources
      * share the 0x2 class bit — see the Titan touch-model notes).
      */
-    fun hasKeyboardTouchSurface(): Boolean =
-        android.view.InputDevice.getDeviceIds().any { id ->
-            val d = android.view.InputDevice.getDevice(id) ?: return@any false
-            val s = d.sources
-            (s and android.view.InputDevice.SOURCE_TOUCHPAD) == android.view.InputDevice.SOURCE_TOUCHPAD &&
-                    (s and android.view.InputDevice.SOURCE_KEYBOARD) == android.view.InputDevice.SOURCE_KEYBOARD
-        }
+    fun hasKeyboardTouchSurface(): Boolean = keyboardTouchSurfaceDeviceId() != null
+
+    /**
+     * Display-space Y band the keyboard touch surface can actually reach, or null when this device
+     * has no such surface.
+     *
+     * The surface reports ABSOLUTE coordinates already scaled into display space: the Elite's
+     * `touchPad` declares raw Y `0..599` and InputReader applies a `RawToDisplay` Y scale of 1.25,
+     * so its declared Y motion range is `0..748.75` on a 1200px-tall logical frame. That
+     * declaration is the only trustworthy source — a hand-written fraction of the screen height is
+     * wrong by ~200px on this hardware.
+     *
+     * Kept as the device-truth accessor for interpreting surface coordinates (the Lab page's
+     * read-outs, and any future band-aware diagnostic). The fly-text path itself no longer needs it:
+     * the stream arrives through the IME window's decor view regardless of where the touches land.
+     */
+    fun keyboardSurfaceYRange(): IntRange? {
+        val id = keyboardTouchSurfaceDeviceId() ?: return null
+        val device = android.view.InputDevice.getDevice(id) ?: return null
+        val range = device.getMotionRange(
+            android.view.MotionEvent.AXIS_Y, android.view.InputDevice.SOURCE_TOUCHPAD
+        ) ?: return null
+        return range.min.toInt()..range.max.toInt()
+    }
 
     fun get(context: Context) = buildString {
         appendLine("--------- Device Info")

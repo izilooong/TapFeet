@@ -15,13 +15,14 @@ import java.util.concurrent.CopyOnWriteArrayList
  * In-process probe of touch / pointer motion samples, feeding the Lab page's coordinate test.
  *
  * The physical keyboards these builds target expose their surface as a *separate* input device
- * (`touchPad`, `Sources: KEYBOARD | TOUCHPAD`) and Android may hand its events to several different
- * windows depending on the mode:
- *  - a finger on the surface produces ordinary touch events, delivered to whichever window sits
- *    under the finger — the IME squeezes its touchable region to a sliver in physical-keyboard mode
- *    (`onComputeInsets`), so the app window usually wins;
- *  - the "pointer / mouse" mode produces hover + axis motion that arrives through
- *    `onGenericMotionEvent`, not the touch path;
+ * (`touchPad`, `Sources: KEYBOARD | TOUCHPAD`). Where its samples surface depends on the mode:
+ *  - with an IME window up, they are `SOURCE_TOUCHPAD` (CLASS_POSITION) samples delivered to the IME
+ *    window itself and routed through the *generic-motion* path — `View#onTouchEvent` never fires
+ *    for them. That is why the IME installs a generic-motion listener on its decor view
+ *    (`FcitxInputMethodService.installDecorMotionListener`) rather than a touch listener, and why
+ *    the samples are recorded here;
+ *  - with no IME window up, the same device's samples reach the app window as ordinary pointer
+ *    events, tagged by that window's own hooks;
  *  - the floating candidate window re-enters through [TouchEventReceiverWindow].
  *
  * Recording therefore has to sit at every one of those entry points, and each sample is tagged with
@@ -34,16 +35,13 @@ object TouchProbeLog {
     const val PATH_APP_WINDOW = "app"
     const val PATH_APP_MOTION = "app:motion"
     const val PATH_IME_RECEIVER = "ime:recv"
-    const val PATH_IME_MOTION = "ime:motion"
+
     /**
-     * IME-side capture of the keyboard's touch surface. When the IME is shown its window is
-     * full-screen but only a thin bottom strip is touchable (`onComputeInsets` →
-     * `TOUCHABLE_INSETS_VISIBLE`), so a finger on the physical keyboard surface lands in the IME's
-     * NON-touchable band and is dropped (not forwarded to the app). [KeyboardSurfaceProbeWindow]
-     * makes that band touchable on the IME side and records here, which is the only way the Lab
-     * page can see those coordinates while the cursor sits in an input box.
+     * IME-side capture of the keyboard touch surface: the decor view's generic-motion stream, i.e.
+     * the same channel keyboard fly-text consumes. Samples only appear here while the IME window
+     * exists, and only while the Lab page has recording on.
      */
-    const val PATH_IME_SURFACE = "ime:surface"
+    const val PATH_IME_MOTION = "ime:motion"
 
     data class Entry(
         val seq: Int,
