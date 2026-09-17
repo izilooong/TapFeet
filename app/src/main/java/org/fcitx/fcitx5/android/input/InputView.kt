@@ -15,9 +15,12 @@ import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsResponse
 import android.widget.ImageView
+import android.widget.Toast
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
+import androidx.annotation.StringRes
 import androidx.core.view.updateLayoutParams
+import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
@@ -27,7 +30,9 @@ import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
+import org.fcitx.fcitx5.android.data.InputFeedbacks.InputFeedbackMode
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareChord
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
@@ -43,6 +48,7 @@ import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
 import org.fcitx.fcitx5.android.input.broadcast.PunctuationComponent
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
 import org.fcitx.fcitx5.android.input.candidates.CandidateViewHolder
+import org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateComponent
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.HiddenKeyboardWindow
@@ -55,7 +61,9 @@ import org.fcitx.fcitx5.android.input.picker.emoticonPicker
 import org.fcitx.fcitx5.android.input.picker.symbolPicker
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.preedit.PreeditComponent
+import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
+import org.fcitx.fcitx5.android.utils.DeviceInfo
 import org.fcitx.fcitx5.android.utils.normalizeKeyString
 import org.fcitx.fcitx5.android.utils.unset
 import org.mechdancer.dependency.DynamicScope
@@ -215,35 +223,21 @@ class InputView(
         /** A pseudo key with no fcitx5 KeySym — see [HardwareSpecialKeys]. */
         data class Special(val entry: HardwareSpecialKeys.Entry) : ParsedKey
         data class Ref(val key: Key) : ParsedKey
+        /** 伪修饰键和弦（`Fn+字母` / `Sym+字母`）—— 见 [HardwareChord]。 */
+        data class Chord(val modifier: String, val inner: ParsedKey) : ParsedKey
     }
 
     private val parsedKeyCache = mutableMapOf<String, ParsedKey>()
     private var preciseShortcutsCache = mutableMapOf<Pair<Int, CandidateArrangementMode>, List<ShortcutRule>>()
     private var wideShortcutsCache = mutableMapOf<CandidateArrangementMode, List<ShortcutRule>>()
-    // All configured shortcut keys, parsed once and memoized. `isHardwareShortcutKey` runs on
-    // EVERY physical key down, and re-parsing 10 key strings (incl. 10 SharedPreferences reads)
-    // each time is pure waste. Invalidated together with the other caches below.
-    private var shortcutKeysCache: List<ParsedKey>? = null
-
-    /**
-     * Memoized list of every configured hardware shortcut key (candidates 1-5, symbol picker,
-     * paging, toggle-IME, picker). Used by [isHardwareShortcutKey], which runs on every physical
-     * key down — building this list once and reusing it avoids 10 SharedPreferences reads + 10
-     * cache lookups per keystroke. Invalidated on pref change via [onHardwareKeyChangeListener].
-     */
-    private fun shortcutParsedKeys(): List<ParsedKey> {
-        shortcutKeysCache?.let { return it }
-        val hw = hardwareKeyboardPrefs
-        val keys = listOf(
-            hw.candidate1Key, hw.candidate2Key, hw.candidate3Key, hw.candidate4Key, hw.candidate5Key,
-            hw.symbolPickerKey, hw.pageNextKey, hw.pagePrevKey, hw.toggleImeKey, hw.pickerKey,
-        ).mapNotNull { parseKeyString(it.getValue()) }
-        shortcutKeysCache = keys
-        return keys
-    }
 
     private fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
+        // 和弦先拆前缀再解析内层键（同 HardwareShortcutResolver 那份拷贝，改匹配必须两处同改）。
+        val (modifier, inner) = HardwareChord.split(keyString)
+        if (modifier.isNotEmpty()) {
+            return parseKeyString(inner)?.let { ParsedKey.Chord(modifier, it) }
+        }
         return parsedKeyCache.getOrPut(keyString) {
             // Pseudo keys MUST be looked up before Key.parse: their names deliberately avoid the
             // fcitx5 native key names that "Back" / "Home" / "Fn" would otherwise collide with.
@@ -256,6 +250,9 @@ class InputView(
         null -> false
         is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
         is ParsedKey.Ref -> matchesKey(event, parsed.key)
+        // 和弦：修饰键按住 **且** 内层键命中（内层键不带 modifier，会被「纯键」分支命中，故顺序要紧）。
+        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
+                matchesParsedKey(event, parsed.inner)
     }
 
     @Keep
@@ -263,7 +260,6 @@ class InputView(
         parsedKeyCache.clear()
         preciseShortcutsCache.clear()
         wideShortcutsCache.clear()
-        shortcutKeysCache = null
     }
 
     private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
@@ -559,8 +555,15 @@ class InputView(
     /** Match by KeySym only (any modifiers) — used to detect a physical key regardless of modifiers. */
     private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
         val parsed = parseKeyString(keyString) ?: return false
-        if (parsed is ParsedKey.Special) return parsed.entry.matches(event.keyCode)
-        return isSameKeySym(event, (parsed as ParsedKey.Ref).key)
+        return matchesKeySymOnly(event, parsed)
+    }
+
+    /** 只比 KeySym / 伪键名，不管修饰键状态（和弦则额外要求修饰键按住）。 */
+    private fun matchesKeySymOnly(event: KeyEvent, parsed: ParsedKey): Boolean = when (parsed) {
+        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
+        is ParsedKey.Ref -> isSameKeySym(event, parsed.key)
+        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
+                matchesKeySymOnly(event, parsed.inner)
     }
 
     private fun isSameKeySym(event: KeyEvent, key: Key): Boolean {
@@ -714,16 +717,131 @@ class InputView(
 
     /**
      * Side-effect-free check: does [event] match any configured hardware shortcut key
-     * (candidate / symbol / paging / global action)?
+     * (candidate / symbol / paging / global action / action shortcut)?
      *
      * Used by the Alt-latch logic in [FcitxInputMethodService] to detect when the latch trigger
      * key collides with a selection key — so a single press can still select instead of being
      * swallowed by latching. Does NOT perform any selection; it only reads the current config and
      * compares key syms, so it is safe to call from the key-down dispatch path.
+     *
+     * 直接委托 [HardwareShortcutResolver]：这里原本另存着一份按键解析拷贝，改匹配规则必须两处同改，
+     * 漏一处就是"配置改了但按键不响应"的静默失效。本次把"已登记的快捷键"这份收敛到 Resolver，
+     * 新增的动作快捷键因此只需在 Resolver 里登记一次，就会被 Alt 锁定逻辑认出来。
      */
-    fun isHardwareShortcutKey(event: KeyEvent): Boolean {
-        return shortcutParsedKeys().any { matchesParsedKey(event, it) }
+    fun isHardwareShortcutKey(event: KeyEvent): Boolean =
+        HardwareShortcutResolver.isHardwareShortcutKey(event)
+
+    /**
+     * 动作快捷键（开关类）：命中即执行并消费该键。
+     *
+     * 由 [FcitxInputMethodService.onKeyDown] 放在整条派发链**最前面**调用，于是：
+     * - 物理 / 虚拟两种模式下都生效（探测点在 `isVirtualKeyboard` 分支之前）；
+     * - 不受候选窗状态、preedit 状态、编辑器焦点影响 —— 开关类动作在"没在打字"或"候选栏正显示"
+     *   时也必须能按（探测点必须在所有 early-return 之前，否则又是一次静默失效）；
+     * - 同一个键既绑了候选字又绑了动作时，动作优先（配置界面会在保存时提示冲突）。
+     */
+    fun handleHardwareActionShortcut(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        val action = HardwareShortcutResolver.resolveAction(event) ?: return false
+        performShortcutAction(action)
+        return true
     }
+
+    /**
+     * 动作执行体。开关类动作都是"翻转一个偏好 + 弹一句回执"：偏好一落盘，`AppPrefs` 注册的
+     * 全局监听就把变更广播给各消费者（KawaiiBar 可见性 / 特效覆盖层 / 音效闸门…），所以这里
+     * 不需要任何额外接线。
+     *
+     * Toast 不是装饰：这些开关在输入法窗口里没有任何可见状态，没有回执用户不知道自己按中没按中。
+     */
+    private fun performShortcutAction(action: ShortcutAction) {
+        val prefs = AppPrefs.getInstance()
+        when (action) {
+            ShortcutAction.ToggleEffects -> {
+                val pref = prefs.effects.enabled
+                val next = !pref.getValue()
+                pref.setValue(next)
+                toast(
+                    if (next) R.string.shortcut_toast_effects_on
+                    else R.string.shortcut_toast_effects_off
+                )
+            }
+
+            ShortcutAction.ToggleSound -> {
+                val pref = prefs.hardwareKeyboard.keySoundEnabled
+                val next = !pref.getValue()
+                pref.setValue(next)
+                toast(
+                    if (next) R.string.shortcut_toast_sound_on
+                    else R.string.shortcut_toast_sound_off
+                )
+            }
+
+            ShortcutAction.ToggleStatusBar -> {
+                val pref = prefs.keyboard.hideStatusBar
+                val next = !pref.getValue()
+                pref.setValue(next)
+                // 真正收起只发生在 KawaiiBar 处于 Idle + 装饰子态时（候选栏 / 扩展窗标题态不收起，
+                // 否则会把候选栏或返回键藏掉）。文案要说清"空闲时生效"，否则用户会以为没生效。
+                toast(
+                    if (next) R.string.shortcut_toast_statusbar_hidden
+                    else R.string.shortcut_toast_statusbar_shown
+                )
+            }
+
+            ShortcutAction.ToggleFlyText -> {
+                // 飞字依赖键盘触摸面（Titan 2 Elite 的 KEYBOARD|TOUCHPAD 复合源）。没有该硬件的
+                // 机型上翻这个开关只会留个"看着开着却不工作"的坑，所以直接拒绝并说明原因。
+                if (!DeviceInfo.hasKeyboardTouchSurface()) {
+                    toast(R.string.shortcut_toast_flytext_unsupported)
+                    return
+                }
+                val pref = prefs.hardwareKeyboard.keyboardFlyText
+                val next = !pref.getValue()
+                pref.setValue(next)
+                toast(
+                    if (next) R.string.shortcut_toast_flytext_on
+                    else R.string.shortcut_toast_flytext_off
+                )
+            }
+
+            ShortcutAction.ToggleArrangement -> {
+                val pref = prefs.candidateBar.arrangementMode
+                val next = when (pref.getValue()) {
+                    CandidateArrangementMode.Macrohard -> CandidateArrangementMode.Linear
+                    CandidateArrangementMode.Linear -> CandidateArrangementMode.Macrohard
+                }
+                pref.setValue(next)
+                toast(
+                    context.getString(
+                        R.string.shortcut_toast_arrangement,
+                        context.getString(next.stringRes)
+                    )
+                )
+            }
+
+            ShortcutAction.CycleSoundMode -> {
+                val pref = prefs.keyboard.soundOnKeyPress
+                val next = when (pref.getValue()) {
+                    InputFeedbackMode.FollowingSystem -> InputFeedbackMode.Enabled
+                    InputFeedbackMode.Enabled -> InputFeedbackMode.Disabled
+                    InputFeedbackMode.Disabled -> InputFeedbackMode.FollowingSystem
+                }
+                pref.setValue(next)
+                toast(
+                    context.getString(
+                        R.string.shortcut_toast_sound_mode,
+                        context.getString(next.stringRes)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun toast(@StringRes resId: Int) = toast(context.getString(resId))
+
+    private fun toast(message: CharSequence) =
+        Toast.makeText(service, message, Toast.LENGTH_SHORT).show()
 
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
@@ -813,6 +931,10 @@ class InputView(
         val noActiveInput = preeditEmptyState.isEmpty &&
                 (!kawaiiBar.isCandidateUiShowing() || horizontalCandidate.visibleCandidateCount() <= 0)
         if (!noActiveInput) return false
+
+        // tap-hold：本该在这里切窗口，但若这个键同时是伪修饰键（Elite 预设的 Fn：symbolPickerKey
+        // = "NavFn"），按下就切会让 Fn+字母 永远走不通 —— 挂起到松手，没被和弦用掉再切。
+        if (HardwareChord.armSymbolTap(event.keyCode)) return true
 
         toggleSymbolWindow()
         return true
@@ -920,6 +1042,11 @@ class InputView(
      * ([org.fcitx.fcitx5.android.input.FcitxInputMethodService]) against the live floating
      * CandidatesView state, not against InputView's frozen state.
      *
+     * ⚠️ tap-hold（Titan 系的 Fn 兼符号键时必需）：按下**先不切窗口**，只挂起
+     * （[HardwareChord.armSymbolTap]），松手时若没被和弦用掉，再由 [onHardwareSymbolTapReleased]
+     * 补上 —— 否则「按住 Fn 再按字母」永远走不通，符号窗口会在 Fn 按下的瞬间抢走后面那个键。
+     * 动作体收敛在 [toggleSymbolForKeyPress]，按下路径与松手路径共用一份三态循环。
+     *
      * Because the symbol window attaches onto the (hidden) keyboard window in physical mode, we
      * reveal this [InputView] before opening it — i.e. show the virtual keyboard first, then the
      * symbol window / custom keyboard on top of it. The Sym key cycles three states — custom
@@ -928,34 +1055,82 @@ class InputView(
      * keyboard.
      */
     fun handleHardwareSymKey(event: KeyEvent): Boolean {
+        // tap-hold：这个键同时是**和弦修饰键**（Elite 预设的 Fn、BlackBerry 的 Alt_R）时，
+        // 按下不能立刻切窗口 —— 否则 Fn+字母 永远走不通。挂起，交给松手时的
+        // [onHardwareSymbolTapReleased]；被和弦用掉了就不补（按下时已由 HardwareChord 作废挂起）。
+        if (handleHardwareChordTapHold(event)) return true
         if (event.action != KeyEvent.ACTION_DOWN) return false
-        val symKey = hardwareKeyboardPrefs.symbolPickerKey.getValue()
-        if (!matchesParsedKey(event, parseKeyString(symKey))) return false
+        if (!matchesSymbolKey(event)) return false
+        toggleSymbolForKeyPress()
+        return true
+    }
 
+    /**
+     * 和弦修饰键兼符号键的**按下挂起**入口。
+     *
+     * 物理模式的派发链里，这个方法必须排在**候选面之前**调用：Elite 的 Fn 同时也是 `candidate3Key`
+     * （Q25 的 `Alt_R` 一样），若先让候选面看到这次按下，「按住 Fn + 字母」会在打字途中先把第 3 个
+     * 候选选掉 —— 快捷键配得再对也永远打成错字。挂起后由 [FcitxInputMethodService.onKeyUp] 的
+     * tap-hold 收尾补发（候选面不接就切符号窗口），所以两个角色都不会丢。
+     *
+     * 返回 true 表示已挂起并消费这次按下。不是符号键、或这个键不是和弦修饰键时返回 false，
+     * 调用方照旧往下派发 —— 对「符号键绑在普通键上」的配置行为完全不变。
+     */
+    fun handleHardwareChordTapHold(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        if (!matchesSymbolKey(event)) return false
+        return HardwareChord.armSymbolTap(event.keyCode)
+    }
+
+    /** 这个事件是不是配置的「符号窗口」键（[AppPrefs.HardwareKeyboard.symbolPickerKey]）。 */
+    private fun matchesSymbolKey(event: KeyEvent): Boolean =
+        matchesParsedKey(event, parseKeyString(hardwareKeyboardPrefs.symbolPickerKey.getValue()))
+
+    /**
+     * 符号键「轻按」的动作体：三态循环（自定义键盘 → 符号选择器 → 隐藏）。
+     *
+     * 两条路共用：按下即切换的老路径，以及 tap-hold 的**松手**路径 —— 后者是修饰键兼符号键时
+     * 必须的延迟，行为与原来一致，只是晚到松手那一刻。所以三态循环、亮出 InputView、重算
+     * insets 的逻辑只能有一份。
+     */
+    fun toggleSymbolForKeyPress() {
         val symbolPickerOpen = windowManager.isAttached(symbolPicker)
         val customActive = keyboardWindow.isCustomKeyboardActive
-        if (symbolPickerOpen || customActive) {
-            // 符号窗口 / 自定义键盘打开中 → 在两者间切换（不再回主键盘，见 toggleSymbolWindow）
-            toggleSymbolWindow()
-        } else {
+        if (!symbolPickerOpen && !customActive && physicalKeyboardMode) {
             // Open the symbol window: in physical mode the keyboard window (its base) is hidden,
             // so reveal this InputView first.
-            if (physicalKeyboardMode) {
-                visibility = View.VISIBLE
-                // The KawaiiBar candidate surface is a virtual-keyboard component and its event
-                // collector is disabled (handleEvents == false) in physical mode, so it would
-                // otherwise keep showing the last stale, frozen candidate list for the whole time
-                // the InputView is revealed. Push it back to Idle (toolbar) — the floating window
-                // remains the live candidate surface, and normal virtual-mode events will restore
-                // it later.
-                kawaiiBar.resetToIdleState()
-            }
-            toggleSymbolWindow()
+            visibility = View.VISIBLE
+            // The KawaiiBar candidate surface is a virtual-keyboard component and its event
+            // collector is disabled (handleEvents == false) in physical mode, so it would
+            // otherwise keep showing the last stale, frozen candidate list for the whole time
+            // the InputView is revealed. Push it back to Idle (toolbar) — the floating window
+            // remains the live candidate surface, and normal virtual-mode events will restore
+            // it later.
+            kawaiiBar.resetToIdleState()
         }
+        // 符号窗口 / 自定义键盘打开中 → 在两者间切换（不再回主键盘，见 toggleSymbolWindow）
+        toggleSymbolWindow()
         // The symbol window lives inside this InputView, so revealing/hiding it changes how much
         // of the IME window must be touchable. Force the framework to recompute the touchable
         // insets (see [FcitxInputMethodService.onComputeInsets]).
         service.requestInsetsUpdate()
+    }
+
+    /**
+     * tap-hold 收尾（符号键松手时调用，见 [HardwareChord.consumeSymbolTap]）：这次轻按还欠一次
+     * 符号窗口切换，补上它。
+     *
+     * 守卫与按下路径保持一致：虚拟模式沿用 `noActiveInput`（打字中不抢候选栏 / 不打断组字），
+     * 物理模式由调用方按浮动候选窗状态把关（与 `handleHardwareSymKey` 的调用点同款）。
+     */
+    fun onHardwareSymbolTapReleased(): Boolean {
+        if (!physicalKeyboardMode) {
+            // Candidate total can be stale from previous sessions. Use visible UI state instead.
+            val noActiveInput = preeditEmptyState.isEmpty &&
+                    (!kawaiiBar.isCandidateUiShowing() || horizontalCandidate.visibleCandidateCount() <= 0)
+            if (!noActiveInput) return false
+        }
+        toggleSymbolForKeyPress()
         return true
     }
 

@@ -10,9 +10,12 @@ import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareChord
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
 import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateArrangementMode
+import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
 import org.fcitx.fcitx5.android.utils.normalizeKeyString
 
 /**
@@ -40,6 +43,12 @@ object HardwareShortcutResolver {
         /** A pseudo key with no fcitx5 KeySym — see [HardwareSpecialKeys]. */
         data class Special(val entry: HardwareSpecialKeys.Entry) : ParsedKey
         data class Ref(val key: Key) : ParsedKey
+
+        /**
+         * 伪修饰键和弦（`Fn+字母` / `Sym+字母`）。修饰键没有 fcitx5 Keysym、也进不了 metaState，
+         * 所以只能靠 [HardwareChord] 自己跟踪的按住状态来判 —— 见那边的说明。
+         */
+        data class Chord(val modifier: String, val inner: ParsedKey) : ParsedKey
     }
 
     private val parsedKeyCache = mutableMapOf<String, ParsedKey>()
@@ -48,14 +57,21 @@ object HardwareShortcutResolver {
     private var wideShortcutsCache = mutableMapOf<CandidateArrangementMode, List<ShortcutRule>>()
     private var shortcutKeysCache: List<ParsedKey>? = null
 
+    /** 动作快捷键（开关类…）的解析结果，按 [ShortcutAction] 声明顺序排列 = 匹配优先级。 */
+    private var actionParsedKeysCache: List<Pair<ShortcutAction, ParsedKey>>? = null
+
     private data class ShortcutRule(val parsedKey: ParsedKey?, val position: Int)
 
     private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
+    private val shortcutsPrefs = AppPrefs.getInstance().shortcuts
     private val arrangementModePref = AppPrefs.getInstance().candidateBar.arrangementMode
 
     init {
         // Keep the memoized shortcut tables in sync with the user's key bindings.
+        // BOTH categories must be watched: the action bindings live in [shortcutsPrefs], and
+        // forgetting its listener is the classic "改了配置但快捷键还是老行为" bug.
         hardwareKeyboardPrefs.registerOnChangeListener { invalidateCaches() }
+        shortcutsPrefs.registerOnChangeListener { invalidateCaches() }
     }
 
     fun invalidateCaches() {
@@ -63,10 +79,17 @@ object HardwareShortcutResolver {
         preciseShortcutsCache.clear()
         wideShortcutsCache.clear()
         shortcutKeysCache = null
+        actionParsedKeysCache = null
     }
 
     private fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
+        // 和弦先拆前缀，再按原来的路解析内层键。刻意放在 memoize 之前：内层键自己去缓存命中，
+        // 这里多一层包装不值得进缓存（而且 getOrPut 的 value 类型非空，裂成两条路更好写）。
+        val (modifier, inner) = HardwareChord.split(keyString)
+        if (modifier.isNotEmpty()) {
+            return parseKeyString(inner)?.let { ParsedKey.Chord(modifier, it) }
+        }
         return parsedKeyCache.getOrPut(keyString) {
             // Pseudo keys MUST be looked up before Key.parse: their names deliberately avoid the
             // fcitx5 native key names (which "Back" / "Home" / "Fn" would otherwise collide with
@@ -80,6 +103,10 @@ object HardwareShortcutResolver {
         null -> false
         is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
         is ParsedKey.Ref -> matchesKey(event, parsed.key)
+        // 和弦：修饰键按住 **且** 内层键命中。顺序要紧：内层键（如 "e"）本身不带 modifier，
+        // 会被 matchesKey 的「纯键」分支当成普通按键命中，所以必须先过修饰键这一关。
+        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
+                matchesParsedKey(event, parsed.inner)
     }
 
     private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
@@ -123,16 +150,62 @@ object HardwareShortcutResolver {
 
     private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
         val parsed = parseKeyString(keyString) ?: return false
-        return when (parsed) {
-            is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
-            is ParsedKey.Ref -> FcitxKeyMapping.keyCodeToSym(event.keyCode) == parsed.key.sym ||
-                (event.unicodeChar != 0 && event.unicodeChar == parsed.key.sym)
-        }
+        return matchesKeySymOnly(event, parsed)
     }
 
-    /** Whether [event] matches any configured hardware shortcut key (candidates / symbol / paging / global). */
+    /** 只比 KeySym / 伪键名，不管修饰键状态（和弦则额外要求修饰键按住）。 */
+    private fun matchesKeySymOnly(event: KeyEvent, parsed: ParsedKey): Boolean = when (parsed) {
+        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
+        is ParsedKey.Ref -> FcitxKeyMapping.keyCodeToSym(event.keyCode) == parsed.key.sym ||
+                (event.unicodeChar != 0 && event.unicodeChar == parsed.key.sym)
+        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
+                matchesKeySymOnly(event, parsed.inner)
+    }
+
+    /**
+     * Whether [event] matches any configured hardware shortcut key
+     * (candidates / symbol / paging / global / action).
+     */
     fun isHardwareShortcutKey(event: KeyEvent): Boolean {
         return shortcutParsedKeys().any { matchesParsedKey(event, it) }
+    }
+
+    /**
+     * 解析 [event] 命中的动作快捷键（开关类…），未绑定时返回 null。
+     *
+     * 调用方 (`FcitxInputMethodService.onKeyDown`) 把它放在整条派发链的**最前面**，
+     * 于是同一个键既被绑成候选字又被绑成动作时，动作赢——这条优先级是刻意的，配置界面
+     * 会在保存时提示冲突，用户自己拍板。
+     *
+     * [ShortcutAction] 的声明顺序即优先级：同键多绑定时取最先命中者。
+     */
+    fun resolveAction(event: KeyEvent): ShortcutAction? =
+        actionParsedKeys().firstOrNull { matchesParsedKey(event, it.second) }?.first
+
+    /**
+     * 已绑定的动作键（跳过空串），与缓存同生共死。
+     *
+     * ⚠️ 当前键盘预设整体不提供这套配置时（BlackBerry，见
+     * [HardwareKeyProfiles.actionShortcutsAvailable]）**直接算作「一个都没绑」**：偏好里可能还留着
+     * 历史值（旧版本播过的 `Alt+字母`、或用户切预设前的绑定），不清掉的话会变成一批「设置页里看不见、
+     * 运行期却还在抢键」的幽灵 —— 而那正是「按住左 Alt 打键帽符号，结果触发了开关」的成因。
+     * 设置页入口的可见性读的是同一个函数，两边同源。
+     *
+     * 缓存失效不需要额外接线：预设存在 `hardwareKeyboardPrefs` 里，那个分类已注册
+     * `invalidateCaches()` 监听（改预设 → 缓存清 → 下次调用重新判定）。
+     */
+    private fun actionParsedKeys(): List<Pair<ShortcutAction, ParsedKey>> {
+        actionParsedKeysCache?.let { return it }
+        val available = HardwareKeyProfiles.actionShortcutsAvailable(
+            hardwareKeyboardPrefs.keyProfile.getValue()
+        )
+        val keys: List<Pair<ShortcutAction, ParsedKey>> =
+            if (!available) emptyList()
+            else ShortcutAction.entries.mapNotNull { action ->
+                parseKeyString(shortcutsPrefs.key(action).getValue())?.let { action to it }
+            }
+        actionParsedKeysCache = keys
+        return keys
     }
 
     private fun shortcutParsedKeys(): List<ParsedKey> {
@@ -141,7 +214,7 @@ object HardwareShortcutResolver {
         val keys = listOf(
             hw.candidate1Key, hw.candidate2Key, hw.candidate3Key, hw.candidate4Key, hw.candidate5Key,
             hw.symbolPickerKey, hw.pageNextKey, hw.pagePrevKey, hw.toggleImeKey, hw.pickerKey,
-        ).mapNotNull { parseKeyString(it.getValue()) }
+        ).mapNotNull { parseKeyString(it.getValue()) } + actionParsedKeys().map { it.second }
         shortcutKeysCache = keys
         return keys
     }

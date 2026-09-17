@@ -24,6 +24,17 @@ class KeyCapturePreference : Preference {
     /** The configured default value, used as the SharedPreferences fallback in the summary. */
     internal val defaultValue: String get() = defaultKeyValue
 
+    /**
+     * 可选的冲突提示钩子。传入用户刚捕获的键字符串，返回非 null 表示"这个键已经被别的绑定占用了"，
+     * 返回值就是展示给用户的说明文字（含占用方名字）。
+     *
+     * 返回非 null 时**不直接落盘**，而是先弹一个二次确认，用户可以选择覆盖 —— 不做硬拦截：
+     * 冲突未必是错误（用户可能就是想改绑），挡死反而更烦。
+     *
+     * 目前只有「快捷键」页会设置它；其他调用点保持 null，行为与从前完全一致。
+     */
+    var conflictHint: ((String) -> CharSequence?)? = null
+
     constructor(context: Context) : this(context, null)
     constructor(context: Context, attrs: AttributeSet?) :
             this(context, attrs, androidx.preference.R.attr.preferenceStyle)
@@ -52,18 +63,34 @@ class KeyCapturePreference : Preference {
             .setView(ui.root)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val value = ui.getValue()
-                if (callChangeListener(value)) {
-                    persistString(value)
-                    notifyChanged()
-                }
+                val conflict = conflictHint?.invoke(value)
+                if (conflict == null) persistIfChanged(value)
+                else showConflictConfirm(value, conflict)
             }
             .setNegativeButton(android.R.string.cancel, null)
             .setNeutralButton(R.string.hw_reset) { _, _ ->
-                if (callChangeListener(defaultKeyValue)) {
-                    persistString(defaultKeyValue)
-                    notifyChanged()
-                }
+                persistIfChanged(defaultKeyValue)
             }
+            .show()
+    }
+
+    private fun persistIfChanged(value: String) {
+        if (callChangeListener(value)) {
+            persistString(value)
+            notifyChanged()
+        }
+    }
+
+    /**
+     * 冲突二次确认。AlertDialog 的按钮点击会先关掉原对话框，所以这里另开一个而不是原地改文案 ——
+     * 代价是多一次弹窗，好处是完全不碰 [KeyCaptureUi]（共享组件，别的页面也在用）。
+     */
+    private fun showConflictConfirm(value: String, conflict: CharSequence) {
+        AlertDialog.Builder(context)
+            .setTitle(title)
+            .setMessage(conflict)
+            .setPositiveButton(android.R.string.ok) { _, _ -> persistIfChanged(value) }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 

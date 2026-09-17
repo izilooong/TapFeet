@@ -68,6 +68,7 @@ import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.FcitxDaemon
 import org.fcitx.fcitx5.android.data.InputFeedbacks
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareChord
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
@@ -1412,6 +1413,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         return false
     }
 
+    /**
+     * 丢弃某个 keyCode 上待定的「长按键帽符号」。
+     *
+     * 那个 pending 是在 [onKeyDown] 里**登记得比消费判断更早**的（长按分支刻意 fall through，
+     * 让字母先正常上屏）。因此任何消费掉 DOWN 事件的快捷键，如果不主动取消它，用户按住这个键
+     * 超过阈值时定时器仍会去替换正文、把键帽符号打出来 —— 表现为「绑了快捷键的字母键，长按会冒符号」。
+     */
+    private fun cancelSymbolLongPress(keyCode: Int) {
+        symbolLongPressPending.remove(keyCode)?.let { mainHandler.removeCallbacks(it.runnable) }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // Lab-page probe: record every key BEFORE any dispatch decision, so the log also covers keys
         // a shortcut ends up consuming — and, by their absence, proves which keys never get
@@ -1430,6 +1442,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
             return false
         }
+
+        // 伪修饰键（Fn / Sym）的按住状态 + tap-hold 挂起消解。刻意放在捕获页早退**之后**：
+        // 捕获页里的按键是给对话框录键位用的，不该污染「Fn 是否按着」这种运行期状态。
+        // 也必须早于下面所有派发分支，动作快捷键（`handleHardwareActionShortcut`）要读它。
+        HardwareChord.onKeyDown(keyCode)
 
         // Key sound on press, exactly like the on-screen keyboard. Done before any dispatch logic
         // so every physical key clicks regardless of which branch ends up consuming it. Auto-repeat
@@ -1674,6 +1691,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             forceShowSelf()
         }
         if (event.repeatCount == 0) {
+            // 动作快捷键（开关类…）第一优先。刻意放在候选 / 符号 / 翻页判断之前，并且放在
+            // `inputDeviceMgr.isVirtualKeyboard` 分支**之外**：
+            //  - 开关类动作与候选窗状态、preedit、编辑器焦点全无关系，若挂在后面的 early-return
+            //    之下，就会变成"没在打字时按不动"的静默失效（hideStatusBar、选字特效都栽过这类坑）；
+            //  - 物理键盘模式下 InputView 已不是候选面，动作键仍必须可达。
+            // 消费后记入 consumedHardwareCandidateShortcutKeys，交给 onKeyUp 一并吞掉。
+            if (inputView?.handleHardwareActionShortcut(effectiveEvent) == true) {
+                cancelSymbolLongPress(keyCode)
+                consumedHardwareCandidateShortcutKeys.add(keyCode)
+                return true
+            }
             // Candidate-selection dispatch. The two surfaces handle different key sets:
             //  - Virtual keyboard mode: the horizontal candidate bar (InputView) is the surface.
             //  - Physical keyboard mode: the floating CandidatesView is the surface.
@@ -1688,8 +1716,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             // they are not. Global actions keep falling through to InputView as before.
             // In VIRTUAL mode only InputView is consulted (CandidatesView isn't the surface).
             val handled = if (!inputDeviceMgr.isVirtualKeyboard) {
-                // Floating CandidatesView is the primary surface in physical mode.
-                candidatesView?.handleHardwareCandidateShortcut(effectiveEvent) == true ||
+                // 和弦修饰键兼符号键的按下必须**先于候选面**挂起：Elite 的 Fn 同时也是
+                // candidate3Key（Q25 的 Alt_R 同理），让候选面先看到这次按下的话，「按住 Fn + 字母」
+                // 在打字途中会先把第 3 个候选选掉 —— 匹配逻辑再对也只会打成错字。
+                // 挂起后松手时补发（见 onKeyUp 的 tap-hold 收尾），两个角色都不丢。
+                inputView?.handleHardwareChordTapHold(effectiveEvent) == true ||
+                    // Floating CandidatesView is the primary surface in physical mode.
+                    candidatesView?.handleHardwareCandidateShortcut(effectiveEvent) == true ||
                     // When the floating window isn't showing candidates, the symbol key (Alt_R on
                     // BlackBerry, where SYM reports as KEYCODE_ALT_RIGHT) opens the symbol window
                     // directly. InputView's own noActiveInput guard is frozen in physical mode, so
@@ -1702,6 +1735,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 inputView?.handleHardwareCandidateShortcut(effectiveEvent) == true
             }
             if (handled) {
+                // 同上：被候选 / 符号 / 翻页快捷键消费掉的键也不能再变成键帽符号
+                // （把候选键绑到字母键时，长按同样会冒符号 —— 同一个洞，两处一起堵）。
+                cancelSymbolLongPress(keyCode)
                 consumedHardwareCandidateShortcutKeys.add(keyCode)
                 return true
             }
@@ -1723,6 +1759,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
         // Track physical modifier state from the raw stream (authoritative for combo matching).
         updatePhysicalModifiers(keyCode, false)
+
+        // 伪修饰键抬起：清掉按住状态。放在最前面 —— 下面几条路径都可能提前 return
+        // （长按符号 fired、Alt 锁定消费），漏清一次就是把「Fn 按着」永久留在那儿，
+        // 之后每个字母都会被判成和弦（按 E 就切特效），比单纯不生效危险得多。
+        HardwareChord.onKeyUp(keyCode)
 
         // 长按符号 pending 解析：取出并清理本键的 pending。
         // - 已长按（fired）：符号已发出（替换完成），吞掉 up 避免字母再上屏一次。
@@ -1763,6 +1804,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 return true
             }
             return false
+        }
+        // tap-hold 收尾：符号键按下时被 [HardwareChord.armSymbolTap] 挂起（物理模式的调用点在
+        // onKeyDown 的派发链最前，虚拟模式在 InputView 的两个符号键入口），若这次手势没被任何和弦
+        // 用掉，就在这里补上「轻按」那一下。**必须放在下面 consumedHardwareCandidateShortcutKeys
+        // 之前**：挂起那次按下是被消费掉的（已记进那个集合），放在它之后的话 up 会先被吞掉，
+        // 轻按就永远补不发出来。
+        //
+        // 补发顺序 = 这个键在按下时本该走的顺序：先当候选键（Elite 的 Fn 兼 candidate3），
+        // 候选面不接（没显示候选 / 候选数不够）才切符号窗口。
+        if (HardwareChord.consumeSymbolTap(keyCode)) {
+            if (candidatesView?.handleChordTapRelease(event) != true) {
+                inputView?.onHardwareSymbolTapReleased()
+            }
+            return true
         }
         if (consumedHardwareCandidateShortcutKeys.remove(keyCode)) {
             return true
@@ -2269,6 +2324,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         Timber.d("onFinishInput: currentInputStarted=$currentInputStarted isInputViewShown=$isInputViewShown")
         clearAltLatchAndMetaState()
         cancelSymbolLongPress()
+        // 会话结束：Fn/Sym 按住状态与 tap-hold 挂起都作废，避免跨会话僵死。
+        HardwareChord.reset()
         postFcitxJob {
             focus(false)
         }
@@ -2278,6 +2335,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     override fun onUnbindInput() {
         cachedKeyEvents.evictAll()
         cancelSymbolLongPress()
+        // 同上：解绑输入也要清伪修饰键状态（跨会话僵死会把普通字母全判成和弦）。
+        HardwareChord.reset()
         cachedKeyEventIndex = 0
         cursorUpdateIndex = 0
         // currentInputBinding can be null on some devices under some special Multi-screen mode

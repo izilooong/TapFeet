@@ -71,20 +71,14 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         // bindings match what selecting that preset would produce. No-op once already initialised.
         hw.ensureInitialized()
 
-        // Preset profile dropdown: choosing a profile overrides every individual key binding.
+        // Preset profile dropdown: choosing a profile overrides every individual key binding —
+        // and seeds the matching shortcut set (Fn / Alt chords, see HardwareKeyProfiles).
+        val profileIds = HardwareKeyProfiles.ids()
         val profileList = ListPreference(context).apply {
             key = hw.keyProfile.key
             title = getString(R.string.hw_key_profile)
-            entries = arrayOf(
-                getString(R.string.hw_profile_blackberry),
-                getString(R.string.hw_profile_tt2),
-                getString(R.string.hw_profile_titan2_elite)
-            )
-            entryValues = arrayOf(
-                HardwareKeyProfiles.BLACKBERRY,
-                HardwareKeyProfiles.TT2,
-                HardwareKeyProfiles.TITAN2_ELITE
-            )
+            entries = profileIds.map { getString(HardwareKeyProfiles.labelResFor(it)) }.toTypedArray()
+            entryValues = profileIds.toTypedArray()
             setDefaultValue(hw.keyProfile.getValue())
             value = hw.keyProfile.getValue()
             summary = "%s"
@@ -409,9 +403,14 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         preferenceScreen = screens[selectedTab].second
     }
 
-    /** Override all individual key bindings with the selected preset, then refresh the summaries. */
+    /**
+     * Override all individual key bindings with the selected preset, then refresh the summaries.
+     *
+     * 顺带把「快捷键」那套动作键也按同一机型播一遍（修饰键随机器不同：Titan 系是 Fn，
+     * BlackBerry 是 Alt）—— 只播物理键位会留下一半配置。
+     */
     private fun applyProfile(name: String) {
-        HardwareKeyProfiles.applyProfile(name, hw)
+        HardwareKeyProfiles.applyProfile(name, AppPrefs.getInstance())
         keyPrefs.forEach { it.refresh() }
         setCandidateShortcutVisibility(hw.enableCandidateQuickPick.getValue())
         updateQuickPickSummary()

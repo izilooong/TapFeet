@@ -35,6 +35,7 @@ import org.fcitx.fcitx5.android.ui.main.settings.behavior.InputMethodTestFragmen
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidatesSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.ClipboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.KeyboardSettingsFragment
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.ShortcutKeysSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.SymbolSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.global.GlobalConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.im.InputMethodConfigFragment
@@ -106,6 +107,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object HardwareKeyboard : SettingsRoute()
+
+    @Serializable
+    data object ShortcutKeys : SettingsRoute()
 
     @Serializable
     data object Developer : SettingsRoute()
@@ -269,6 +273,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<HardwareKeyboardSettingsFragment, HardwareKeyboard> {
                 label = ctx.getString(R.string.hardware_keyboard)
+            }
+            fragment<ShortcutKeysSettingsFragment, ShortcutKeys> {
+                label = ctx.getString(R.string.shortcut_keys)
             }
             fragment<DeveloperFragment, Developer> {
                 label = ctx.getString(R.string.developer)

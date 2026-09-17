@@ -24,6 +24,7 @@ import org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SwipeSymbolDirection
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.popup.EmojiModifier
+import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
 import org.fcitx.fcitx5.android.utils.DeviceUtil
 import org.fcitx.fcitx5.android.utils.appContext
 import org.fcitx.fcitx5.android.utils.vibrator
@@ -646,7 +647,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
         fun ensureInitialized() {
             if (seededKeys.any { sharedPreferences.contains(it.key) }) return
-            HardwareKeyProfiles.applyProfile(keyProfile.getValue(), this)
+            HardwareKeyProfiles.applyProfile(keyProfile.getValue(), this@AppPrefs)
         }
     }
 
@@ -679,6 +680,45 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         )
     }
 
+    /**
+     * 「快捷键」模块：把「按某个物理键 → 执行某个动作」的绑定集中在一处。
+     *
+     * 为什么单独一个分类（而不是塞进 [HardwareKeyboard]）：绑定值与物理键位是两套生命周期 ——
+     * 键位由 `HardwareKeyProfiles` 按机型播种、可被预设整体覆写；动作键是**用户自己的选择**，
+     * 只是首次安装 / 换预设时跟着播一套推荐值（见 [HardwareKeyProfiles.applyShortcutPreset]）。
+     * 混在同一个分类里，两边的「更新」逻辑会互相牵连。
+     *
+     * 绑定值一律是 fcitx5 Key portableString（如 "Ctrl+grave"）、伪键名（如 "Sym"），
+     * 或伪修饰键和弦（如 "Fn+e" —— 见 [HardwareChord]）；空串 = 未绑定。键名只在 [ShortcutAction]
+     * 里写一次，这里按它生成偏好对象 —— 抄两份必然漂移，硬件键盘那批键位已经栽过一次。
+     *
+     * 全部由 `ManagedPreferenceCategory.string` 创建（不生成自动 UI），渲染交给
+     * [org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference]。
+     */
+    inner class Shortcuts : ManagedPreferenceCategory(R.string.shortcut_keys, sharedPreferences) {
+
+        val keys: Map<ShortcutAction, ManagedPreference.PString> =
+            ShortcutAction.entries.associateWith { string(it.prefKey, "") }
+
+        fun key(action: ShortcutAction): ManagedPreference.PString = keys.getValue(action)
+
+        /**
+         * 首次安装（以及从「还没有快捷键这个功能」的旧版本升级上来）时，按当前键盘预设播一套
+         * 推荐动作键。
+         *
+         * 与 [HardwareKeyboard.ensureInitialized] 同款守卫：**一个键都没持久化过**才动手，
+         * 只要有一个已存在就说明用户配过，绝不覆盖。刻意独立于那边 —— 旧安装的物理键位早已存在，
+         * 那边的守卫会直接早退，快捷键就永远播不上。
+         */
+        fun ensureInitialized() {
+            if (keys.values.any { sharedPreferences.contains(it.key) }) return
+            HardwareKeyProfiles.applyShortcutPreset(
+                AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue(),
+                AppPrefs.getInstance()
+            )
+        }
+    }
+
     private val providers = mutableListOf<ManagedPreferenceProvider>()
 
     fun <T : ManagedPreferenceProvider> registerProvider(
@@ -696,6 +736,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     val internal = Internal().register()
     val keyboard = Keyboard().register()
     val hardwareKeyboard = HardwareKeyboard().register()
+    val shortcuts = Shortcuts().register()
     val candidates = Candidates().register()
     val candidateBar = CandidateBar().register()
     val clipboard = Clipboard().register()
@@ -754,6 +795,9 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             // Seed the default hardware-keyboard preset on a fresh install so the per-key bindings
             // match what selecting that preset would produce (avoids a dead next-page key on first run).
             getInstance().hardwareKeyboard.ensureInitialized()
+            // 快捷键单独补一次：老安装升级上来时物理键位早已存在，上面那一步会直接早退，
+            // 不单独播的话快捷键永远是空的。
+            getInstance().shortcuts.ensureInitialized()
             sharedPreferences.registerOnSharedPreferenceChangeListener(getInstance().onSharedPreferenceChangeListener)
         }
 

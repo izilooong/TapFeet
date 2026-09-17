@@ -262,6 +262,24 @@ class CandidatesView(
             return true
         }
 
+        return selectBySequence(event)
+    }
+
+    /**
+     * tap-hold 的**补发**入口：和弦修饰键兼符号键 / 候选键（Elite 的 Fn、BlackBerry 的 Alt_R）在
+     * 按下时被挂起（见 `HardwareChord.armSymbolTap`），松手时在这里补那一下「轻按」的选字。
+     *
+     * 只做**选字**，不做翻页：翻页键（Elite 是 Sym / Alt+Sym）不是和弦修饰键，本来就在按下时处理，
+     * 不该被延迟。也刻意不看 `event.action` —— 传进来的是抬起事件，而 Android 的抬起事件带着同一套
+     * keyCode / metaState / unicodeChar，选字判定与按下时逐字一致，不必伪造一个 DOWN。
+     */
+    internal fun handleChordTapRelease(event: KeyEvent): Boolean {
+        if (!isShowingCandidates()) return false
+        return selectBySequence(event)
+    }
+
+    /** 按序号选字（candidate N → 可见位置 N-1），两条入口共用。 */
+    private fun selectBySequence(event: KeyEvent): Boolean {
         val count = visibleCandidateCount()
         if (count <= 0) return false
 

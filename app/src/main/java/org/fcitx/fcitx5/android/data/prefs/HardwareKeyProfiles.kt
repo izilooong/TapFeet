@@ -4,6 +4,10 @@
  */
 package org.fcitx.fcitx5.android.data.prefs
 
+import androidx.annotation.StringRes
+import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
+
 /**
  * Predefined sets ("profiles") of hardware keyboard key bindings.
  *
@@ -27,6 +31,17 @@ object HardwareKeyProfiles {
     fun ids(): List<String> = listOf(BLACKBERRY, TT2, TITAN2_ELITE)
 
     /**
+     * 预设显示名。下拉框的 entries 与「恢复推荐键位」的摘要都从这里取，
+     * 不各写一份 id → 名字的映射（同一个映射抄两份必然漂移）。
+     */
+    @StringRes
+    fun labelResFor(name: String): Int = when (name) {
+        TT2 -> R.string.hw_profile_tt2
+        TITAN2_ELITE -> R.string.hw_profile_titan2_elite
+        else -> R.string.hw_profile_blackberry
+    }
+
+    /**
      * Single source of truth for the 11 hardware-keyboard key-binding preferences, in canonical
      * order. The value lists ([blackberryValues] / [tt2Values]) are defined in the same order, so
      * every profile implementation (`get` / `applyProfile` / `candidateKeys`) is built by
@@ -47,6 +62,13 @@ object HardwareKeyProfiles {
         hw.altLatchKey,
     )
 
+    /**
+     * 黑莓（Q25）默认键位。
+     *
+     * ⚠️ 里面那两个 `"Alt_R"` 指的是 **SYM 键** —— 真机上它就上报右 Alt（`KEYCODE_ALT_RIGHT`），
+     * 见 [HardwareSpecialKeys] 的 `Sym` 条目。`"Sym"` 与它是**同义写法**，两种都能匹配到那个键；
+     * 页面显示上 `"Sym"` 更贴键帽，但这两个值是你实机校正过的，改不改由你 —— 行为完全一致。
+     */
     private val blackberryValues = listOf(
         "space", "0", "Alt_R", "Shift_L", "Shift_R",
         "grave", "Alt+grave", "Alt_R", "Alt+space", "Shift+space", "Alt_L",
@@ -92,19 +114,86 @@ object HardwareKeyProfiles {
         else -> blackberryValues
     }
 
+    /**
+     * 「快捷键」动作键的字母。取动作名首字母（Effect / Sound / Bar / Fly / Arrangement / Mode），
+     * 与巨硬候选键（空格 / 返回 / Fn / 左右 Shift）不冲突。
+     *
+     * `when` 显式穷举 [ShortcutAction]：以后加动作若忘了给字母会直接编译不过，
+     * 不会静默漏一个（「加了枚举项却没有绑定」正是本项目最怕的那类静默失效）。
+     */
+    private fun leaderFor(action: ShortcutAction): String = when (action) {
+        ShortcutAction.ToggleEffects -> "e"
+        ShortcutAction.ToggleSound -> "s"
+        ShortcutAction.ToggleStatusBar -> "b"
+        ShortcutAction.ToggleFlyText -> "f"
+        ShortcutAction.ToggleArrangement -> "a"
+        ShortcutAction.CycleSoundMode -> "m"
+    }
+
+    /**
+     * 该预设是否提供「动作快捷键」（[ShortcutAction]）这一套配置。
+     *
+     * **BlackBerry（Q25）不提供**，并且这是**唯一的事实来源** —— 设置页入口的可见性
+     * （`MainFragment`）与运行期匹配（`HardwareShortcutResolver`）都读它，两处不许各写一份
+     * `!= "blackberry"` 判断（判断抄两份必然漂移，本项目已多次栽在这上面）。
+     *
+     * 为什么干脆整块不给：和弦必须挂在一个**空闲的修饰键**上，而 Q25 一个都没有 ——
+     *  - **左** Alt + 字母是系统原生的「键帽符号」输入（双击左 Alt 的 Alt Latch 也是为它服务的），占不得；
+     *  - **右** Alt 就是 SYM 键本身（`symbolPickerKey`），轻按开符号窗口，也占不得；
+     *  - 真修饰键的 meta **分不出左右 Alt**（`isAltPressed` = `META_ALT_ON`），所以写 `Alt+字母` 会把
+     *    上一条一起吞掉 —— 这正是「Alt+字母 打不出键帽符号」那个 bug 的根源。
+     *
+     * 与其留一套按不出反应、还暗地里抢原生键位的手势，不如整块不提供。Titan 系有 Fn 这个真正的空闲
+     * 修饰键（伪键，不占 meta 位），所以那边照常提供。
+     */
+    fun actionShortcutsAvailable(name: String): Boolean = name != BLACKBERRY
+
+    /**
+     * 该预设下的推荐动作键（[ShortcutAction] → 绑定串）。
+     *
+     * 只有 Titan2 / Titan2 Elite 有值，一律 `Fn+字母`。Fn 没有 fcitx5 修饰位、也不进 metaState，属于
+     * 伪修饰键，靠 [HardwareChord] 自己跟踪按住状态 —— 见那边的说明。Elite 上 Fn 原本是符号窗口键，
+     * 现在按 tap-hold 处理：轻按仍开符号窗口，按住才是修饰键。
+     *
+     * **不支持该套配置的预设返回「全空串」而不是空 Map** —— 这样 [applyShortcutPreset] 走同一条
+     * `forEach` 路径就会把动作键写成空（解绑），既不用第二套清空逻辑，也不会在偏好里留下一批
+     * 「看不见、却还在抢键」的历史值。判据见 [actionShortcutsAvailable]。
+     *
+     * 默认值全是「按住 Fn + 字母」这种组合，避开所有裸键：裸键（字母）本来就要打字。
+     */
+    fun shortcutValuesFor(name: String): Map<ShortcutAction, String> {
+        if (!actionShortcutsAvailable(name)) return ShortcutAction.entries.associateWith { "" }
+        return ShortcutAction.entries.associateWith {
+            HardwareChord.compose(HardwareChord.FN, leaderFor(it))
+        }
+    }
+
+    /** 把该预设的推荐动作键写进 `AppPrefs.Shortcuts`。 */
+    fun applyShortcutPreset(name: String, prefs: AppPrefs) {
+        val shortcuts = prefs.shortcuts
+        shortcutValuesFor(name).forEach { (action, value) -> shortcuts.key(action).setValue(value) }
+    }
+
     /** Resolve the key-binding map for the given profile id (defaults to [BLACKBERRY]). */
     fun get(name: String, hw: AppPrefs.HardwareKeyboard): Map<String, String> =
         keyBindings(hw).zip(valuesFor(name)).associate { (pref, value) -> pref.key to value }
 
     /**
-     * Overwrite every individual key-binding preference with the values of the given profile.
+     * Overwrite every individual key-binding preference with the values of the given profile,
+     * **and seed the matching shortcut set**.
+     *
      * Centralised here so the settings screen and the first-run initialiser share one code path
      * — the profile list is the single source of truth, eliminating the class of bug where a
      * key's factory default drifted out of sync with the preset (which left the next-page key
      * dead on a fresh install until a preset was re-selected).
+     *
+     * 快捷键一起播是刻意的：修饰键随机器不同（Fn / Alt），只播物理键位会留下「有键位、
+     * 没动作键」的半套配置。用户自定的动作键会被这次切换覆盖 —— 与物理键位同一个取舍。
      */
-    fun applyProfile(name: String, hw: AppPrefs.HardwareKeyboard) {
+    fun applyProfile(name: String, prefs: AppPrefs) {
+        val hw = prefs.hardwareKeyboard
         keyBindings(hw).zip(valuesFor(name)).forEach { (pref, value) -> pref.setValue(value) }
+        applyShortcutPreset(name, prefs)
     }
 
     /**
