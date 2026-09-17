@@ -3,7 +3,7 @@
     <string name="app_name_release">TapFeet IME</string>
     <string name="app_name_debug">TapFeet IME (Debug)</string>
     <string name="app_display_name">App display name</string>
-    <string name="app_display_name_summary">Change the name shown under the home-screen icon (preset choices).</string>
+    <string name="app_display_name_summary">Change the name shown under the home-screen icon.</string>
     <string name="app_display_name_unlocked_toast">Unlocked: you can now rename the input method under Settings → App display name.</string>
     <string name="app_name_alias_tapfeet">TapFeet</string>
     <string name="app_name_alias_happy">快乐大脚输入法</string>
@@ -30,13 +30,13 @@
     <string name="char_none">Character: -</string>
     <string name="key_event_log">Key Event Log</string>
     <string name="key_probe_ime_log">IME-side Key Log</string>
-    <string name="key_probe_ime_hint">Tip: tap the field below so the IME becomes active — keys then reach the input method first (the log above only sees keys the app window gets). System keys (home / recents) are consumed by the system before any window, so they can never reach an IME and will not appear here.</string>
+    <string name="key_probe_ime_hint">Tap the field below to activate the IME - keys then reach the input method first (the log above only sees keys the app window gets). System keys never reach an IME.</string>
     <string name="key_probe_ime_edit_hint">Tap to activate the IME</string>
     <string name="key_probe_clear">Clear</string>
     <string name="key_probe_waiting">Waiting for a key…</string>
     <string name="touch_probe_title">Keyboard Touch Surface</string>
     <string name="touch_probe_waiting">Waiting for touch…</string>
-    <string name="touch_probe_hint">Touch the keyboard surface — or switch it to pointer mode and move it. A finger and a pointer travel through different event paths, so the counter below tells you which paths actually reached us.\nNote: while the IME is active (cursor in a box), the keyboard surface reports through the IME window\'s own generic-motion channel (ime:motion — the same one fly-text uses), so those samples appear here whenever this page is in the foreground.</string>
+    <string name="touch_probe_hint">Touch the keyboard surface (or switch it to pointer mode and move it); the counter below shows which path each sample took.\nWhile the IME is active, surface samples are tagged ime:motion.</string>
     <string name="touch_probe_counts">Samples: %1$s</string>
     <string name="touch_trail_waiting">Touch the surface…</string>
     <string name="touch_trail_ime_band">IME touchable area</string>
@@ -69,21 +69,21 @@
     <string name="hw_sym_first_custom">Custom keyboard</string>
     <string name="hw_sym_first_symbol">Symbol keyboard</string>
     <string name="hw_alt_latch">Alt lock</string>
-    <string name="hw_alt_latch_summary">Double-tap the latch key to latch (lock) Alt.</string>
+    <string name="hw_alt_latch_summary">Double-tap the lock key to latch Alt.</string>
     <string name="hw_alt_latch_key">Alt lock key (double-tap)</string>
     <string name="hw_alt_delete_line">Alt + Del deletes line</string>
-    <string name="hw_alt_delete_line_summary">When on, Alt+Delete / Alt+Backspace deletes the whole line (terminal kill-line). When off, they delete a single character.</string>
+    <string name="hw_alt_delete_line_summary">Alt + Delete / Backspace deletes the whole line (terminal kill-line).</string>
     <string name="hw_long_press_symbol">Long-press key for symbol</string>
-    <string name="hw_long_press_symbol_summary">Hold a letter/number key ~0.4s to input its keycap symbol; a quick tap types the character as usual.</string>
+    <string name="hw_long_press_symbol_summary">Hold a letter or number key to input its keycap symbol.</string>
     <string name="hw_long_press_symbol_threshold">Long-press symbol duration</string>
-    <string name="hw_long_press_symbol_threshold_summary">How long (300–1000 ms) a key must be held before it inputs its keycap symbol instead of the character.</string>
+    <string name="hw_long_press_symbol_threshold_summary">Hold time before the keycap symbol is input.</string>
     <string name="hw_keyboard_flytext">Keyboard fly-text</string>
-    <string name="hw_keyboard_flytext_summary">In physical-keyboard mode, swipe up the keyboard surface to pick the candidate under your finger (by its on-screen column); swipe left/right to page candidates. Only the keyboard surface is read — taps on the screen itself are never affected.</string>
+    <string name="hw_keyboard_flytext_summary">Swipe up the keyboard surface to pick the candidate in your finger\'s column; left/right to page.</string>
     <string name="hw_flytext_swap_page">Swap page swipe direction</string>
-    <string name="hw_flytext_swap_page_summary">Swap the left/right paging direction. Default: swipe left = next page, swipe right = previous page.</string>
-    <string name="hw_flytext_unsupported_summary">This device has no keyboard touch surface (Titan 2 Elite only).</string>
+    <string name="hw_flytext_swap_page_summary">Swipe left = previous, right = next (default is reversed).</string>
+    <string name="hw_flytext_unsupported_summary">This device has no keyboard touch surface.</string>
     <string name="hw_key_sound">Physical key sound</string>
-    <string name="hw_key_sound_summary">Play the keyboard click sound when a physical key is pressed, plus a sound for the keyboard-surface gestures: swipe up to pick a candidate, swipe left or right to page. Picking with a number key or by tapping the bar stays silent. This switch alone decides — the sound scheme below still applies.</string>
+    <string name="hw_key_sound_summary">Sounds on physical key presses and keyboard-surface swipes (up = pick, left/right = page); picking by number key or bar tap stays silent.</string>
     <string name="hw_key_sound_volume">Physical key sound volume</string>
     <string name="hw_toggle_ime">Toggle IME</string>
     <string name="hw_show_picker">Show input method picker</string>
@@ -100,10 +100,10 @@
     <string name="hw_candidate_display_mode_macrohard">Macrohard</string>
     <string name="hw_candidate_display_mode_linear">Linear</string>
     <string name="hw_enable_candidate_quick_pick">Bottom-row quick-pick</string>
-    <string name="hw_enable_candidate_quick_pick_summary">Physical keys pick candidates (1st–5th): %1$s</string>
+    <string name="hw_enable_candidate_quick_pick_summary">Physical keys pick candidates: %1$s</string>
     <!-- Shortcut module: bind a physical key to an action (see ShortcutAction) -->
     <string name="shortcut_keys">Shortcut keys</string>
-    <string name="shortcut_intro">Bind a physical key to a common action. Tap a row to capture a key — the Fn / Sym buttons in the dialog compose a chord like \"Fn+e\", and pressing a key on the physical keyboard works too. Use \"Reset to default\" to unbind. Candidate picking, paging, the symbol window and switching IMEs live under \"Physical keyboard\". These keys only fire on a physical key press.</string>
+    <string name="shortcut_intro">Bind a physical key to a common action. Tap a row to capture a key: Fn / Sym compose chords like \"Fn+e\", or just press the key. Picking, paging, the symbol window and IME switching live under \"Physical keyboard\".</string>
     <string name="shortcut_toggle_effects">Toggle input effects</string>
     <string name="shortcut_toggle_sound">Toggle key sound</string>
     <string name="shortcut_toggle_statusbar">Toggle status bar</string>
@@ -113,7 +113,7 @@
     <string name="shortcut_reset_all">Unbind all</string>
     <string name="shortcut_reset_all_summary">Clear every shortcut binding on this page</string>
     <string name="shortcut_apply_preset">Restore recommended keys</string>
-    <string name="shortcut_apply_preset_summary">Write the recommended bindings for \"%1$s\" (Fn/Sym + letter)</string>
+    <string name="shortcut_apply_preset_summary">Write the recommended bindings for \"%1$s\"</string>
     <string name="shortcut_conflict_warning">\"%1$s\" is already bound to \"%2$s\". Saving anyway means the action here wins on key press, and that binding stops working. Save anyway?</string>
     <string name="shortcut_toast_effects_on">Input effects on</string>
     <string name="shortcut_toast_effects_off">Input effects off</string>
@@ -196,7 +196,7 @@
     <string name="custom_keyboard_enabled">Enable custom keyboard</string>
     <string name="custom_keyboard_enabled_summary">When off, the custom keyboard is hidden everywhere (status bar button, symbol keyboard entry, Sym key cycle).</string>
     <string name="custom_keyboard_key_title">Key %1$d</string>
-    <string name="custom_keyboard_edit_hint">Enter characters, one per line.\nThe first line is typed on tap; the rest appear on long press.</string>
+    <string name="custom_keyboard_edit_hint">One character per line.\nFirst line: tap. Others: long press.</string>
     <string name="custom_keyboard_empty">(empty)</string>
     <string name="clipboard_suggestion_timeout">Clipboard suggestion timeout</string>
     <string name="version">Version</string>
@@ -261,7 +261,7 @@
     <string name="punctuation_pos_none">None</string>
     <string name="expand_toolbar_by_default">Expand toolbar by default</string>
     <string name="hide_status_bar">Hide status bar</string>
-    <string name="hide_status_bar_summary">Collapse the IME\'s top strip while idle and give the space back to the app; the keyboard itself does not move. The horizontal candidate bar still shows while typing.</string>
+    <string name="hide_status_bar_summary">Collapse the top bar while idle; the candidate bar still shows while typing.</string>
     <string name="popup_on_key_press">Popup on key press</string>
     <string name="disable_animation">Disable animation</string>
     <string name="import_from_file">Import from file…</string>
@@ -423,7 +423,7 @@
     <string name="candidates_window_radius">Candidates window radius</string>
     <string name="candidates_window_shadow">Candidate window shadow</string>
     <string name="candidates_show_preedit">Show preedit in candidate window</string>
-    <string name="candidates_show_preedit_summary">Display the composing letters here. When off, they appear directly in the target text box.</string>
+    <string name="candidates_show_preedit_summary">Show the composing letters here; when off they go straight to the text box.</string>
     <string name="follow_input_device">Depends on input device</string>
     <string name="candidates_orientation">Candidates list orientation</string>
     <string name="automatic">Automatic</string>
@@ -507,7 +507,7 @@
     <string name="import_custom_phrase_format">One phrase per line. Format: `nh,1=你好` (nh = pinyin, 1 = order, optional) or just Chinese text (pinyin auto-filled). Lines starting with # are comments.</string>
     <string name="import_custom_phrase_empty">Please paste at least one line</string>
     <string name="import_custom_phrase_preview">Import preview</string>
-    <string name="import_custom_phrase_summary">Added: %1$d   Duplicates skipped: %2$d   Failed: %3$d</string>
+    <string name="import_custom_phrase_summary">Added %1$d   Skipped %2$d   Failed %3$d</string>
     <string name="import_custom_phrase_preview_head">Preview (first 30):</string>
     <string name="import_custom_phrase_errors_head">Failed lines (first 20):</string>
     <string name="import_custom_phrase_no_valid">No valid entries found. Check the format.</string>
@@ -523,6 +523,7 @@
     <string name="cat_candidates_spacing">Spacing &amp; Size</string>
     <string name="cat_candidate_bar_arrangement">Arrangement</string>
     <string name="cat_candidate_bar_style">Style</string>
+    <string name="cat_candidate_bar_top_row">Top row</string>
     <string name="cat_clipboard_listening">Listening &amp; History</string>
     <string name="cat_clipboard_suggestion">Suggestion &amp; Timeout</string>
     <string name="cat_hw_profile">Profile</string>

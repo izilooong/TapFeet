@@ -160,15 +160,6 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             switch(R.string.reset_keyboard_on_focus_change, "reset_keyboard_on_focus_change", true)
         val expandToolbarByDefault =
             switch(R.string.expand_toolbar_by_default, "expand_toolbar_by_default", false)
-        // 「隐藏状态栏」：空闲时把顶部那条 40dp 横条整行收起，只收这一行——键盘自身高度与底边
-        // 位置不动，省下的空间归应用正文区；出候选时该行照常弹回显示水平候选栏。实现见
-        // KawaiiBarComponent.refreshBarVisibility()。
-        val hideStatusBar = switch(
-            R.string.hide_status_bar,
-            "hide_status_bar",
-            false,
-            R.string.hide_status_bar_summary
-        )
         val inlineSuggestions = switch(R.string.inline_suggestions, "inline_suggestions", true)
         val toolbarNumRowOnPassword =
             switch(R.string.toolbar_num_row_on_password, "toolbar_num_row_on_password", true)
@@ -429,7 +420,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             "sp"
         )
 
-
+        // 「隐藏状态栏」：空闲时把顶部那条 40dp 横条整行收起。放在候选栏页——候选栏就是这个
+        // 横条（打字态），两者是同一行的高度两种用法；收起只收这一行，键盘自身高度与底边位置
+        // 不动，出候选时该行照常弹回显示候选栏。实现见 KawaiiBarComponent.refreshBarVisibility()。
+        init { category(R.string.cat_candidate_bar_top_row) }
+        val hideStatusBar = switch(
+            R.string.hide_status_bar,
+            "hide_status_bar",
+            false,
+            R.string.hide_status_bar_summary
+        )
     }
 
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {

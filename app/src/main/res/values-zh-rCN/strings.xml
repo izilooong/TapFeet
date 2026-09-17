@@ -3,7 +3,7 @@
     <string name="app_name_release">大脚输入法</string>
     <string name="app_name_debug">大脚输入法 (调试)</string>
     <string name="app_display_name">App 显示名称</string>
-    <string name="app_display_name_summary">更改桌面启动器图标下方显示的名称（预设候选）。</string>
+    <string name="app_display_name_summary">更改桌面图标下方的名称。</string>
     <string name="app_display_name_unlocked_toast">已解锁：可在「设置 → App 显示名称」中修改输入法名称。</string>
     <string name="app_name_alias_tapfeet">TapFeet</string>
     <string name="app_name_alias_happy">快乐大脚输入法</string>
@@ -30,13 +30,13 @@
     <string name="char_none">字符: -</string>
     <string name="key_event_log">按键事件日志</string>
     <string name="key_probe_ime_log">输入法侧按键日志</string>
-    <string name="key_probe_ime_hint">提示：点下面的输入框激活输入法后，按键会先经过输入法（上面那份日志只看得到落到应用窗口的键）。系统键（home / 后台任务）在系统层就被消费，永远到不了输入法，这里也不会出现。</string>
+    <string name="key_probe_ime_hint">点下方输入框激活输入法，按键才会先经过输入法（上面的日志只看得见应用窗口收到的键）。系统键到不了输入法。</string>
     <string name="key_probe_ime_edit_hint">点此激活输入法</string>
     <string name="key_probe_clear">清空</string>
     <string name="key_probe_waiting">等待按键…</string>
     <string name="touch_probe_title">键盘触摸面坐标</string>
     <string name="touch_probe_waiting">等待触摸…</string>
-    <string name="touch_probe_hint">手指摸键盘触摸面，或切到鼠标指针模式再动一下。手指触摸和指针移动走的是不同的事件通道，下面那行计数会告诉我们究竟哪条通道收到了。\n注意：输入法激活（光标在输入框内）时，键盘面采样走输入法窗口自己那条通用运动通道（ime:motion，飞字用的同一条），只要本页在前台就会记下来。</string>
+    <string name="touch_probe_hint">触摸键盘面（或切到指针模式再移动），下方计数显示样本走的是哪条通道。\n输入法激活时键盘面样本记为 ime:motion。</string>
     <string name="touch_probe_counts">样本数: %1$s</string>
     <string name="touch_trail_waiting">触摸键盘面…</string>
     <string name="touch_trail_ime_band">输入法可触区</string>
@@ -69,21 +69,21 @@
     <string name="hw_sym_first_custom">自定义键盘</string>
     <string name="hw_sym_first_symbol">符号键盘</string>
     <string name="hw_alt_latch">Alt 锁定</string>
-    <string name="hw_alt_latch_summary">双击 Alt 锁定键可保持 Alt 修饰符为按下状态。</string>
+    <string name="hw_alt_latch_summary">双击锁定键可保持 Alt 按下状态。</string>
     <string name="hw_alt_latch_key">Alt 锁定键（双击）</string>
     <string name="hw_alt_delete_line">Alt + Del 删除整行</string>
-    <string name="hw_alt_delete_line_summary">开启后，Alt+Del / Alt+退格 删除整行（终端式 kill-line）；关闭时只删除单个字符。</string>
+    <string name="hw_alt_delete_line_summary">Alt + Del / 退格 删除整行（终端 kill-line）。</string>
     <string name="hw_long_press_symbol">长按按键输入符号</string>
-    <string name="hw_long_press_symbol_summary">长按按键快速输入键帽上的符号。</string>
+    <string name="hw_long_press_symbol_summary">长按字母或数字键，输入键帽上的符号。</string>
     <string name="hw_long_press_symbol_threshold">长按输入符号时长</string>
-    <string name="hw_long_press_symbol_threshold_summary">长按多久（300–1000 毫秒）后，按键输入键帽上的符号而非字符。</string>
+    <string name="hw_long_press_symbol_threshold_summary">输入符号所需的按住时长。</string>
     <string name="hw_keyboard_flytext">键盘飞字</string>
-    <string name="hw_keyboard_flytext_summary">在物理键盘模式下，于键盘触摸面向上滑动，选取手指所在列（按候选词在屏幕上的位置）对应的候选词；左右滑动翻页。只读取键盘触摸面本身，屏幕上的点击完全不受影响。</string>
+    <string name="hw_keyboard_flytext_summary">键盘面上滑选字，左右滑翻页。</string>
     <string name="hw_flytext_swap_page">翻页方向互换</string>
-    <string name="hw_flytext_swap_page_summary">交换左右滑动翻页的方向。默认：左滑=下一页，右滑=上一页。</string>
-    <string name="hw_flytext_unsupported_summary">此设备没有键盘触摸面，仅 Titan 2 Elite 支持。</string>
+    <string name="hw_flytext_swap_page_summary">左滑上一页、右滑下一页（默认相反）。</string>
+    <string name="hw_flytext_unsupported_summary">此设备没有键盘触摸面。</string>
     <string name="hw_key_sound">物理按键音</string>
-    <string name="hw_key_sound_summary">按下物理按键时播放键盘按键音；在键盘面上滑选字、左右滑动翻页时也会各响一声。用数字键或点候选条选字则不再额外发声。本开关独立生效，不受虚拟键盘的按键音设置影响；下方的音效方案照常适用。</string>
+    <string name="hw_key_sound_summary">物理按键、键盘面手势发声。</string>
     <string name="hw_key_sound_volume">物理按键音音量</string>
     <string name="hw_toggle_ime">切换输入法</string>
     <string name="hw_show_picker">显示输入法选择器</string>
@@ -96,10 +96,10 @@
     <string name="hw_special_back">返回</string>
     <string name="hw_special_fn">Fn</string>
     <string name="hw_enable_candidate_quick_pick">巨硬模式</string>
-    <string name="hw_enable_candidate_quick_pick_summary">由物理按键直接选词（第 1~5 候选）：%1$s</string>
+    <string name="hw_enable_candidate_quick_pick_summary">物理键选词：%1$s</string>
     <!-- 「快捷键」模块：动作 → 物理键 的自定义绑定（动作表见 ShortcutAction） -->
     <string name="shortcut_keys">快捷键</string>
-    <string name="shortcut_intro">给常用操作绑一个物理键。点任意一行即可按键捕获：对话框里的 Fn / Sym 按钮用来拼「Fn+字母」这种组合键，直接在物理键盘上按也行。对话框里的「恢复默认」用来解绑。候选选字、翻页、符号窗口、切换输入法在「物理键绑定」里设置。这些键只在物理键盘按下时生效。</string>
+    <string name="shortcut_intro"></string>
     <string name="shortcut_toggle_effects">开关特效</string>
     <string name="shortcut_toggle_sound">开关音效</string>
     <string name="shortcut_toggle_statusbar">开关状态栏</string>
@@ -109,7 +109,7 @@
     <string name="shortcut_reset_all">全部解绑</string>
     <string name="shortcut_reset_all_summary">清空本页所有快捷键绑定</string>
     <string name="shortcut_apply_preset">恢复推荐键位</string>
-    <string name="shortcut_apply_preset_summary">按「%1$s」写入推荐键位（Fn/Sym + 字母）</string>
+    <string name="shortcut_apply_preset_summary">按「%1$s」写入推荐键位</string>
     <string name="shortcut_conflict_warning">「%1$s」已经绑给了「%2$s」。继续保存的话，按键时会优先触发这边的动作，原来那个键位将不再生效。仍要保存吗？</string>
     <string name="shortcut_toast_effects_on">输入特效已开启</string>
     <string name="shortcut_toast_effects_off">输入特效已关闭</string>
@@ -192,7 +192,7 @@
     <string name="custom_keyboard_enabled">启用自定义键盘</string>
     <string name="custom_keyboard_enabled_summary">关闭后自定义键盘在所有入口隐藏。</string>
     <string name="custom_keyboard_key_title">按键 %1$d</string>
-    <string name="custom_keyboard_edit_hint">每行一个字符，第一行为单击输入，其余为长按选项。</string>
+    <string name="custom_keyboard_edit_hint">每行一个字符。\n第一行单击，其余长按。</string>
     <string name="custom_keyboard_empty">（空）</string>
     <string name="clipboard_suggestion_timeout">剪贴板提示超时</string>
     <string name="version">版本</string>
@@ -257,7 +257,7 @@
     <string name="punctuation_pos_none">无</string>
     <string name="expand_toolbar_by_default">默认展开工具栏</string>
     <string name="hide_status_bar">隐藏状态栏</string>
-    <string name="hide_status_bar_summary">空闲时把输入法顶部那条状态栏（工具栏按钮排）整行收起，空间还给正文区；键盘本身不动。打字时水平候选栏照常显示。</string>
+    <string name="hide_status_bar_summary">空闲时收起顶栏；打字时照常显示候选栏。</string>
     <string name="popup_on_key_press">按键时弹出显示字符</string>
     <string name="disable_animation">禁用动画</string>
     <string name="import_from_file">导入文件…</string>
@@ -419,7 +419,7 @@
     <string name="candidates_window_radius">候选窗口圆角半径</string>
     <string name="candidates_window_shadow">候选窗口阴影</string>
     <string name="candidates_show_preedit">在候选框显示拼音</string>
-    <string name="candidates_show_preedit_summary">在候选框显示输入中的字母。关闭时字母直接显示在目标输入框中。</string>
+    <string name="candidates_show_preedit_summary">在候选框显示输入中的字母；关闭则直接显示在输入框内。</string>
     <string name="follow_input_device">根据输入设备而定</string>
     <string name="candidates_orientation">候选词列表方向</string>
     <string name="automatic">自动</string>
@@ -500,7 +500,7 @@
     <string name="import_custom_phrase_format">每行一条。格式：`nh,1=你好`（nh 是拼音、1 是顺序，顺序可省略）或直接写中文（自动补拼音）。`#` 开头为注释。</string>
     <string name="import_custom_phrase_empty">请至少粘贴一行</string>
     <string name="import_custom_phrase_preview">导入预览</string>
-    <string name="import_custom_phrase_summary">新增：%1$d　跳过重复：%2$d　失败：%3$d</string>
+    <string name="import_custom_phrase_summary">新增 %1$d　跳过 %2$d　失败 %3$d</string>
     <string name="import_custom_phrase_preview_head">预览（前 30 条）：</string>
     <string name="import_custom_phrase_errors_head">失败行（前 20 条）：</string>
     <string name="import_custom_phrase_no_valid">没有可导入的有效条目，请检查格式。</string>
@@ -516,6 +516,7 @@
     <string name="cat_candidates_spacing">间距与尺寸</string>
     <string name="cat_candidate_bar_arrangement">排列</string>
     <string name="cat_candidate_bar_style">样式</string>
+    <string name="cat_candidate_bar_top_row">顶栏</string>
     <string name="cat_clipboard_listening">监听与历史</string>
     <string name="cat_clipboard_suggestion">建议与超时</string>
     <string name="cat_hw_profile">配置文件</string>

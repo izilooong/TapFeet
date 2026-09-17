@@ -778,7 +778,7 @@ class InputView(
             }
 
             ShortcutAction.ToggleStatusBar -> {
-                val pref = prefs.keyboard.hideStatusBar
+                val pref = prefs.candidateBar.hideStatusBar
                 val next = !pref.getValue()
                 pref.setValue(next)
                 // 真正收起只发生在 KawaiiBar 处于 Idle + 装饰子态时（候选栏 / 扩展窗标题态不收起，

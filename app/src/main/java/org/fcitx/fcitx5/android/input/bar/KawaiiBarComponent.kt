@@ -121,7 +121,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val showVoiceInputButton by prefs.keyboard.showVoiceInputButton
     private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
     /** 「隐藏状态栏」：空闲时把整条 40dp 横条收起，只收这一行，键盘本体不动。 */
-    private val hideStatusBar by prefs.keyboard.hideStatusBar
+    private val hideStatusBar by prefs.candidateBar.hideStatusBar
 
     private var clipboardTimeoutJob: Job? = null
     private var expandButtonEnabledByState = false
@@ -631,7 +631,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         clipboardSuggestion.registerOnChangeListener(onClipboardSuggestionUpdateListener)
         clipboardItemTimeout.registerOnChangeListener(onClipboardTimeoutUpdateListener)
         prefs.customKeyboard.enabled.registerOnChangeListener(onCustomKeyboardEnabledListener)
-        prefs.keyboard.hideStatusBar.registerOnChangeListener(onHideStatusBarChangeListener)
+        prefs.candidateBar.hideStatusBar.registerOnChangeListener(onHideStatusBarChangeListener)
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {
