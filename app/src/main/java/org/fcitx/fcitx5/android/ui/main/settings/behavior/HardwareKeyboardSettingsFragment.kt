@@ -246,9 +246,9 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         soundScreen.addPreference(longPressSymbolThresholdPref)
 
-        // Play the on-screen keyboard's click sound for physical key presses too. Default ON;
-        // the sound mode (following-system / on / off) is shared with the virtual keyboard, but
-        // the volume below is physical-keyboard specific.
+        // Play the keyboard click sound for physical key presses. Default ON. This switch is the
+        // whole gate for physical keys (the on-screen keyboard's sound mode does not apply); the
+        // volume below is physical-keyboard specific.
         val keySoundSwitch = SwitchPreference(context).apply {
             key = hw.keySoundEnabled.key
             title = getString(R.string.hw_key_sound)
@@ -289,7 +289,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
         // Keypress sound flavour (timbre). Lives on the physical-keyboard sound tab, but the chosen
         // scheme is a single global selection also shared by the on-screen keyboard — both reach it
-        // through InputFeedbacks.soundEffect. entryValues are the enum constant names (how
+        // through InputFeedbacks. entryValues are the enum constant names (how
         // ManagedPreferenceEnum serialises), entries are the user-facing strings.
         val soundSchemePref = ListPreference(context).apply {
             key = hw.soundScheme.key

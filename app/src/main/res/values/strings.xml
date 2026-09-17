@@ -85,7 +85,7 @@
     <string name="hw_flytext_swap_page_summary">Swap the left/right paging direction. Default: swipe left = next page, swipe right = previous page.</string>
     <string name="hw_flytext_unsupported_summary">This device has no keyboard touch surface (Titan 2 Elite only).</string>
     <string name="hw_key_sound">Physical key sound</string>
-    <string name="hw_key_sound_summary">Play the keyboard click sound when a physical key is pressed. The sound mode (following system / on / off) follows the on-screen keyboard settings.</string>
+    <string name="hw_key_sound_summary">Play the keyboard click sound when a physical key is pressed, plus a sound for the keyboard-surface gestures: swipe up to pick a candidate, swipe left or right to page. Picking with a number key or by tapping the bar stays silent. This switch alone decides — the sound scheme below still applies.</string>
     <string name="hw_key_sound_volume">Physical key sound volume</string>
     <string name="hw_toggle_ime">Toggle IME</string>
     <string name="hw_show_picker">Show input method picker</string>
@@ -237,6 +237,8 @@
     <string name="punctuation_pos_top_right">Top Right</string>
     <string name="punctuation_pos_none">None</string>
     <string name="expand_toolbar_by_default">Expand toolbar by default</string>
+    <string name="hide_status_bar">Hide status bar</string>
+    <string name="hide_status_bar_summary">Collapse the IME\'s top strip while idle and give the space back to the app; the keyboard itself does not move. The horizontal candidate bar still shows while typing.</string>
     <string name="popup_on_key_press">Popup on key press</string>
     <string name="disable_animation">Disable animation</string>
     <string name="import_from_file">Import from file…</string>

@@ -58,6 +58,16 @@ class IdleUi(
     var currentState = State.Empty
         private set
 
+    /**
+     * 纯装饰态（空行 / 工具栏按钮排）——不含任何实质内容，可被「隐藏状态栏」整行收起。
+     * 剪贴板建议、密码数字行、内联建议都是真的内容，必须照常显示，否则对应功能会静默失效。
+     */
+    val isDecorativeState: Boolean
+        get() = currentState == State.Empty || currentState == State.Toolbar
+
+    /** 子态切换回调：让 KawaiiBarComponent 在空闲子态变化后重算顶栏可见性。 */
+    var onStateChanged: (() -> Unit)? = null
+
     private val disableAnimation by AppPrefs.getInstance().advanced.disableAnimation
 
     private var inPrivate = false
@@ -291,5 +301,6 @@ class IdleUi(
         currentState = state
         updateMenuButtonContentDescription()
         updateMenuButtonRotation(instant = !fromUser)
+        onStateChanged?.invoke()
     }
 }

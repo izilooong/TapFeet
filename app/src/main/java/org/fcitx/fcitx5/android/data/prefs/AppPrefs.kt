@@ -159,6 +159,15 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             switch(R.string.reset_keyboard_on_focus_change, "reset_keyboard_on_focus_change", true)
         val expandToolbarByDefault =
             switch(R.string.expand_toolbar_by_default, "expand_toolbar_by_default", false)
+        // 「隐藏状态栏」：空闲时把顶部那条 40dp 横条整行收起，只收这一行——键盘自身高度与底边
+        // 位置不动，省下的空间归应用正文区；出候选时该行照常弹回显示水平候选栏。实现见
+        // KawaiiBarComponent.refreshBarVisibility()。
+        val hideStatusBar = switch(
+            R.string.hide_status_bar,
+            "hide_status_bar",
+            false,
+            R.string.hide_status_bar_summary
+        )
         val inlineSuggestions = switch(R.string.inline_suggestions, "inline_suggestions", true)
         val toolbarNumRowOnPassword =
             switch(R.string.toolbar_num_row_on_password, "toolbar_num_row_on_password", true)
@@ -525,10 +534,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         )
 
         // Play the keyboard click sound when a physical key is pressed, mirroring the on-screen
-        // keyboard. This is only the "physical keys too" gate: the sound mode
-        // (following-system / enabled / disabled) is still shared with the virtual keyboard via
-        // [Keyboard.soundOnKeyPress]. The volume, however, is physical-keyboard specific — see
-        // [keySoundVolume].
+        // keyboard. This switch is the ONLY gate for physical keys — the on-screen keyboard's sound
+        // mode ([Keyboard.soundOnKeyPress]) and the system touch-sounds setting deliberately do not
+        // apply (see [InputFeedbacks.soundEffectForHardwareKeyboard]). The volume is separate too —
+        // see [keySoundVolume]. Only the sound scheme (timbre) is shared.
+        //
+        // It also gates the keyboard-SURFACE gesture sounds (up-swipe pick, left/right paging
+        // swipes), which share this pipeline but not the key press itself; key-based candidate
+        // selection stays silent. See [FcitxInputMethodService.playHardwareSound].
         val keySoundEnabled = switch(
             R.string.hw_key_sound,
             "hw_key_sound_enabled",
@@ -552,8 +565,8 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
         // Sound flavour (timbre) of the keypress click. The option lives under the physical-keyboard
         // group, but the chosen scheme is a single global selection shared by the on-screen keyboard
-        // too — both go through InputFeedbacks.soundEffect, which reads this preference. The
-        // keySoundEnabled/keySoundVolume above gate and scale the physical keys on top of it.
+        // too — both read it inside InputFeedbacks. The keySoundEnabled/keySoundVolume above gate
+        // and scale the physical keys on top of it; [SoundScheme.Silent] is the explicit "off".
         val soundScheme = enumList(
             R.string.sound_scheme,
             "sound_scheme",

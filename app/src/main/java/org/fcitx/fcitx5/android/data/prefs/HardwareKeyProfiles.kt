@@ -78,9 +78,9 @@ object HardwareKeyProfiles {
         "NavFn",        // candidate3Key     fn
         "Shift_L",      // candidate4Key     左Shift
         "Shift_R",      // candidate5Key     右Shift
-        "Right",        // pageNextKey       方向键右（待实测 DPAD 能否到达输入法）
-        "Left",         // pagePrevKey       方向键左（同上）
-        "Sym",          // symbolPickerKey   SYM 键
+        "Sym",        // pageNextKey       
+        "Alt+Sym",         // pagePrevKey       
+        "NavFn",          // symbolPickerKey   SYM 键
         "Alt+space",    // toggleImeKey
         "Shift+space",  // pickerKey
         "Alt_L",        // altLatchKey       本机只有左 Alt

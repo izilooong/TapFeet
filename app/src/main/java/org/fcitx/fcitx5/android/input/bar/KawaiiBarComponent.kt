@@ -84,6 +84,7 @@ import splitties.views.backgroundColor
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
+import timber.log.Timber
 import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 import kotlin.math.PI
@@ -119,6 +120,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val toolbarNumRowOnPassword by prefs.keyboard.toolbarNumRowOnPassword
     private val showVoiceInputButton by prefs.keyboard.showVoiceInputButton
     private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
+    /** 「隐藏状态栏」：空闲时把整条 40dp 横条收起，只收这一行，键盘本体不动。 */
+    private val hideStatusBar by prefs.keyboard.hideStatusBar
 
     private var clipboardTimeoutJob: Job? = null
     private var expandButtonEnabledByState = false
@@ -190,6 +193,11 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             idleUi.customKeyboardButton.visibility =
                 if (enabled) View.VISIBLE else View.GONE
         }
+
+    /** 「隐藏状态栏」开关：切换后立即重算顶栏可见性，无需重启输入法。 */
+    @Keep
+    private val onHideStatusBarChangeListener =
+        ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshBarVisibility() }
 
     private fun launchClipboardTimeoutJob() {
         clipboardTimeoutJob?.cancel()
@@ -438,6 +446,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                     evalIdleUiState(fromUser = true)
                 }
             }
+            // 空闲子态变化（含点菜单键手动切工具栏、剪贴板建议出现/超时）后重算顶栏可见性
+            onStateChanged = { refreshBarVisibility() }
         }
     }
 
@@ -556,6 +566,33 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         barStateMachine.push(CandidatesUpdated, CandidateEmpty to true)
     }
 
+    /**
+     * 「隐藏状态栏」是否应该收起当前这条横条。
+     *
+     * 收起只影响这一行的高度——`InputView` 里 `windowManager.view` 是用 `below(kawaiiBar.view)`
+     * 约束的，横条 GONE 后键盘区自动拉满，而键盘自身高度（屏高 × keyboardHeightPercent）与底边
+     * 位置完全不动。以下三类必须保持显示，别顺手一起收掉：
+     *  - `Candidate`：水平候选栏，这是本开关的核心保证；
+     *  - `Title`：扩展窗口（剪贴板 / 文本编辑 / 状态图标区）的标题栏带返回键，收起会把用户困在窗口里；
+     *  - `Idle` 里承载实质内容的子态（剪贴板建议 / 密码数字行 / 内联建议）收起等于功能静默失效。
+     */
+    private fun shouldHideStatusBar(): Boolean =
+        hideStatusBar &&
+                barStateMachine.currentState == KawaiiBarStateMachine.State.Idle &&
+                idleUi.isDecorativeState
+
+    private fun refreshBarVisibility() {
+        val target = if (shouldHideStatusBar()) View.GONE else View.VISIBLE
+        if (view.visibility == target) return
+        Timber.d(
+            "Status bar -> ${if (target == View.GONE) "GONE" else "VISIBLE"} " +
+                    "(bar=${barStateMachine.currentState}, idle=${idleUi.currentState})"
+        )
+        view.visibility = target
+        // 本行高度变化会改变 keyboardView（进而 IME 窗口）高度，让框架重算可见区与触摸区
+        service.requestInsetsUpdate()
+    }
+
     private fun switchUiByState(state: KawaiiBarStateMachine.State) {
         val index = state.ordinal
         if (view.displayedChild == index) return
@@ -566,6 +603,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             titleUi.removeExtension()
         }
         view.displayedChild = index
+        refreshBarVisibility()
     }
 
     override val view by lazy {
@@ -576,6 +614,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             add(idleUi.root, lParams(matchParent, matchParent))
             add(candidateUi.root, lParams(matchParent, matchParent))
             add(titleUi.root, lParams(matchParent, matchParent))
+            // 初始可见性：此处不能走 refreshBarVisibility()，那会重入本 `view` 的懒加载
+            visibility = if (shouldHideStatusBar()) View.GONE else View.VISIBLE
         }
     }
 
@@ -591,6 +631,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         clipboardSuggestion.registerOnChangeListener(onClipboardSuggestionUpdateListener)
         clipboardItemTimeout.registerOnChangeListener(onClipboardTimeoutUpdateListener)
         prefs.customKeyboard.enabled.registerOnChangeListener(onCustomKeyboardEnabledListener)
+        prefs.keyboard.hideStatusBar.registerOnChangeListener(onHideStatusBarChangeListener)
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {

@@ -10,7 +10,9 @@ import android.graphics.Rect
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import androidx.annotation.Keep
+import androidx.core.view.doOnNextLayout
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
@@ -47,6 +49,7 @@ import org.fcitx.fcitx5.android.input.dependency.theme
 import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.manager.must
 import splitties.dimensions.dp
+import timber.log.Timber
 
 class HorizontalCandidateComponent :
         UniqueViewComponent<HorizontalCandidateComponent, RecyclerView>(), InputBroadcastReceiver {
@@ -70,6 +73,14 @@ class HorizontalCandidateComponent :
         pendingFlyY = loc[1].toFloat() + sourceView.height / 2f
         // Aim the commit-particle burst at the picked candidate, not the whole bar.
         service.effectsOverlay?.setBurstAtScreen(pendingFlyX, pendingFlyY)
+        // A source view that is not laid out yet reports (0,0) and the word would sail in from the
+        // screen corner instead of the candidate — indistinguishable from "no effect" when it ends
+        // up off-screen. Log enough to tell a coordinate problem from a gate problem.
+        Timber.d(
+            "effects: fly armed text=%s at=(%.0f,%.0f) src=%dx%d attached=%b",
+            text, pendingFlyX, pendingFlyY,
+            sourceView.width, sourceView.height, sourceView.isAttachedToWindow
+        )
     }
 
     fun prepareFlyAnimationForLocalNumber(number: Int) {
@@ -119,6 +130,14 @@ class HorizontalCandidateComponent :
     private var localPageStart = 0
     private var localPageSize = Int.MAX_VALUE
     /**
+     * Direction of the page turn the user just asked for (+1 next, -1 previous, 0 none). Set by
+     * [page] and consumed by the next render that actually moves the page, so a turn which has to
+     * prefetch a backend slice first still animates when that slice lands.
+     */
+    private var pendingPageTurn = 0
+    /** [localPageStart] of the last rendered page; a render is only a turn if it moved this. */
+    private var lastRenderedPageStart = -1
+    /**
      * When the user advances into a tail page that would be too small (e.g. only 1 candidate
      * left locally) while the backend still has more data, we fetch the next slice first and
      * continue from this position once it lands. If the backend genuinely has no more,
@@ -167,11 +186,19 @@ class HorizontalCandidateComponent :
     }
 
     fun page(delta: Int) {
+        // Record the intent here: [renderCurrentPage] animates a turn only when this is set AND the
+        // page really moved. A turn that must fetch a slice first renders later (onSliceFetched) —
+        // this flag is what keeps its animation alive across that wait.
+        pendingPageTurn = if (delta > 0) 1 else if (delta < 0) -1 else 0
         if (delta < 0) {
             if (hasLocalPrev()) {
                 localPageStart = max(0, localPageStart - effectiveLocalPageSize())
                 localPageSize = preferredLocalPageSize(localPageStart)
                 renderCurrentPage()
+            } else {
+                // Already at the first page: nothing will render, so drop the intent here. Leaving
+                // it set would let the next unrelated re-render animate as a phantom flip.
+                pendingPageTurn = 0
             }
             // No remote-prev: bulk mode keeps every fetched slice in [pageCandidates], so
             // navigating backwards is always local.
@@ -196,6 +223,10 @@ class HorizontalCandidateComponent :
                 // continue from where the user wanted to go.
                 fetchNextSlice(continueFromStart = localPageStart + effectiveLocalPageSize())
                 updatePagingState()
+            } else {
+                // Already at the last page: no slice to fetch, nothing will render — same
+                // phantom-flip guard as the backward case above.
+                pendingPageTurn = 0
             }
         }
     }
@@ -421,6 +452,14 @@ class HorizontalCandidateComponent :
                 if (pageCandidates.isEmpty()) emptyArray()
                 else pageCandidates.copyOfRange(localPageStart, end)
         adapter.updateCandidates(slice, sourceTotal, localPageStart)
+        // Page turn? Only when the user asked for one AND the page actually moved: fresh queries,
+        // width changes and the 5→3→1 overflow fallback all re-render through here and must not
+        // animate — they would read as a phantom flip.
+        val turnDir = pendingPageTurn
+        val turned = lastRenderedPageStart >= 0 && localPageStart != lastRenderedPageStart
+        lastRenderedPageStart = localPageStart
+        pendingPageTurn = 0
+        if (turnDir != 0 && turned) playPageTurn(turnDir)
         updatePagingState()
         if (slice.isEmpty()) {
             refreshExpanded(0)
@@ -624,6 +663,8 @@ class HorizontalCandidateComponent :
         localPageStart = 0
         pendingLocalPageSize = -1
         pendingOrphanTailStart = -1
+        // A new query swaps the whole word list; that is not a page turn and must never animate.
+        pendingPageTurn = 0
         prefetchInFlight = false
         queryGeneration++
         localPageSize = preferredLocalPageSize(0)
@@ -669,14 +710,44 @@ class HorizontalCandidateComponent :
     }
 
     override fun onCommitText(text: String) {
+        // "选字上屏" detection: a candidate was armed by [prepareFlyAnimation] (bar tap, hardware
+        // number key, keyboard-surface swipe) and this commit carries that very text. This is the
+        // only place that knows a *candidate* landed rather than an ordinary typed character.
+        //
+        // Consume the arm immediately, whatever the effect gates decide next: leaving it armed when
+        // a gate bails out below would let a much later commit of the same text fire a phantom
+        // effect.
+        //
+        // NB the pick SOUND is not here on purpose — it belongs to the keyboard-surface gestures
+        // (see `FcitxInputMethodService.playHardwareSound`), because a key-based pick already
+        // clicks via the physical key itself.
+        val picked = pendingFlyText
+        pendingFlyText = null
+
         val effects = AppPrefs.getInstance().effects
-        if (!effects.enabled.getValue()) return
+        if (!effects.enabled.getValue()) {
+            Timber.d("effects: fly SKIPPED master-switch off (text=%s)", text)
+            return
+        }
         // Same gate as CommitEffectsOverlay.onCommit: "disable animation" must stop every
         // effect alike. Fly/Bubble skipping this check while Particles honoured it was why
         // particles alone vanished whenever the toggle was on.
-        if (AppPrefs.getInstance().advanced.disableAnimation.getValue()) return
-        val flyText = pendingFlyText ?: return
-        if (flyText != text) return
+        if (AppPrefs.getInstance().advanced.disableAnimation.getValue()) {
+            Timber.d("effects: fly SKIPPED disableAnimation (text=%s)", text)
+            return
+        }
+        if (picked == null) {
+            Timber.d("effects: fly SKIPPED nothing armed (text=%s)", text)
+            return
+        }
+        if (picked != text) {
+            Timber.d("effects: fly SKIPPED armed='%s' != committed='%s'", picked, text)
+            return
+        }
+        Timber.d(
+            "effects: fly mode=%s text=%s at=(%.0f,%.0f)",
+            effects.mode.getValue(), text, pendingFlyX, pendingFlyY
+        )
         when (effects.mode.getValue()) {
             EffectMode.Fly ->
                 service.effectsOverlay?.flyTextAtScreen(pendingFlyX, pendingFlyY, text)
@@ -684,6 +755,55 @@ class HorizontalCandidateComponent :
                 service.effectsOverlay?.burstBubbleAtScreen(pendingFlyX, pendingFlyY, text)
             else -> {} // Particles drives its own burst via CommitEffectsOverlay.onCommit
         }
-        pendingFlyText = null
+        // Logged above, but the overlay is the other half of the handshake: a null overlay means
+        // nothing is attached to draw on, which looks exactly like "the effect did nothing".
+        if (service.effectsOverlay == null) Timber.w("effects: overlay is NULL, nothing to draw on")
+    }
+
+    /**
+     * Play the page-turn animation: the freshly rendered page eases in from the side it was turned
+     * toward — next page enters from the right, previous page from the left — with a short uniform
+     * slide plus a fade, staggered along the direction of travel so the row reads as one strip
+     * flowing in rather than five candidates popping at once.
+     *
+     * The slide is deliberately small (a few dp): the swap itself is instantaneous (the adapter is
+     * rebuilt in place, there is no outgoing frame to animate), so a large offset would only expose
+     * a hole where the previous page used to be. Runs on the next layout pass, i.e. once the
+     * RecyclerView has actually bound the new page's children.
+     */
+    private fun playPageTurn(direction: Int) {
+        if (AppPrefs.getInstance().advanced.disableAnimation.getValue()) return
+        val rv = view
+        rv.doOnNextLayout {
+            val n = rv.childCount
+            if (n == 0) return@doOnNextLayout
+            val travel = context.dp(PAGE_TURN_NUDGE_DP).toFloat() * direction
+            for (i in 0 until n) {
+                val child = rv.getChildAt(i) ?: continue
+                // Leading edge settles first: leftmost on a forward turn, rightmost on a back turn.
+                val order = if (direction > 0) i else n - 1 - i
+                child.animate().cancel()
+                child.alpha = PAGE_TURN_MIN_ALPHA
+                child.translationX = travel
+                child.animate()
+                    .alpha(1f)
+                    .translationX(0f)
+                    .setStartDelay(order * PAGE_TURN_STAGGER_MS)
+                    .setDuration(PAGE_TURN_MS)
+                    .setInterpolator(DecelerateInterpolator())
+                    .start()
+            }
+        }
+    }
+
+    private companion object {
+        /** One page turn: long enough to read as motion, short enough to still feel instant. */
+        const val PAGE_TURN_MS = 170L
+        /** Per-candidate start delay, walking in the direction of travel. */
+        const val PAGE_TURN_STAGGER_MS = 14L
+        /** How far (dp) the incoming page starts from its resting place. */
+        const val PAGE_TURN_NUDGE_DP = 8
+        /** Alpha the incoming page starts at — faded, never invisible (no hole, no flash). */
+        const val PAGE_TURN_MIN_ALPHA = 0.3f
     }
 }

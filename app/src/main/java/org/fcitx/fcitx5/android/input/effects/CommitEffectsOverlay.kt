@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.os.Looper
 import android.os.SystemClock
+import android.util.TypedValue
 import android.view.Choreographer
 import android.view.View
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -122,7 +123,12 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     }
 
     private val density = context.resources.displayMetrics.density
-    private val scaledDensity = context.resources.displayMetrics.scaledDensity
+    // `DisplayMetrics.scaledDensity` is deprecated (API 34). Applying one sp through the public
+    // TypedValue API yields the identical sp→px factor, so every `* scaledDensity` call site below
+    // keeps working unchanged.
+    private val scaledDensity = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP, 1f, context.resources.displayMetrics
+    )
 
     private val pool = Array(MAX_PARTICLES) { Particle() }
     private var alive = 0
@@ -255,7 +261,16 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
      */
     fun flyTextAtScreen(screenX: Float, screenY: Float, text: String) {
         if (!onMainThread("flyText") { flyTextAtScreen(screenX, screenY, text) }) return
-        if (text.isBlank() || flyerAlive >= MAX_FLYERS) return
+        // The overlay is MATCH_PARENT on the content view: a collapsed (0-height) IME window would
+        // make every effect draw into nothing, which is indistinguishable from "the effect is off".
+        Timber.d(
+            "effects: flyer spawn text=%s screen=(%.0f,%.0f) overlay=%dx%d flyers=%d/%d",
+            text, screenX, screenY, width, height, flyerAlive, MAX_FLYERS
+        )
+        if (text.isBlank() || flyerAlive >= MAX_FLYERS) {
+            Timber.d("effects: flyer DROPPED (blank=%b flyerAlive=%d)", text.isBlank(), flyerAlive)
+            return
+        }
         val loc = intArrayOf(0, 0)
         getLocationOnScreen(loc)
         val y = screenY - loc[1]
@@ -336,6 +351,12 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         alive = 0
         bubbleAlive = 0
         flyerAlive = 0
+        lastFrameNs = 0L
+        // Zeroing this is what makes [startIfNeeded]'s staleness test correct: a released overlay
+        // must look stale even if the callback chain was cut mid-flight (which is what happens when
+        // the view is detached rather than drained). Otherwise a stale-but-fresh timestamp would
+        // make the next burst silently drop itself.
+        lastDoFrameMs = 0L
         Choreographer.getInstance().removeFrameCallback(this)
     }
 
@@ -435,6 +456,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         lastFrameNs = frameTimeNanos
 
         val now = SystemClock.uptimeMillis()
+        lastDoFrameMs = now
         step(dtMs, now)
         recordFrame(dtMs)
         invalidate()
@@ -633,7 +655,18 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     }
 
     private fun startIfNeeded() {
-        if (running) return
+        if (running) {
+            // `running` means "a callback chain is outstanding". A callback delivered more than
+            // [STALE_LOOP_MS] ago proves that chain is dead, not that the effect is still playing —
+            // the IME window can be detached (input view recreated, focus moved, IME switched) taking
+            // the pending callback with it, leaving `running` stuck true forever. Every later burst
+            // would then be dropped by the guard below, which is exactly the reported "all selection
+            // effects silently stop working until the IME is restarted" bug. Re-seed the chain.
+            val sinceLast = SystemClock.uptimeMillis() - lastDoFrameMs
+            if (sinceLast < STALE_LOOP_MS) return
+            Timber.w("effects: frame loop stale (silent %dms), restarting it", sinceLast)
+            Choreographer.getInstance().removeFrameCallback(this)
+        }
         running = true
         lastFrameNs = 0L
         Choreographer.getInstance().postFrameCallback(this)

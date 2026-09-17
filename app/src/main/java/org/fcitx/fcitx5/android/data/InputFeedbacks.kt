@@ -138,7 +138,15 @@ object InputFeedbacks {
     }
 
     enum class SoundEffect {
-        Standard, SpaceBar, Delete, Return
+        Standard, SpaceBar, Delete, Return,
+
+        /**
+         * A keyboard-surface paging swipe (left/right): navigation, not a pick. Sits slightly
+         * brighter than [Standard] so a page turn and a candidate pick stay distinguishable by ear —
+         * during a surface swipe the finger is on the keyboard rather than the screen, so the sound
+         * is the confirmation the user actually gets.
+         */
+        Page
     }
 
     private val audioManager = appContext.audioManager
@@ -163,11 +171,14 @@ object InputFeedbacks {
     )
 
     // Small pitch offsets so Space/Delete/Return don't all sound the same (1.0 = original).
+    // [SoundEffect.Page] sits a touch above [SoundEffect.Standard] (1.08 vs 1.0) so a paging swipe
+    // and a candidate pick are still told apart by ear when both fire from the same scheme.
     private val effectRateOffset = mapOf(
         SoundEffect.Standard to 1.0f,
         SoundEffect.SpaceBar to 0.92f,
         SoundEffect.Delete to 1.12f,
-        SoundEffect.Return to 0.96f
+        SoundEffect.Return to 0.96f,
+        SoundEffect.Page to 1.08f
     )
 
     // Only ever touched from the IME main thread (onCreate + key/touch handling).
@@ -242,7 +253,11 @@ object InputFeedbacks {
     }
 
     /**
-     * Play a keypress sound effect.
+     * Play a keypress sound effect for the on-screen keyboard.
+     *
+     * Gated by the shared mode preference (`Keyboard.soundOnKeyPress`) and, in "following system"
+     * mode, by the system `SOUND_EFFECTS_ENABLED` switch. Physical keys and keyboard-surface
+     * gestures must NOT come through here — see [soundEffectForHardwareKeyboard].
      *
      * @param volume playback volume in percent (0-100); `0` means "system default volume".
      *  Defaults to the on-screen keyboard's volume preference — callers driven by a different
@@ -254,9 +269,45 @@ object InputFeedbacks {
             InputFeedbackMode.Disabled -> return
             InputFeedbackMode.FollowingSystem -> if (!systemSoundEffects) return
         }
+        playEffect(effect, volume)
+    }
+
+    /**
+     * Play a sound under the HARDWARE KEYBOARD page's settings. Two kinds of caller, one gate:
+     *  - physical key presses (`FcitxInputMethodService.playHardwareKeySound`),
+     *  - keyboard-SURFACE gestures, i.e. the up-swipe pick and the left/right paging swipes
+     *    (`FcitxInputMethodService.playHardwareSound`).
+     *
+     * Deliberately NOT wired to key-based candidate selection (physical number key / bar tap): the
+     * physical key already clicks, and stacking a second click on top of it was rejected as noisy.
+     * So the caller decides *when*, and this function decides only *whether* and *how loud*.
+     *
+     * That gate is the hardware keyboard page's own switch (`HardwareKeyboard.keySoundEnabled`),
+     * scaled by its volume (`keySoundVolume`). The shared on-screen-keyboard sound mode
+     * (`Keyboard.soundOnKeyPress`) and the system `SOUND_EFFECTS_ENABLED` switch are deliberately NOT
+     * consulted: a switch the user can *see* reading "on" must not be silently vetoed from a
+     * different page — nor by the system's "touch sounds" setting, which is about the platform's own
+     * touch feedback and which nobody associates with a physical keyboard. That two-page veto was
+     * why physical keys stayed mute while the hardware keyboard switches all looked correct: the
+     * default "following system" mode plus a device with touch sounds off is enough to trigger it.
+     *
+     * The [SoundScheme] selection is still honoured, including [SoundScheme.Silent] — that option is
+     * the explicit "off" on the same page, so it must keep working.
+     */
+    fun soundEffectForHardwareKeyboard(effect: SoundEffect, volume: Int) {
+        // The gate lives here rather than in each caller: every caller wants exactly this switch, and
+        // copies of it in each call site is how the physical/on-screen gates drifted apart before.
+        if (!hardwareKeyboardPrefs.keySoundEnabled.getValue()) return
+        playEffect(effect, volume)
+    }
+
+    private fun playEffect(effect: SoundEffect, volume: Int) {
         // Silent means "no click at all".
         val scheme = hardwareKeyboardPrefs.soundScheme.getValue()
-        if (scheme == SoundScheme.Silent) return
+        if (scheme == SoundScheme.Silent) {
+            Log.d(TAG, "playEffect: scheme is Silent, nothing to play")
+            return
+        }
 
         // Each scheme plays its OWN bundled sample, so switching is clearly audible. A per-effect
         // rate offset adds a little variety between the four key types.
@@ -270,6 +321,8 @@ object InputFeedbacks {
             SoundEffect.SpaceBar -> AudioManager.FX_KEYPRESS_SPACEBAR
             SoundEffect.Delete -> AudioManager.FX_KEYPRESS_DELETE
             SoundEffect.Return -> AudioManager.FX_KEYPRESS_RETURN
+            // The platform has no paging click; the plain key click is the closest neutral stand-in.
+            SoundEffect.Page -> AudioManager.FX_KEYPRESS_STANDARD
         }
         audioManager.playSoundEffect(fx, if (volume <= 0) -1f else (volume * scheme.volumeScale) / 100f)
     }

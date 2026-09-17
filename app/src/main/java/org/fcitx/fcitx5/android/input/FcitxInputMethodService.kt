@@ -977,6 +977,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 density = resources.displayMetrics.density,
                 candidateRectsProvider = { flyCandidateRects() },
                 onSelect = { pos ->
+                    // Sound first: the finger is on the keyboard surface, not the screen, so the
+                    // click is the only immediate confirmation the up-swipe registered at all.
+                    // A key-based pick (physical number key, bar tap) stays silent on purpose — the
+                    // physical key already clicks and stacking a second click there was rejected.
+                    playHardwareSound(InputFeedbacks.SoundEffect.Standard)
                     // Route through the bar's tap path so the fly animation fires like a normal
                     // pick; fall back to a plain engine select when the index isn't on the bar
                     // (stale rects, or the rects came from the floating CandidatesView).
@@ -985,6 +990,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     }
                 },
                 onPage = { dir ->
+                    // Clicks on EVERY recognised left/right swipe, including one that lands on the
+                    // first/last page and therefore moves nothing: the swipe itself was understood,
+                    // and silence there reads as "the gesture was ignored". Both directions share
+                    // one sound — the page visibly moves, so the direction needs no audio cue.
+                    playHardwareSound(InputFeedbacks.SoundEffect.Page)
                     // Honours the user's "swap page swipe direction" toggle, then pages the
                     // candidate bar locally for bulk lists (engine paging has nothing to move
                     // there); only falls back to engine paging for the floating window.
@@ -1001,7 +1011,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
         // `decorView` is the service-level property (lateinit View, assigned from the inner Window
         // in onCreate); `InputMethodService.window` is a SoftInputWindow which has no `decorView`.
-        val token = decorView
+        // `isInitialized` is the real guard, not `!= null`: the property is non-null by type, so a
+        // null check is always true and guards nothing — reading an un-assigned lateinit throws
+        // before the comparison ever runs. This path can fire from a preference listener or from
+        // the fly-text deadline, both of which may beat onCreate's assignment.
+        val token = if (::decorView.isInitialized) decorView else null
         if ((captureOn || flyTextOn) && token != null) {
             if (keyboardSurfaceProbeWindow == null) {
                 keyboardSurfaceProbeWindow = KeyboardSurfaceProbeWindow(this)
@@ -1146,18 +1160,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             .equals("Table", ignoreCase = true)
 
 
-    // ===== Physical key press sound =====
+    // ===== Physical key press / keyboard-surface gesture sounds =====
     /**
      * Play the keyboard click sound for a physical key press, mirroring the on-screen keyboard
      * (which calls [InputFeedbacks.soundEffect] from `CustomGestureView` on ACTION_DOWN).
      *
-     * The hardware-keyboard settings own the "physical keys too" gate and the playback volume;
-     * only the sound mode (following-system / enabled / disabled) is shared with the virtual
-     * keyboard and applied inside [InputFeedbacks.soundEffect].
+     * The hardware-keyboard settings own the switch and the playback volume outright: only the sound
+     * scheme (timbre) is shared with the virtual keyboard, and both are applied inside
+     * [InputFeedbacks.soundEffectForHardwareKeyboard].
      */
     private fun playHardwareKeySound(keyCode: Int) {
-        val hw = AppPrefs.getInstance().hardwareKeyboard
-        if (!hw.keySoundEnabled.getValue()) return
         // Navigation / system keys are not typing keys and already have their own system feedback.
         when (keyCode) {
             KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MENU,
@@ -1170,8 +1182,25 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> InputFeedbacks.SoundEffect.Return
             else -> InputFeedbacks.SoundEffect.Standard
         }
-        // Physical keys use their own volume, not the on-screen keyboard's.
-        InputFeedbacks.soundEffect(effect, hw.keySoundVolume.getValue())
+        playHardwareSound(effect)
+    }
+
+    /**
+     * The single funnel for every sound the HARDWARE keyboard makes: physical key presses
+     * ([playHardwareKeySound]) and keyboard-surface gestures (up-swipe pick → [SoundEffect.Standard],
+     * left/right paging swipes → [SoundEffect.Page]).
+     *
+     * They share one pipeline — switch, volume and sound scheme — because to the user the surface
+     * and the physical keys are the same "hardware keyboard". The gate itself lives in
+     * [InputFeedbacks.soundEffectForHardwareKeyboard], so nothing is checked here.
+     *
+     * Key-based candidate selection deliberately does NOT come through here: the physical number key
+     * already clicks, and stacking a second click on that path was rejected as noisy.
+     */
+    private fun playHardwareSound(effect: InputFeedbacks.SoundEffect) {
+        InputFeedbacks.soundEffectForHardwareKeyboard(
+            effect, AppPrefs.getInstance().hardwareKeyboard.keySoundVolume.getValue()
+        )
     }
 
     // True when THIS key gesture was consumed by latching (pure latch key, double-tap latch, or

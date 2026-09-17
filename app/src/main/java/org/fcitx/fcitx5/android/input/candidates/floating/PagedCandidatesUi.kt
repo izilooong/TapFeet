@@ -112,8 +112,9 @@ class PagedCandidatesUi(
     }
 
     /** The candidate list RecyclerView, exposed for hit-testing candidate on-screen rects
-     *  (keyboard fly-text). [root] is typed as [View] by the [Ui] interface, so this narrows it. */
-    val candidateList: RecyclerView get() = root as RecyclerView
+     *  (keyboard fly-text). The [Ui] interface declares [root] as [View] but this override narrows
+     *  it to [RecyclerView], so no cast is needed here. */
+    val candidateList: RecyclerView get() = root
 
     @SuppressLint("NotifyDataSetChanged")
     fun update(
