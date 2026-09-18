@@ -8,32 +8,77 @@ package org.fcitx.fcitx5.android.input.swipe
 import android.graphics.Rect
 
 /**
- * Minimum travel (in dp) before a touch is classified as a swipe rather than a tap/stray touch.
- * Below this the gesture is undecided, so a finger resting on the keyboard surface never fires.
+ * Gesture tuning for the keyboard-surface fly-text feature. ALL thresholds live here so the
+ * selector and the Lab page's gesture read-out share one rule — there must be no second, drifting
+ * copy of these numbers or of the dominant-axis logic.
  */
-const val SWIPE_SLOP_DP = 24
+
+/**
+ * Below this travel (dp, from the gesture's DOWN point) a touch is "nothing yet": a finger resting
+ * on the keyboard surface, a micro-adjustment while typing. The selector uses this only to *lock* a
+ * tentative direction early; it never fires here — the higher per-direction slops below do.
+ */
+const val SWIPE_BASE_SLOP_DP = 16f
+
+/**
+ * Up-swipe picks a candidate (commits it to the input — irreversible), so it demands the most
+ * deliberate input: the finger must travel this far *vertically* before it counts. High on purpose —
+ * a slight brush that drifts upward must not select a word.
+ */
+const val SWIPE_UP_SLOP_DP = 40f
+
+/**
+ * Left/right swipe pages the candidate strip (reversible, but disruptive), so a moderate threshold —
+ * above the old flat 24dp so an accidental horizontal graze no longer pages.
+ */
+const val SWIPE_PAGE_SLOP_DP = 32f
+
+/**
+ * A swipe only commits to a direction when that axis clearly outweighs the other (≈34° off-axis).
+ * Inside the deadzone between [SWIPE_AXIS_RATIO] and its reciprocal the gesture is "ambiguous" and
+ * ignored — this is what stops a sloppy horizontal swipe from being hijacked into an up-select (and
+ * vice versa). A perfect diagonal therefore lands in the deadzone rather than being forced horizontal.
+ */
+const val SWIPE_AXIS_RATIO = 1.5f
 
 /** The four swipes the keyboard surface recognises. */
 enum class SwipeDirection { UP, DOWN, LEFT, RIGHT }
 
 /**
- * Classify a touch travel (`dx`, `dy` from the gesture's DOWN point, in px) as one of the four
- * swipes, or `null` while it is still under [slopPx] — i.e. while the gesture is undecided.
+ * Tentative direction: the axis the gesture has clearly committed to, decided as soon as the travel
+ * passes [SWIPE_BASE_SLOP_DP] with a dominant axis ≥ [SWIPE_AXIS_RATIO]× the cross axis. Returns
+ * `null` while undecided (below the base slop or inside the deadzone).
  *
- * This is THE gesture rule of the feature: [KeyboardFlyTextSelector] acts on exactly this verdict
- * (up = pick the candidate under the finger, down = ignored, left/right = page), and the Lab page's
- * gesture readout uses the same function, so what the Lab page reports is what the keyboard would
- * actually do — no second, drifting copy of the thresholds.
- *
- * The dominant axis decides; a perfect diagonal counts as horizontal (strict `>` on the vertical
- * component), which matches how the selector has always classified them.
+ * The selector locks this as the gesture's direction the instant it is non-null, so a wobble later
+ * in the stroke cannot reclassify an up into a page or vice versa; it is NOT the fire decision —
+ * [swipeDirection] adds the higher per-direction commit slop on top.
  */
-fun swipeDirection(dx: Float, dy: Float, slopPx: Float): SwipeDirection? {
-    if (kotlin.math.hypot(dx, dy) < slopPx) return null
-    if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
-        return if (dy < 0f) SwipeDirection.UP else SwipeDirection.DOWN
+fun swipeAxis(dx: Float, dy: Float, density: Float): SwipeDirection? {
+    val ax = kotlin.math.abs(dx)
+    val ay = kotlin.math.abs(dy)
+    if (kotlin.math.hypot(ax, ay) < SWIPE_BASE_SLOP_DP * density) return null
+    if (ay >= ax * SWIPE_AXIS_RATIO) return if (dy < 0f) SwipeDirection.UP else SwipeDirection.DOWN
+    if (ax >= ay * SWIPE_AXIS_RATIO) return if (dx < 0f) SwipeDirection.LEFT else SwipeDirection.RIGHT
+    return null
+}
+
+/**
+ * Committed direction: like [swipeAxis] but additionally requires the dominant-axis travel to clear
+ * the per-direction commit slop ([SWIPE_UP_SLOP_DP] / [SWIPE_PAGE_SLOP_DP]). This is THE gesture rule
+ * the feature fires on, and what the Lab page's read-out reports, so the read-out cannot drift from
+ * the shipped thresholds. `null` means "not a swipe yet / ambiguous / too short to act on".
+ */
+fun swipeDirection(dx: Float, dy: Float, density: Float): SwipeDirection? {
+    val dir = swipeAxis(dx, dy, density) ?: return null
+    val slopPx = when (dir) {
+        SwipeDirection.UP, SwipeDirection.DOWN -> SWIPE_UP_SLOP_DP * density
+        SwipeDirection.LEFT, SwipeDirection.RIGHT -> SWIPE_PAGE_SLOP_DP * density
     }
-    return if (dx < 0f) SwipeDirection.LEFT else SwipeDirection.RIGHT
+    val travel = when (dir) {
+        SwipeDirection.UP, SwipeDirection.DOWN -> kotlin.math.abs(dy)
+        SwipeDirection.LEFT, SwipeDirection.RIGHT -> kotlin.math.abs(dx)
+    }
+    return if (travel >= slopPx) dir else null
 }
 
 /**

@@ -659,6 +659,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         InputFeedbacks.syncSystemPrefs()
         installDecorMotionListener()
+        // The effects overlay's frame loop can lose its Choreographer callback when the IME
+        // window detaches (focus change, app switch, soft/hard keyboard toggle). Revive it the
+        // instant the window is shown again so selection effects never silently die.
+        effectsOverlay?.resumeIfNeeded()
     }
 
     /** Set once per process; [onWindowShown] may fire again for a re-shown window. */

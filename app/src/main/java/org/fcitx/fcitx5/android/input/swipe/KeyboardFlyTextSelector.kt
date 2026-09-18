@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.input.swipe
 
 import android.graphics.Rect
 import android.view.MotionEvent
+import kotlin.math.hypot
 import timber.log.Timber
 
 /**
@@ -43,9 +44,14 @@ class KeyboardFlyTextSelector(
     private var downTime = 0L
     /** Once true the gesture is classified/consumed; further MOVEs are ignored until reset. */
     private var classified = false
+    /**
+     * Direction locked the instant the travel clears the base slop with a clearly dominant axis (via
+     * [swipeAxis]). Held until reset so a wobble later in the stroke cannot reclassify an up into a
+     * page or vice versa; the gesture only *fires* once [swipeDirection] also clears the higher
+     * per-direction commit slop (the hysteresis that separates a deliberate swipe from a graze).
+     */
+    private var pendingDir: SwipeDirection? = null
     private var lastEventTime = 0L
-
-    private val slopPx: Float get() = SWIPE_SLOP_DP * density
 
     /**
      * True while a finger is down on the keyboard surface (between DOWN and UP/CANCEL).
@@ -81,14 +87,26 @@ class KeyboardFlyTextSelector(
                 if (classified || downTime == 0L) return
                 val dx = event.rawX - downX
                 val dy = event.rawY - downY
-                // The verdict — and the slop gate — come from the shared classifier, so the Lab page's
-                // gesture readout reports exactly what happens here (see [swipeDirection]).
-                when (swipeDirection(dx, dy, slopPx)) {
-                    null -> return // not far enough yet
+                // Reversal guard: the finger returned to the start (travel back under the base slop)
+                // — this was a brush, not a swipe. Drop the locked direction so it cannot fire later.
+                if (hypot(dx, dy) < SWIPE_BASE_SLOP_DP * density) {
+                    pendingDir = null
+                    return
+                }
+                // Lock the direction as soon as the travel is clearly one axis (below the higher
+                // commit slop). From here the direction is fixed; a wobble cannot reclassify it.
+                if (pendingDir == null) pendingDir = swipeAxis(dx, dy, density)
+                val dir = pendingDir ?: return
+                // Fire only once the travel also clears the *commit* slop for this direction — the
+                // hysteresis that separates a deliberate swipe from a stray touch that merely grazed
+                // the base slop. swipeDirection re-applies the same axis ratio + per-direction slop
+                // the Lab page reports, so the read-out still matches what happens here.
+                if (swipeDirection(dx, dy, density) != dir) return
+                when (dir) {
                     SwipeDirection.UP -> {
                         val rects = candidateRectsProvider()
                         val idx = candidateIndexAtX(event.rawX, rects)
-                        Timber.i("FlyText: up-swipe over ${rects.size} rects → idx=$idx (rawX=${event.rawX})")
+                        Timber.i("FlyText: up-swipe over ${rects.size} rects → idx=$idx (rawY=${event.rawY})")
                         if (idx >= 0) {
                             onSelect(idx)
                         }
@@ -119,5 +137,6 @@ class KeyboardFlyTextSelector(
         downY = 0f
         downTime = 0L
         classified = false
+        pendingDir = null
     }
 }

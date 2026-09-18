@@ -25,7 +25,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.KeyProbeLog
 import org.fcitx.fcitx5.android.input.TouchProbeLog
-import org.fcitx.fcitx5.android.input.swipe.SWIPE_SLOP_DP
+import org.fcitx.fcitx5.android.input.swipe.SWIPE_BASE_SLOP_DP
 import org.fcitx.fcitx5.android.input.swipe.SwipeDirection
 import splitties.dimensions.dp
 import splitties.views.backgroundColor
@@ -484,8 +484,7 @@ class InputMethodTestFragment : Fragment() {
     private fun renderGesture() {
         if (!isAdded || !::touchGestureText.isInitialized) return
         val density = resources.displayMetrics.density
-        val slopPx = SWIPE_SLOP_DP * density
-        val report = buildGestureReport(TouchProbeLog.snapshot(), slopPx)
+        val report = buildGestureReport(TouchProbeLog.snapshot(), density)
 
         val latest = report.latest
         if (latest == null) {
@@ -494,7 +493,7 @@ class InputMethodTestFragment : Fragment() {
         }
         val head = getString(
             R.string.touch_gesture_line,
-            directionLabel(latest.direction, slopPx, latest.travelPx, density),
+            directionLabel(latest.direction, latest.travelPx, density),
             sourceLabel(latest.keyboardSurface, latest.deviceId),
             travelLabel(latest.travelPx, density),
             latest.durationMs,
@@ -515,7 +514,6 @@ class InputMethodTestFragment : Fragment() {
      */
     private fun directionLabel(
         direction: SwipeDirection?,
-        slopPx: Float,
         travelPx: Float,
         density: Float,
     ): String = when (direction) {
@@ -539,7 +537,7 @@ class InputMethodTestFragment : Fragment() {
         // diagnosis (the feature's threshold is invisible otherwise).
         null -> getString(
             R.string.touch_gesture_below,
-            travelLabel(slopPx, density),
+            travelLabel(SWIPE_BASE_SLOP_DP * density, density),
             travelLabel(travelPx, density)
         )
     }

@@ -8,6 +8,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
@@ -158,6 +159,17 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     private var lastFrameNs = 0L
     /** Wall-clock stamp of the last delivered frame; drives the stale-loop watchdog. */
     private var lastDoFrameMs = 0L
+    /**
+     * True exactly while a Choreographer frame callback is genuinely outstanding. This is what
+     * was previously conflated with [running]: `running` means "there are particles to animate",
+     * this means "a callback is actually posted". When the IME window detaches the *callback* is
+     * silently dropped by the framework while `running` stays true — the two diverging is the bug.
+     * Tracking them separately lets the loop re-seed idempotently without ever double-posting.
+     */
+    private var pendingCallback = false
+    private val handler = Handler(Looper.getMainLooper())
+    /** True while the [watchdogTask] is scheduled. */
+    private var watchdogScheduled = false
     /** Retries left for an emission that lands before the first layout. */
     private var retryLeft = MAX_EMIT_RETRIES
 
@@ -348,16 +360,82 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
 
     fun release() {
         running = false
+        pendingCallback = false
         alive = 0
         bubbleAlive = 0
         flyerAlive = 0
         lastFrameNs = 0L
-        // Zeroing this is what makes [startIfNeeded]'s staleness test correct: a released overlay
+        // Zeroing this is what makes the staleness test correct: a released overlay
         // must look stale even if the callback chain was cut mid-flight (which is what happens when
         // the view is detached rather than drained). Otherwise a stale-but-fresh timestamp would
         // make the next burst silently drop itself.
         lastDoFrameMs = 0L
+        cancelWatchdog()
         Choreographer.getInstance().removeFrameCallback(this)
+    }
+
+    /**
+     * Posts a single frame callback, idempotently: if one is already outstanding we do nothing,
+     * so the chain can never be doubled. Callers rely on this to re-seed a lost chain without
+     * risking two concurrent chains (which would animate particles at 2x speed).
+     */
+    private fun armLoop() {
+        if (pendingCallback) return
+        pendingCallback = true
+        lastFrameNs = 0L
+        Choreographer.getInstance().postFrameCallback(this)
+    }
+
+    private val watchdogTask = Runnable { checkAlive() }
+
+    /**
+     * Independent of any commit: while the loop is "running" but no frame has been delivered for
+     * [STALE_LOOP_MS], the outstanding callback was lost (window detach / process backgrounded)
+     * and must be re-seeded. This is the safety net that makes recovery no longer depend on the
+     * user pausing for >1s and then typing again.
+     */
+    private fun checkAlive() {
+        watchdogScheduled = false
+        if (!running) return
+        val sinceLast = SystemClock.uptimeMillis() - lastDoFrameMs
+        if (sinceLast > STALE_LOOP_MS) {
+            Choreographer.getInstance().removeFrameCallback(this)
+            pendingCallback = false
+            armLoop()
+        }
+        scheduleWatchdog()
+    }
+
+    private fun scheduleWatchdog() {
+        if (watchdogScheduled || !running) return
+        watchdogScheduled = true
+        handler.postDelayed(watchdogTask, STALE_LOOP_MS)
+    }
+
+    private fun cancelWatchdog() {
+        if (!watchdogScheduled) return
+        watchdogScheduled = false
+        handler.removeCallbacks(watchdogTask)
+    }
+
+    /**
+     * Revives the loop the moment the IME window is shown again. The previous callback may or may
+     * not have survived the detach; cancelling then re-posting guarantees exactly one live callback
+     * either way, so effects resume instantly instead of waiting on a typing gap. Driven both from
+     * the service's [org.fcitx.fcitx5.android.input.FcitxInputMethodService.onWindowShown] and from
+     * this view's own [onWindowVisibilityChanged].
+     */
+    fun resumeIfNeeded() {
+        if (!running) return
+        Choreographer.getInstance().removeFrameCallback(this)
+        pendingCallback = false
+        armLoop()
+        scheduleWatchdog()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == VISIBLE) resumeIfNeeded()
     }
 
     private fun emit(x: Float, y: Float, tier: Int, densityPref: Int) {
@@ -450,7 +528,13 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     }
 
     override fun doFrame(frameTimeNanos: Long) {
-        if (!running) return
+        if (!running) {
+            pendingCallback = false
+            return
+        }
+        // The callback that invoked us has now been consumed; clear the flag so [armLoop] can
+        // re-post a fresh one (and so the watchdog can tell a lost callback from a live one).
+        pendingCallback = false
         val dtMs = if (lastFrameNs == 0L) 16.7f
         else ((frameTimeNanos - lastFrameNs) / 1_000_000f).coerceIn(1f, 50f)
         lastFrameNs = frameTimeNanos
@@ -462,10 +546,11 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         invalidate()
 
         if (alive > 0 || bubbleAlive > 0 || flyerAlive > 0 || now < comboVisibleUntil) {
-            Choreographer.getInstance().postFrameCallback(this)
+            armLoop()
         } else {
             running = false
-            lastFrameNs = 0L
+            pendingCallback = false
+            cancelWatchdog()
         }
     }
 
@@ -655,21 +740,23 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     }
 
     private fun startIfNeeded() {
-        if (running) {
-            // `running` means "a callback chain is outstanding". A callback delivered more than
-            // [STALE_LOOP_MS] ago proves that chain is dead, not that the effect is still playing —
-            // the IME window can be detached (input view recreated, focus moved, IME switched) taking
-            // the pending callback with it, leaving `running` stuck true forever. Every later burst
-            // would then be dropped by the guard below, which is exactly the reported "all selection
-            // effects silently stop working until the IME is restarted" bug. Re-seed the chain.
-            val sinceLast = SystemClock.uptimeMillis() - lastDoFrameMs
-            if (sinceLast < STALE_LOOP_MS) return
-            Timber.w("effects: frame loop stale (silent %dms), restarting it", sinceLast)
-            Choreographer.getInstance().removeFrameCallback(this)
+        if (running && pendingCallback) {
+            // Loop is genuinely alive: a callback is outstanding and we are mid-animation.
+            return
         }
+        // Either the loop ended naturally (running==false) or its callback was lost while
+        // running (window detach / process backgrounded, leaving running==true with nothing
+        // actually pending). The old code trusted a "silent <1s" shortcut here and skipped
+        // re-seeding, which left running stuck true forever — the reported "effects suddenly
+        // stop and only recover after a restart / IME switch" bug. We now always re-seed,
+        // relying on [armLoop]'s idempotency to never double the chain.
+        if (running && !pendingCallback) {
+            Timber.w("effects: frame loop was dead while running, re-seeding it")
+        }
+        Choreographer.getInstance().removeFrameCallback(this)
         running = true
-        lastFrameNs = 0L
-        Choreographer.getInstance().postFrameCallback(this)
+        armLoop()
+        scheduleWatchdog()
     }
 
     /**

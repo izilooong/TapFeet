@@ -112,7 +112,7 @@ internal class GestureReport(
  * down) is an up-swipe to the keyboard even though its net displacement is ~0 — reporting the net
  * displacement would call that "nothing" and send the user chasing a bug that is not there.
  */
-internal fun swipeVerdict(stroke: TouchStroke, slopPx: Float): SwipeVerdict? {
+internal fun swipeVerdict(stroke: TouchStroke, density: Float): SwipeVerdict? {
     val points = stroke.points
     if (points.size < 2) return null
     val first = points.first()
@@ -132,7 +132,7 @@ internal fun swipeVerdict(stroke: TouchStroke, slopPx: Float): SwipeVerdict? {
             if (v > peak) peak = v
         }
         if (direction == null) {
-            val verdict = swipeDirection(p.rawX - first.rawX, p.rawY - first.rawY, slopPx)
+            val verdict = swipeDirection(p.rawX - first.rawX, p.rawY - first.rawY, density)
             if (verdict != null) {
                 direction = verdict
                 travelAtVerdict = travel
@@ -158,12 +158,12 @@ internal fun swipeVerdict(stroke: TouchStroke, slopPx: Float): SwipeVerdict? {
  * display, pointer-mode motion) are deliberately NOT counted: mixing them in would make "it saw 6 of
  * my 6 swipes" unreadable, which is the one number this panel exists to produce.
  */
-internal fun buildGestureReport(entries: List<TouchProbeLog.Entry>, slopPx: Float): GestureReport {
+internal fun buildGestureReport(entries: List<TouchProbeLog.Entry>, density: Float): GestureReport {
     val strokes = buildTouchStrokes(entries)
     val counts = GestureCounts()
     var latest: SwipeVerdict? = null
     strokes.forEach { stroke ->
-        val verdict = swipeVerdict(stroke, slopPx) ?: return@forEach
+        val verdict = swipeVerdict(stroke, density) ?: return@forEach
         latest = verdict
         if (verdict.keyboardSurface) counts.add(verdict.direction)
     }
