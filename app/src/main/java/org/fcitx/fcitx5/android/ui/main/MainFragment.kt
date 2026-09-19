@@ -149,6 +149,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     SettingsRoute.CustomKeyboard
                 )
                 addDestinationPreference(
+                    R.string.panel_cycle_settings,
+                    R.drawable.ic_baseline_view_module_24,
+                    SettingsRoute.PanelCycle
+                )
+                addDestinationPreference(
                     R.string.input_effects,
                     R.drawable.ic_baseline_auto_awesome_24,
                     SettingsRoute.Effects

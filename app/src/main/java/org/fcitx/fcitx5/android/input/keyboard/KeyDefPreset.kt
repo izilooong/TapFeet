@@ -125,6 +125,27 @@ class LayoutSwitchKey(
     )
 )
 
+/**
+ * 符号窗口按钮：按「启用且排序后」的面板列表循环切换（关闭 → 排序1 → … → 关闭）。
+ * 屏幕 `!?#` 键与顶栏常驻按钮、物理 SYM 键共用同一套循环逻辑（[KeyAction.PanelCycleAction]）。
+ */
+class PanelCycleKey(
+    displayText: String,
+    percentWidth: Float = 0.13333f,
+    variant: Variant = Variant.AltForeground
+) : KeyDef(
+    Appearance.Text(
+        displayText,
+        textSize = 16f,
+        textStyle = Typeface.BOLD,
+        percentWidth = percentWidth,
+        variant = variant
+    ),
+    setOf(
+        Behavior.Press(KeyAction.PanelCycleAction)
+    )
+)
+
 class BackspaceKey(
     percentWidth: Float = 0.15f,
     variant: Variant = Variant.Alternative

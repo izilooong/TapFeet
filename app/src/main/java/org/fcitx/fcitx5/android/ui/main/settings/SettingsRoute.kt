@@ -30,6 +30,7 @@ import org.fcitx.fcitx5.android.ui.main.settings.behavior.AppDisplayNameSettings
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidateBarSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CustomKeyboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.EffectsSettingsFragment
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.PanelCycleSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.HardwareKeyboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.InputMethodTestFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidatesSettingsFragment
@@ -80,6 +81,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object CustomKeyboard : SettingsRoute()
+
+    @Serializable
+    data object PanelCycle : SettingsRoute()
 
     @Serializable
     data object Effects : SettingsRoute()
@@ -246,6 +250,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<CustomKeyboardSettingsFragment, CustomKeyboard> {
                 label = ctx.getString(R.string.custom_keyboard)
+            }
+            fragment<PanelCycleSettingsFragment, PanelCycle> {
+                label = ctx.getString(R.string.panel_cycle_settings)
             }
             fragment<EffectsSettingsFragment, Effects> {
                 label = ctx.getString(R.string.input_effects)

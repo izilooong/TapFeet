@@ -170,6 +170,13 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     private val handler = Handler(Looper.getMainLooper())
     /** True while the [watchdogTask] is scheduled. */
     private var watchdogScheduled = false
+    /**
+     * User-chosen effect length as a multiplier of the default (1.0 = default). Higher = the
+     * whole animation plays slower and lasts longer; lower = snappier. Applied as a uniform
+     * time-scale in [doFrame] so the spatial shape of every burst is preserved — only the
+     * playback speed/duration changes.
+     */
+    private var durationScale = 1f
     /** Retries left for an emission that lands before the first layout. */
     private var retryLeft = MAX_EMIT_RETRIES
 
@@ -216,6 +223,8 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             Timber.d("effects: skipped by disableAnimation")
             return
         }
+        // Pull the live duration setting up front so comboVisibleUntil below uses the fresh value.
+        durationScale = (prefs.effects.duration.getValue() / 100f).coerceAtLeast(0.1f)
         val effects = prefs.effects
         if (!effects.enabled.getValue() || effects.mode.getValue() != EffectMode.Particles) {
             Timber.d(
@@ -237,7 +246,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         if (effects.comboMeter.getValue()) {
             comboX = burstX()
             comboY = burstY()
-            comboVisibleUntil = now + COMBO_SHOW_MS
+            comboVisibleUntil = now + (COMBO_SHOW_MS * durationScale).toLong()
         }
         burstFresh = false
         startIfNeeded()
@@ -273,6 +282,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
      */
     fun flyTextAtScreen(screenX: Float, screenY: Float, text: String) {
         if (!onMainThread("flyText") { flyTextAtScreen(screenX, screenY, text) }) return
+        durationScale = (AppPrefs.getInstance().effects.duration.getValue() / 100f).coerceAtLeast(0.1f)
         // The overlay is MATCH_PARENT on the content view: a collapsed (0-height) IME window would
         // make every effect draw into nothing, which is indistinguishable from "the effect is off".
         Timber.d(
@@ -303,6 +313,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
      */
     fun burstBubbleAtScreen(screenX: Float, screenY: Float, text: String) {
         if (!onMainThread("bubble") { burstBubbleAtScreen(screenX, screenY, text) }) return
+        durationScale = (AppPrefs.getInstance().effects.duration.getValue() / 100f).coerceAtLeast(0.1f)
         if (text.isBlank()) return
         val loc = intArrayOf(0, 0)
         getLocationOnScreen(loc)
@@ -535,14 +546,18 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         // The callback that invoked us has now been consumed; clear the flag so [armLoop] can
         // re-post a fresh one (and so the watchdog can tell a lost callback from a live one).
         pendingCallback = false
-        val dtMs = if (lastFrameNs == 0L) 16.7f
+        val rawDtMs = if (lastFrameNs == 0L) 16.7f
         else ((frameTimeNanos - lastFrameNs) / 1_000_000f).coerceIn(1f, 50f)
         lastFrameNs = frameTimeNanos
 
+        // Time-dilate the whole effect by the duration setting: dividing the simulation step by
+        // `durationScale` makes particles / bubbles / flyers live longer AND move slower, so each
+        // burst keeps its shape — it is only played slower (scale > 1) or faster (scale < 1).
+        val dtMs = rawDtMs / durationScale
         val now = SystemClock.uptimeMillis()
         lastDoFrameMs = now
         step(dtMs, now)
-        recordFrame(dtMs)
+        recordFrame(rawDtMs)
         invalidate()
 
         if (alive > 0 || bubbleAlive > 0 || flyerAlive > 0 || now < comboVisibleUntil) {

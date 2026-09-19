@@ -107,6 +107,15 @@ class IdleUi(
 
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
 
+    /**
+     * 「快捷窗口」常驻触发按钮：点一次按排序轮换 符号→表情→自定义→关闭；图标随当前面板变化。
+     * 默认隐藏（不在状态栏常驻），循环仍可由屏幕 `!?#` 键与物理 SYM 键触发。
+     */
+    val panelCycleButton = ToolButton(ctx, R.drawable.ic_baseline_view_module_24, theme).apply {
+        contentDescription = ctx.getString(R.string.panel_cycle)
+        visibility = View.GONE
+    }
+
     val emptyBar = Space(ctx)
 
     val buttonsUi = ButtonsBarUi(ctx, theme)
@@ -162,6 +171,10 @@ class IdleUi(
             centerVertically()
         })
         add(customKeyboardButton, lParams(size, size) {
+            before(panelCycleButton)
+            centerVertically()
+        })
+        add(panelCycleButton, lParams(size, size) {
             before(keyboardToggleButton)
             centerVertically()
         })

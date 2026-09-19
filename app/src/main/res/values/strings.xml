@@ -64,10 +64,7 @@
     <string name="candidate_key_5">Fifth candidate</string>
     <string name="candidate_page_next">Page next</string>
     <string name="candidate_page_prev">Page previous</string>
-    <string name="hw_symbol_picker">Symbol picker</string>
-    <string name="hw_sym_first">Sym key preferred panel</string>
-    <string name="hw_sym_first_custom">Custom keyboard</string>
-    <string name="hw_sym_first_symbol">Symbol keyboard</string>
+    <string name="hw_symbol_picker">Open quick window</string>
     <string name="hw_alt_latch">Alt lock</string>
     <string name="hw_alt_latch_summary">Double-tap the lock key to latch Alt.</string>
     <string name="hw_alt_latch_key">Alt lock key (double-tap)</string>
@@ -192,7 +189,13 @@
     <string name="effects_combo_meter">Combo counter</string>
     <string name="effects_combo_meter_summary">Show a combo counter and typing speed while you keep typing.</string>
     <string name="effects_particle_density">Particle density</string>
+    <string name="effects_duration">Effect duration</string>
     <string name="custom_keyboard">Custom Keyboard</string>
+    <string name="panel_cycle_settings">Quick Window</string>
+    <string name="panel_cycle">Quick Window</string>
+    <string name="panel_module_symbol">Symbol keyboard</string>
+    <string name="panel_module_emoji">Emoji keyboard</string>
+    <string name="panel_module_custom">Custom keyboard</string>
     <string name="custom_keyboard_enabled">Enable custom keyboard</string>
     <string name="custom_keyboard_enabled_summary">When off, the custom keyboard is hidden everywhere (status bar button, symbol keyboard entry, Sym key cycle).</string>
     <string name="custom_keyboard_key_title">Key %1$d</string>

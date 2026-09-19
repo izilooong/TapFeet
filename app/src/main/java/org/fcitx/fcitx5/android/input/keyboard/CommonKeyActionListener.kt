@@ -28,6 +28,7 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyAction.DeleteSelectionAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.FcitxKeyAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.LangSwitchAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.MoveSelectionAction
+import org.fcitx.fcitx5.android.input.keyboard.KeyAction.PanelCycleAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.PickerSwitchAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.QuickPhraseAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.ShowInputMethodPickerAction
@@ -65,6 +66,12 @@ class CommonKeyActionListener :
     private val langSwitchKeyBehavior by kbdPrefs.langSwitchKeyBehavior
 
     private var backspaceSwipeState = Stopped
+
+    /**
+     * 「符号窗口」循环触发回调：由 [org.fcitx.fcitx5.android.input.InputView] 注入，
+     * 把 [PanelCycleAction]（屏幕 `!?#` 键、顶栏常驻按钮）导向 InputView 的有序循环逻辑。
+     */
+    var onPanelCycle: (() -> Unit)? = null
 
     private suspend fun FcitxAPI.selectCurrentLocalCandidate(number: Int): Boolean {
         val index = horizontalCandidate.selectionIndexForLocalNumber(number) ?: return false
@@ -224,6 +231,7 @@ class CommonKeyActionListener :
                         windowManager.attachWindow(key)
                     }
                 }
+                is PanelCycleAction -> onPanelCycle?.invoke()
                 is SpaceLongPressAction -> {
                     when (spaceKeyLongPressBehavior) {
                         SpaceLongPressBehavior.None -> {}

@@ -69,6 +69,7 @@ import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.input.keyboard.CustomKeyboard
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
+import org.fcitx.fcitx5.android.input.PanelModule
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.status.StatusAreaWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
@@ -255,6 +256,20 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         updateExpandButtonVisibility()
     }
 
+    /** 顶栏面板循环按钮图标随当前面板变化：关闭→网格图标，符号/表情/自定义→各自图标。 */
+    fun updatePanelCycleButton(module: PanelModule?) {
+        val (icon, description) = when (module) {
+            PanelModule.SYMBOL -> R.drawable.ic_baseline_emoji_symbols_24 to R.string.panel_module_symbol
+            PanelModule.EMOJI -> R.drawable.ic_baseline_emoji_objects_24 to R.string.panel_module_emoji
+            PanelModule.CUSTOM -> R.drawable.ic_baseline_keyboard_24 to R.string.panel_module_custom
+            null -> R.drawable.ic_baseline_view_module_24 to R.string.panel_cycle
+        }
+        idleUi.panelCycleButton.apply {
+            setIcon(icon)
+            contentDescription = context.getString(description)
+        }
+    }
+
     fun onAltLatchChanged(latched: Boolean) {
         altLatched = latched
         idleUi.updateAltLockButton(isAltLockedOrSticky)
@@ -402,6 +417,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 fcitx.launchOnReady {
                     it.enumerateIme()
                 }
+            }
+            panelCycleButton.setOnClickListener {
+                // 复用 InputView 挂在同一回调上的 cyclePanels()，保证顶栏按钮与 !?# 键、SYM 键行为一致
+                commonKeyActionListener.onPanelCycle?.invoke()
             }
             buttonsUi.apply {
                 undoButton.setOnClickListener {

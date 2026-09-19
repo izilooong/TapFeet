@@ -35,7 +35,6 @@ import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareChord
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
-import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
@@ -147,6 +146,8 @@ class InputView(
         scope += preeditEmptyState
         scope += preedit
         scope += commonKeyActionListener
+        // 把「符号窗口」循环动作（屏幕 !?# 键、顶栏常驻按钮）导向 InputView 的有序面板循环
+        commonKeyActionListener.onPanelCycle = { cyclePanels() }
         scope += windowManager
         scope += kawaiiBar
         scope += horizontalCandidate
@@ -936,75 +937,117 @@ class InputView(
         // = "NavFn"），按下就切会让 Fn+字母 永远走不通 —— 挂起到松手，没被和弦用掉再切。
         if (HardwareChord.armSymbolTap(event.keyCode)) return true
 
-        toggleSymbolWindow()
+        toggleSymbolForKeyPress()
         return true
     }
 
     /**
-     * Sym（符号）键三态循环：自定义一行键盘 → 符号选择器 → 隐藏键盘（回主键盘）→ 再回到自定义 …
-     * 循环顺序由 [AppPrefs.HardwareKeyboard.symFirst] 决定「首选」（自定义 or 符号）作为首选项，
-     * 但三态必然依次经过，**不会**因首选而跳过某一态（修复：设符号优先后自定义键盘打不开的 bug）。
-     * 键盘窗口高度随状态自动切换：符号选择器/主键盘为全高，自定义键盘为单行。
+     * 三个面板（符号 / 表情 / 自定义）的有序循环：关闭 → 排序1 → 排序2 → … → 关闭。
+     * 顺序由 [AppPrefs.PanelCycle.panelOrder] 决定，每个面板由各自开关把关
+     * （符号 [AppPrefs.PanelCycle.symbolPanelEnabled]、表情 [AppPrefs.PanelCycle.emojiPanelEnabled]、
+     * 自定义复用 [AppPrefs.CustomKeyboard.enabled]）；关闭态永远在序列尾。
+     * 顶栏常驻按钮、屏幕 `!?#` 键、物理 SYM 键共用本循环。颜文字已并入表情窗口，
+     * 不参与独立开关与排序（只在表情窗内保留 `:-)` 入口）。
      */
-    private enum class SymState { CUSTOM, SYMBOL, HIDDEN }
 
-    /** 当前 Sym 状态；主键盘（NONE）或已隐藏均视为循环起点（null） */
-    private fun currentSymState(): SymState? =
+    private fun panelModuleEnabled(module: PanelModule): Boolean {
+        val prefs = AppPrefs.getInstance()
+        return when (module) {
+            PanelModule.SYMBOL -> prefs.panelCycle.symbolPanelEnabled.getValue()
+            PanelModule.EMOJI -> prefs.panelCycle.emojiPanelEnabled.getValue()
+            PanelModule.CUSTOM -> prefs.customKeyboard.enabled.getValue()
+        }
+    }
+
+    /** 当前显示的面板；主键盘（或已关闭）视为循环起点（null） */
+    private fun currentPanelModule(): PanelModule? =
         when {
-            keyboardWindow.isCustomKeyboardActive -> SymState.CUSTOM
-            windowManager.isAttached(symbolPicker) -> SymState.SYMBOL
+            keyboardWindow.isCustomKeyboardActive -> PanelModule.CUSTOM
+            windowManager.isAttached(symbolPicker) -> PanelModule.SYMBOL
+            windowManager.isAttached(emojiPicker) -> PanelModule.EMOJI
             else -> null
         }
 
-    /** 按 [AppPrefs.HardwareKeyboard.symFirst] 排出循环顺序，首选项排在最前；
-     *  自定义键盘总开关（[AppPrefs.CustomKeyboard.enabled]）关闭时剔除 CUSTOM 态，Sym 键仅在符号选择器与隐藏间循环 */
-    private fun symCycleOrder(): List<SymState> {
-        val custom = SymState.CUSTOM
-        val symbol = SymState.SYMBOL
-        val hidden = SymState.HIDDEN
-        val base = if (hardwareKeyboardPrefs.symFirst.getValue() == SymFirstTarget.CUSTOM)
-            listOf(custom, symbol, hidden)
-        else
-            listOf(symbol, custom, hidden)
-        return if (AppPrefs.getInstance().customKeyboard.enabled.getValue()) base
-        else base.filter { it != SymState.CUSTOM }
+    /** 按 [AppPrefs.PanelCycle.panelOrder] 排出「启用」的面板序列；全部关闭时返回空列表（循环无动作） */
+    private fun orderedEnabledModules(): List<PanelModule> {
+        val prefs = AppPrefs.getInstance()
+        return prefs.panelCycle.panelOrder.getValue().mapNotNull { name ->
+            when (name) {
+                "symbol" -> PanelModule.SYMBOL
+                "emoji" -> PanelModule.EMOJI
+                "custom" -> PanelModule.CUSTOM
+                else -> null
+            }
+        }.filter { panelModuleEnabled(it) }
     }
 
-    private fun applySymState(state: SymState) {
-        when (state) {
-            SymState.CUSTOM -> {
+    /**
+     * 打开 / 切换面板时：若 InputView 当前不可见（物理键盘态下虚拟键盘不常驻），亮出给 picker 当触摸底座。
+     * 面板循环关闭时的虚拟键盘隐藏统一在 [applyPanelModule] 走 setKeyboardWindowVisible(false)（同状态栏按钮）。
+     */
+    private fun revealPanelInputViewIfHidden() {
+        if (visibility != View.VISIBLE) {
+            visibility = View.VISIBLE
+            kawaiiBar.resetToIdleState()
+        }
+    }
+
+    private fun applyPanelModule(module: PanelModule?) {
+        when (module) {
+            null -> {
+                keyboardWindow.symMode = KeyboardWindow.SymMode.NONE
+                if (!windowManager.isAttached(keyboardWindow)) {
+                    windowManager.attachWindow(KeyboardWindow)
+                }
+                keyboardWindow.switchLayout(TextKeyboard.Name)
+                // 关闭：隐藏虚拟键盘（与状态栏「隐藏键盘」按钮同路，setKeyboardWindowVisible(false)），
+                // 让面板循环回到无软键盘态；物理键盘继续工作，IME 顶栏仍可见。
+                // 不复自行 GONE InputView——会连带藏掉顶栏，且 physicalKeyboardMode 在 Disabled 默认下恒 false 误判。
+                windowManager.setKeyboardWindowVisible(false)
+            }
+            PanelModule.SYMBOL -> {
+                revealPanelInputViewIfHidden()
+                windowManager.setKeyboardWindowVisible(true)
+                windowManager.attachWindow(PickerWindow.Key.Symbol)
+                keyboardWindow.markSymbolPickerActive()
+            }
+            PanelModule.EMOJI -> {
+                revealPanelInputViewIfHidden()
+                windowManager.setKeyboardWindowVisible(true)
+                windowManager.attachWindow(PickerWindow.Key.Emoji)
+                keyboardWindow.markSymbolPickerActive()
+            }
+            PanelModule.CUSTOM -> {
+                revealPanelInputViewIfHidden()
                 // 先同步切到自定义布局（KeyboardWindow 的 view 已在启动时建好，见 createView=true），
                 // 再 attach / 显示，保证 attach 出来的首帧就是单行，避免「先全高后单行」闪烁。
                 keyboardWindow.switchLayoutSync(CustomKeyboard.Name)
                 windowManager.setKeyboardWindowVisible(true)
                 if (!windowManager.isAttached(keyboardWindow)) {
-                    // attach 会自动 detach 当前窗口（如符号面板），无需手动摘
+                    // attach 会自动 detach 当前窗口（如符号/表情面板），无需手动摘
                     windowManager.attachWindow(KeyboardWindow)
                 }
-            }
-            SymState.SYMBOL -> {
-                windowManager.setKeyboardWindowVisible(true)
-                windowManager.attachWindow(PickerWindow.Key.Symbol)
-                keyboardWindow.markSymbolPickerActive()
-            }
-            SymState.HIDDEN -> {
-                // 隐藏键盘：收起键盘窗口（物理模式由 onLayoutSwitched 顺带收起 InputView）
-                windowManager.setKeyboardWindowVisible(false)
-                if (!windowManager.isAttached(keyboardWindow)) {
-                    windowManager.attachWindow(KeyboardWindow)
-                }
-                keyboardWindow.switchLayout(TextKeyboard.Name)
-                keyboardWindow.symMode = KeyboardWindow.SymMode.NONE
             }
         }
     }
 
-    private fun toggleSymbolWindow() {
-        val order = symCycleOrder()
-        val current = currentSymState()
-        val next = if (current == null) order.first()
-        else order[(order.indexOf(current) + 1) % order.size]
-        applySymState(next)
+    /**
+     * 面板循环：从当前态推进到「启用且排序后」的下一态；当前为关闭或序列末尾则回到关闭。
+     * 窗口切换会改变 IME 触摸区，结束后强制重算 insets。
+     */
+    internal fun cyclePanels() {
+        val modules = orderedEnabledModules()
+        if (modules.isEmpty()) return
+        val current = currentPanelModule()
+        val next = if (current == null) modules.first()
+        else {
+            val idx = modules.indexOf(current)
+            if (idx == modules.lastIndex) null else modules[idx + 1]
+        }
+        applyPanelModule(next)
+        service.requestInsetsUpdate()
+        // 同步顶栏循环按钮图标到新态
+        kawaiiBar.updatePanelCycleButton(next)
     }
 
     /**
@@ -1087,33 +1130,17 @@ class InputView(
         matchesParsedKey(event, parseKeyString(hardwareKeyboardPrefs.symbolPickerKey.getValue()))
 
     /**
-     * 符号键「轻按」的动作体：三态循环（自定义键盘 → 符号选择器 → 隐藏）。
+     * 符号键「轻按」的动作体：有序面板循环（关闭 → 排序1 → … → 关闭）。
      *
      * 两条路共用：按下即切换的老路径，以及 tap-hold 的**松手**路径 —— 后者是修饰键兼符号键时
-     * 必须的延迟，行为与原来一致，只是晚到松手那一刻。所以三态循环、亮出 InputView、重算
+     * 必须的延迟，行为与原来一致，只是晚到松手那一刻。所以面板循环、亮出 InputView、重算
      * insets 的逻辑只能有一份。
      */
     fun toggleSymbolForKeyPress() {
-        val symbolPickerOpen = windowManager.isAttached(symbolPicker)
-        val customActive = keyboardWindow.isCustomKeyboardActive
-        if (!symbolPickerOpen && !customActive && physicalKeyboardMode) {
-            // Open the symbol window: in physical mode the keyboard window (its base) is hidden,
-            // so reveal this InputView first.
-            visibility = View.VISIBLE
-            // The KawaiiBar candidate surface is a virtual-keyboard component and its event
-            // collector is disabled (handleEvents == false) in physical mode, so it would
-            // otherwise keep showing the last stale, frozen candidate list for the whole time
-            // the InputView is revealed. Push it back to Idle (toolbar) — the floating window
-            // remains the live candidate surface, and normal virtual-mode events will restore
-            // it later.
-            kawaiiBar.resetToIdleState()
-        }
-        // 符号窗口 / 自定义键盘打开中 → 在两者间切换（不再回主键盘，见 toggleSymbolWindow）
-        toggleSymbolWindow()
-        // The symbol window lives inside this InputView, so revealing/hiding it changes how much
-        // of the IME window must be touchable. Force the framework to recompute the touchable
-        // insets (see [FcitxInputMethodService.onComputeInsets]).
-        service.requestInsetsUpdate()
+        // 面板循环：窗口切换会改变 IME 触摸区，cyclePanels() 内已重算 insets。
+        // InputView 的显出 / 收回统一在 applyPanelModule 里按「当前是否可见」判定，
+        // 不依赖 physicalKeyboardMode（Disabled 强制 true、InputDevice 未打字前也是 true，会漏收）。
+        cyclePanels()
     }
 
     /**

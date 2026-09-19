@@ -16,7 +16,6 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.InputFeedbacks.SoundScheme
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
-import org.fcitx.fcitx5.android.data.prefs.SymFirstTarget
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
@@ -347,23 +346,6 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         profileScreen.addPreference(symbolPickerPref)
         keyPrefs.add(symbolPickerPref)
-
-        // Sym 键首选面板：与上方「符号键盘快捷键」配套，决定 Sym 键首先打开哪一个
-        // （自定义一行键盘 / 符号键盘）。仅影响循环起点，三态必然依次经过。
-        val symFirstList = ListPreference(context).apply {
-            key = hw.symFirst.key
-            title = getString(R.string.hw_sym_first)
-            entries = arrayOf(
-                getString(R.string.hw_sym_first_custom),
-                getString(R.string.hw_sym_first_symbol)
-            )
-            entryValues = arrayOf(SymFirstTarget.CUSTOM, SymFirstTarget.SYMBOL)
-            setDefaultValue(hw.symFirst.getValue())
-            value = hw.symFirst.getValue()
-            summary = "%s"
-            isIconSpaceReserved = false
-        }
-        profileScreen.addPreference(symFirstList)
 
         // Apply the persisted quick-pick state's visibility to candidate2-5 BEFORE returning, so
         // the screen never briefly shows rows that the current state says should be hidden.

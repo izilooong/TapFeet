@@ -39,5 +39,11 @@ sealed class KeyAction {
 
     data class PickerSwitchAction(val key: PickerWindow.Key? = null) : KeyAction()
 
+    /**
+     * 符号窗口按钮的统一触发动作：按「启用且排序后」的面板列表循环切换
+     * （关闭 → 排序1 → 排序2 → … → 关闭）。屏幕 `!?#` 键、顶栏常驻按钮、物理 SYM 键共用。
+     */
+    data object PanelCycleAction : KeyAction()
+
     data object SpaceLongPressAction : KeyAction()
 }

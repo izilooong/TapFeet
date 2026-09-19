@@ -29,12 +29,6 @@ import org.fcitx.fcitx5.android.utils.DeviceUtil
 import org.fcitx.fcitx5.android.utils.appContext
 import org.fcitx.fcitx5.android.utils.vibrator
 
-/** Sym 键循环切换时「优先出现」的目标取值，须与 [AppPrefs.HardwareKeyboard.symFirst] 的存储值一致 */
-internal object SymFirstTarget {
-    const val CUSTOM = "custom"
-    const val SYMBOL = "symbol"
-}
-
 class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class Internal : ManagedPreferenceInternal(sharedPreferences) {
@@ -479,9 +473,21 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
      * 纯数据、无自动 UI，编辑页为 [org.fcitx.fcitx5.android.ui.main.settings.behavior.CustomKeyboardSettingsFragment]。
      */
     inner class CustomKeyboard : ManagedPreferenceInternal(sharedPreferences) {
-        // 总开关：关闭后自定义键盘不可打开（状态栏⑩按钮、符号键盘⑩键隐藏，Sym 循环剔除自定义态）
+        // 总开关：关闭后自定义键盘不可打开（状态栏⑩按钮、符号键盘⑩键隐藏，面板循环剔除自定义态）
         val enabled = bool("custom_keyboard_enabled", false)
         val keys = stringLike("custom_keyboard_keys", CustomKeyboardCodec, CustomKeyboardDefaults.keys)
+    }
+
+    /**
+     * 「符号 / 表情 / 自定义」三个面板的循环顺序与各自开关。
+     * 循环顺序 [panelOrder] 由设置页拖拽排序持久化；[symbolPanelEnabled] / [emojiPanelEnabled]
+     * 是这两个面板的独立开关，自定义键盘的开关复用 [CustomKeyboard.enabled]（避免重复定义）。
+     * 三态起点不再有「首选」概念——按启用且排序后的列表依次经过，关闭态永远在序列尾。
+     */
+    inner class PanelCycle : ManagedPreferenceInternal(sharedPreferences) {
+        val panelOrder = stringLike("panel_cycle_order", PanelCycleCodec, PanelCycleDefaults.order)
+        val symbolPanelEnabled = bool("symbol_panel_enabled", true)
+        val emojiPanelEnabled = bool("emoji_panel_enabled", true)
     }
 
     inner class HardwareKeyboard :
@@ -592,10 +598,6 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val pageNextKey = string("hw_candidate_page_next_key", "")
         val pagePrevKey = string("hw_candidate_page_prev_key", "")
         val symbolPickerKey = string("hw_symbol_picker_key", "")
-        // Sym（符号）键三态循环（自定义一行键盘 → 符号选择器 → 隐藏键盘）的「首选」目标：
-        // 自定义键盘 or 符号选择器。此项只决定循环起点（谁先出现），三态必然依次经过，
-        // 不会因首选而跳过某一态。取值见 [SymFirstTarget]。
-        val symFirst = string("hw_sym_first", SymFirstTarget.SYMBOL)
         // Global key actions (extracted from candidate1's Alt/Shift combos so they can be rebound).
         // Empty string means "not bound".
         val toggleImeKey = string("hw_toggle_ime_key", "")
@@ -663,6 +665,18 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             3, 1, 5,
             enableUiOn = { enabled.getValue() && mode.getValue() == EffectMode.Particles }
         )
+
+        // Effect length as a percentage of the default: higher = slower and longer-lasting,
+        // lower = snappier. Applied as a uniform time-scale in CommitEffectsOverlay, so it spans
+        // every flavour (particles / bubbles / fly text) plus the combo counter.
+        val duration = int(
+            R.string.effects_duration,
+            "effects_duration",
+            100, 25, 300,
+            unit = "%",
+            step = 5,
+            enableUiOn = { enabled.getValue() }
+        )
     }
 
     /**
@@ -727,6 +741,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     val clipboard = Clipboard().register()
     val symbols = Symbols().register()
     val customKeyboard = CustomKeyboard().register()
+    val panelCycle = PanelCycle().register()
     val effects = Effects().register()
     val advanced = Advanced().register()
    

@@ -64,10 +64,7 @@
     <string name="candidate_key_5">第5候选字</string>
     <string name="candidate_page_next">下一页</string>
     <string name="candidate_page_prev">上一页</string>
-    <string name="hw_symbol_picker">符号窗口</string>
-    <string name="hw_sym_first">Sym 键首选面板</string>
-    <string name="hw_sym_first_custom">自定义键盘</string>
-    <string name="hw_sym_first_symbol">符号键盘</string>
+    <string name="hw_symbol_picker">打开快捷窗口</string>
     <string name="hw_alt_latch">Alt 锁定</string>
     <string name="hw_alt_latch_summary">双击锁定键可保持 Alt 按下状态。</string>
     <string name="hw_alt_latch_key">Alt 锁定键（双击）</string>
@@ -188,7 +185,13 @@
     <string name="effects_combo_meter">连击计数</string>
     <string name="effects_combo_meter_summary">连续输入时显示连击数与打字速度。</string>
     <string name="effects_particle_density">粒子密度</string>
+    <string name="effects_duration">特效时长</string>
     <string name="custom_keyboard">自定义键盘</string>
+    <string name="panel_cycle_settings">快捷窗口</string>
+    <string name="panel_cycle">快捷窗口</string>
+    <string name="panel_module_symbol">符号键盘</string>
+    <string name="panel_module_emoji">表情键盘</string>
+    <string name="panel_module_custom">自定义键盘</string>
     <string name="custom_keyboard_enabled">启用自定义键盘</string>
     <string name="custom_keyboard_enabled_summary">关闭后自定义键盘在所有入口隐藏。</string>
     <string name="custom_keyboard_key_title">按键 %1$d</string>
