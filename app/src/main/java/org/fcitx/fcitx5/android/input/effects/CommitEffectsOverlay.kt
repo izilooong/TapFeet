@@ -8,11 +8,9 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
-import android.view.Choreographer
 import android.view.View
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
@@ -32,7 +30,7 @@ import timber.log.Timber
  * — InputView is GONE in hardware-keyboard mode (the Q25's whole point) and gets recreated on
  * theme changes. Nothing here rebuilds on either event.
  */
-class CommitEffectsOverlay(context: Context) : View(context), Choreographer.FrameCallback {
+class CommitEffectsOverlay(context: Context) : View(context) {
 
     private class Particle {
         var x = 0f
@@ -96,17 +94,11 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         /** Frames an emission may wait for the first layout before it gives up on this burst. */
         private const val MAX_EMIT_RETRIES = 3
         /**
-         * How long the frame loop may go silent before it is assumed dead. A burst lasts at
-         * most ~1.5s, so anything beyond this means the callback chain was lost rather than
-         * that the effect simply finished.
+         * Pool occupants that have not been drawn for this long are stale ghosts of an
+         * animation interrupted by a window hide/detach. They are drained on the next spawn
+         * so they cannot hold their slots forever.
          */
-        private const val STALE_LOOP_MS = 1000L
-        /**
-         * How long the loop may stay wedged — claiming to run while no frame is delivered and
-         * the [STALE_LOOP_MS] watchdog's re-seeds are failing — before the control state is
-         * reset outright. Three watchdog cycles.
-         */
-        private const val HARD_RESET_MS = 3000L
+        private const val STALE_DRAIN_MS = 1000L
         private const val COMBO_SHOW_MS = 1200L
         private const val COMBO_FADE_MS = 400f
         private const val FRAME_SAMPLES = 30
@@ -161,31 +153,17 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     private val tracker = ComboTracker()
     private val random = Random(SystemClock.uptimeMillis())
 
-    private var running = false
-    private var lastFrameNs = 0L
     /**
-     * Stamp of the last delivered frame on the [SystemClock.elapsedRealtime] clock — which,
-     * unlike [SystemClock.uptimeMillis], keeps counting through deep sleep. This is what makes
-     * staleness detection see an overnight gap: uptimeMillis freezes while the device sleeps,
-     * so a loop wedged at the sleep boundary (callback and watchdog both lost in Doze) would
-     * look "fresh" the next morning and every burst would silently no-op until a restart.
+     * Uptime of the previous [onDraw]. Purely the dt source for the simulation: if frames
+     * stop (window hidden, nothing left to animate), the next kick's first frame is simply
+     * clamped — there is no control state to go stale, which is the whole point of driving
+     * the animation from [onDraw] instead of a self-maintained callback chain.
      */
-    private var lastDoFrameMs = 0L
-    /**
-     * True exactly while a Choreographer frame callback is genuinely outstanding. This is what
-     * was previously conflated with [running]: `running` means "there are particles to animate",
-     * this means "a callback is actually posted". When the IME window detaches the *callback* is
-     * silently dropped by the framework while `running` stays true — the two diverging is the bug.
-     * Tracking them separately lets the loop re-seed idempotently without ever double-posting.
-     */
-    private var pendingCallback = false
-    private val handler = Handler(Looper.getMainLooper())
-    /** True while the [watchdogTask] is scheduled. */
-    private var watchdogScheduled = false
+    private var lastFrameMs = 0L
     /**
      * User-chosen effect length as a multiplier of the default (1.0 = default). Higher = the
      * whole animation plays slower and lasts longer; lower = snappier. Applied as a uniform
-     * time-scale in [doFrame] so the spatial shape of every burst is preserved — only the
+     * time-scale in [onDraw] so the spatial shape of every burst is preserved — only the
      * playback speed/duration changes.
      */
     private var durationScale = 1f
@@ -215,11 +193,9 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     }
 
     /**
-     * Choreographer is thread-local: a frame callback posted from anywhere but the main thread
-     * lands on *that* thread's Choreographer, which never ticks inside an IME window. The loop
-     * would then sit at running=true forever and every later burst gets silently dropped — the
-     * classic "effects suddenly stopped working, and never came back" report. Re-dispatch and
-     * let the real work happen on the main thread instead of touching views from here.
+     * View mutation must happen on the main thread. Spawning off-thread (e.g. from a fcitx
+     * event dispatcher thread) would touch pool state and trigger draws from the wrong
+     * thread — re-dispatch through [View.post] and let the work happen where it belongs.
      */
     private fun onMainThread(what: String, rerun: () -> Unit): Boolean {
         if (Looper.myLooper() == Looper.getMainLooper()) return true
@@ -284,7 +260,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             comboVisibleUntil = now + (COMBO_SHOW_MS * durationScale).toLong()
         }
         burstFresh = false
-        startIfNeeded()
+        kick()
     }
 
     fun setCandidatesView(view: View?) {
@@ -350,17 +326,12 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             Timber.d("effects: flyer DROPPED (blank text)")
             return
         }
+        drainIfStale()
         if (flyerAlive >= MAX_FLYERS) {
-            if (!loopFrozen()) {
-                // Pool genuinely full of live flyers: back-pressure, drop this one.
-                Timber.d("effects: flyer DROPPED (flyerAlive=%d)", flyerAlive)
-                return
-            }
-            // Pool full of frozen ghosts (loop silent >1s): drain instead of starving —
-            // otherwise 12 wedged flyers swallow every future fly animation, and this early
-            // return even skips startIfNeeded, so the loop never gets a chance to revive.
-            Timber.w("effects: drained %d frozen flyers", flyerAlive)
-            flyerAlive = 0
+            // Pool full of live flyers: back-pressure, drop this one. (Ghosts of an
+            // animation interrupted by a window hide were drained by drainIfStale above.)
+            Timber.d("effects: flyer DROPPED (flyerAlive=%d)", flyerAlive)
+            return
         }
         val loc = intArrayOf(0, 0)
         getLocationOnScreen(loc)
@@ -372,7 +343,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         f.rise = (y * FLY_RISE_RATIO).coerceAtLeast(FLY_MIN_RISE_DP * density)
         f.maxLife = FLY_LIFE_MS
         f.life = f.maxLife
-        startIfNeeded()
+        kick()
     }
 
     /**
@@ -387,12 +358,8 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         val loc = intArrayOf(0, 0)
         getLocationOnScreen(loc)
         val cap = if (quality < 0.5f) DEGRADED_BUBBLES else MAX_BUBBLES
-        if (bubbleAlive >= cap) {
-            if (!loopFrozen()) return
-            // Frozen ghosts holding every slot: drain rather than starve future bubbles.
-            Timber.w("effects: drained %d frozen bubbles", bubbleAlive)
-            bubbleAlive = 0
-        }
+        drainIfStale()
+        if (bubbleAlive >= cap) return // live back-pressure; ghosts were drained above
         val y = screenY - loc[1]
         val b = bubbles[bubbleAlive++]
         b.x = screenX - loc[0]
@@ -407,7 +374,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         bubbleTextPaint.textSize = BUBBLE_FONT_SP * scaledDensity
         val tw = bubbleTextPaint.measureText(text)
         b.radius = tw.coerceAtLeast(bubbleTextPaint.textSize) / 2f + BUBBLE_PAD_DP * density
-        startIfNeeded()
+        kick()
     }
 
     private fun burstX() = if (burstFresh) burstX else anchorX()
@@ -444,135 +411,41 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         (y * RISE_RATIO).coerceIn(MIN_RISE_DP * density, MAX_RISE_DP * density)
 
     fun release() {
-        running = false
-        pendingCallback = false
         alive = 0
         bubbleAlive = 0
         flyerAlive = 0
-        lastFrameNs = 0L
-        // Zeroing this is what makes the staleness test correct: a released overlay
-        // must look stale even if the callback chain was cut mid-flight (which is what happens when
-        // the view is detached rather than drained). Otherwise a stale-but-fresh timestamp would
-        // make the next burst silently drop itself.
-        lastDoFrameMs = 0L
-        cancelWatchdog()
-        Choreographer.getInstance().removeFrameCallback(this)
-    }
-
-    /**
-     * Posts a single frame callback, idempotently: if one is already outstanding we do nothing,
-     * so the chain can never be doubled. Callers rely on this to re-seed a lost chain without
-     * risking two concurrent chains (which would animate particles at 2x speed).
-     */
-    private fun armLoop() {
-        if (pendingCallback) return
-        pendingCallback = true
-        lastFrameNs = 0L
-        Choreographer.getInstance().postFrameCallback(this)
-    }
-
-    private val watchdogTask = Runnable { checkAlive() }
-
-    /**
-     * True when no frame has been delivered for over [STALE_LOOP_MS]. Any pool occupant in
-     * this state is a frozen ghost, not a live effect — it blocks its slot while never being
-     * drawn. Deliberately independent of [running]: a hard reset leaves the loop at rest with
-     * ghosts still in the pools, and the drain guards must open in that state too.
-     */
-    private fun loopFrozen(): Boolean =
-        SystemClock.elapsedRealtime() - lastDoFrameMs > STALE_LOOP_MS
-
-    /**
-     * Full control-state reset for a wedged loop: flags, timestamps, callback and watchdog all
-     * return to the cold-start state (pool occupants are left to drain once frames resume).
-     * Whatever wedge fresh callbacks could not clear — the "effects never come back until the
-     * phone / IME is restarted" report — cannot survive a reset. The log line doubles as
-     * forensics: it dumps the full wedged state so one logcat identifies the culprit.
-     */
-    private fun hardReset() {
-        Timber.w(
-            "effects: hard reset (silent %dms) pending=%b alive=%d bubbles=%d flyers=%d overlay=%dx%d attached=%b",
-            SystemClock.elapsedRealtime() - lastDoFrameMs, pendingCallback,
-            alive, bubbleAlive, flyerAlive, width, height, isAttachedToWindow
-        )
-        running = false
-        pendingCallback = false
-        lastFrameNs = 0L
-        lastDoFrameMs = SystemClock.elapsedRealtime()
         comboVisibleUntil = 0L
-        cancelWatchdog()
-        Choreographer.getInstance().removeFrameCallback(this)
+        lastFrameMs = 0L
     }
 
     /**
-     * Independent of any commit: while the loop is "running" but no frame has been delivered,
-     * re-seed the lost callback ([STALE_LOOP_MS]) — or, if re-seeds keep failing
-     * ([HARD_RESET_MS]), reset the control state outright. This is the safety net that makes
-     * recovery independent of the user pausing and typing again. Staleness is measured on
-     * [SystemClock.elapsedRealtime] so the hours spent in deep sleep count too — the loop
-     * wedged at the sleep boundary is dead on arrival the next morning, not "fresh".
+     * Books the next frame through [android.view.View.postInvalidateOnAnimation] — the same
+     * ViewRootImpl animation scheduler that drives every View animation in the framework.
+     * The loop perpetuates itself from inside [onDraw], so there is no callback chain to
+     * lose and nothing to re-seed: a hidden window simply stops the draws, and the next
+     * spawn's kick resumes them. Safe to call when detached (no-op) or repeatedly (just
+     * coalesces into one draw).
      */
-    private fun checkAlive() {
-        watchdogScheduled = false
-        if (!running) return
-        val sinceLast = SystemClock.elapsedRealtime() - lastDoFrameMs
-        when {
-            sinceLast > HARD_RESET_MS ->
-                // Two re-seeds have failed to produce a frame: stop re-posting into whatever
-                // is eating the callbacks and reset the control state outright.
-                hardReset()
-            sinceLast > STALE_LOOP_MS -> {
-                Choreographer.getInstance().removeFrameCallback(this)
-                pendingCallback = false
-                armLoop()
-                scheduleWatchdog()
-            }
-            else -> scheduleWatchdog()
-        }
-    }
-
-    private fun scheduleWatchdog() {
-        if (watchdogScheduled || !running) return
-        watchdogScheduled = true
-        handler.postDelayed(watchdogTask, STALE_LOOP_MS)
-    }
-
-    private fun cancelWatchdog() {
-        if (!watchdogScheduled) return
-        watchdogScheduled = false
-        handler.removeCallbacks(watchdogTask)
+    private fun kick() {
+        postInvalidateOnAnimation()
     }
 
     /**
-     * Revives the loop the moment the IME window is shown again. The previous callback may or may
-     * not have survived the detach; cancelling then re-posting guarantees exactly one live callback
-     * either way, so effects resume instantly instead of waiting on a typing gap. Driven both from
-     * the service's [org.fcitx.fcitx5.android.input.FcitxInputMethodService.onWindowShown] and from
-     * this view's own [onWindowVisibilityChanged].
+     * An animation interrupted by a window hide/detach leaves pool occupants that will never
+     * be drawn to completion — ghosts holding their slots. With no watchdog left, the next
+     * spawn simply drains them: if no frame has run in a while, whatever is in the pools is
+     * by definition not animating anymore.
      */
-    fun resumeIfNeeded() {
-        if (!running) return
-        Choreographer.getInstance().removeFrameCallback(this)
-        pendingCallback = false
-        armLoop()
-        scheduleWatchdog()
-    }
-
-    override fun onWindowVisibilityChanged(visibility: Int) {
-        super.onWindowVisibilityChanged(visibility)
-        if (visibility == VISIBLE) resumeIfNeeded()
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        // Loud on purpose: the overlay must stay on the IME window's content view for the
-        // service's whole lifetime. Being detached means it can never draw again — exactly
-        // the "effects silently gone until restart" symptom. If this ever fires outside
-        // service teardown, it names the culprit outright.
+    private fun drainIfStale() {
+        if (alive == 0 && bubbleAlive == 0 && flyerAlive == 0) return
+        if (SystemClock.uptimeMillis() - lastFrameMs <= STALE_DRAIN_MS) return
         Timber.w(
-            "effects: overlay DETACHED from window (running=%b alive=%d bubbles=%d flyers=%d)",
-            running, alive, bubbleAlive, flyerAlive
+            "effects: drained stale ghosts (alive=%d bubbles=%d flyers=%d)",
+            alive, bubbleAlive, flyerAlive
         )
+        alive = 0
+        bubbleAlive = 0
+        flyerAlive = 0
     }
 
     private fun emit(x: Float, y: Float, tier: Int, densityPref: Int) {
@@ -586,17 +459,12 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
             return
         }
         retryLeft = MAX_EMIT_RETRIES
+        drainIfStale()
         // An anchor measured before layout (or a bar that never reported one) reads as 0;
         // recompute it now that the window has a size.
         val ox = if (x > 0f) x else anchorX()
         val oy = if (y > 0f) y else launchY()
         val cap = if (quality < 0.5f) DEGRADED_MAX else MAX_PARTICLES
-        if (alive >= cap && loopFrozen()) {
-            // Frozen ghosts holding every particle slot: drain rather than emit nothing —
-            // a wedged pool would otherwise swallow every future burst invisibly.
-            Timber.w("effects: drained %d frozen particles", alive)
-            alive = 0
-        }
         val count = ((BASE_COUNT + densityPref * 2 + tier * 2) * quality).toInt()
             .coerceAtLeast(MIN_COUNT)
         // A fresh random hue per burst — natural, never neon, and every committed word gets
@@ -670,36 +538,40 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         return Color.HSVToColor(floatArrayOf(hue, sat, value))
     }
 
-    override fun doFrame(frameTimeNanos: Long) {
-        if (!running) {
-            pendingCallback = false
-            return
-        }
-        // The callback that invoked us has now been consumed; clear the flag so [armLoop] can
-        // re-post a fresh one (and so the watchdog can tell a lost callback from a live one).
-        pendingCallback = false
-        val rawDtMs = if (lastFrameNs == 0L) 16.7f
-        else ((frameTimeNanos - lastFrameNs) / 1_000_000f).coerceIn(1f, 50f)
-        lastFrameNs = frameTimeNanos
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val now = SystemClock.uptimeMillis()
+        val rawDtMs = if (lastFrameMs == 0L) 16.7f
+        else (now - lastFrameMs).toFloat().coerceIn(1f, 50f)
+        lastFrameMs = now
 
         // Time-dilate the whole effect by the duration setting: dividing the simulation step by
         // `durationScale` makes particles / bubbles / flyers live longer AND move slower, so each
         // burst keeps its shape — it is only played slower (scale > 1) or faster (scale < 1).
         val dtMs = rawDtMs / durationScale
-        val now = SystemClock.uptimeMillis()
-        // Staleness stamp on elapsedRealtime (see the field doc): deep sleep must count toward
-        // it. `now` stays on uptimeMillis for combo timing, which never spans a sleep.
-        lastDoFrameMs = SystemClock.elapsedRealtime()
         step(dtMs, now)
         recordFrame(rawDtMs)
-        invalidate()
 
+        for (i in 0 until alive) {
+            val p = pool[i]
+            val t = (p.life / p.maxLife).coerceIn(0f, 1f)
+            paint.color = p.color
+            paint.alpha = (255 * t * t).toInt().coerceIn(0, 255)
+            canvas.drawCircle(p.x, p.y, p.radius * (0.35f + 0.65f * t), paint)
+        }
+        drawBubbles(canvas)
+        drawFlyers(canvas)
+        drawCombo(canvas)
+
+        // Self-perpetuating loop: each frame books the next one through ViewRootImpl while
+        // anything is still alive. When the pools drain and the combo has faded, the loop
+        // simply ends — the next spawn's kick() starts it again. Nothing to re-seed, nothing
+        // to watchdog: a hidden window stops the draws and the framework picks them back up
+        // on its own.
         if (alive > 0 || bubbleAlive > 0 || flyerAlive > 0 || now < comboVisibleUntil) {
-            armLoop()
+            postInvalidateOnAnimation()
         } else {
-            running = false
-            pendingCallback = false
-            cancelWatchdog()
+            lastFrameMs = 0L
         }
     }
 
@@ -789,20 +661,6 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         }
     }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        for (i in 0 until alive) {
-            val p = pool[i]
-            val t = (p.life / p.maxLife).coerceIn(0f, 1f)
-            paint.color = p.color
-            paint.alpha = (255 * t * t).toInt().coerceIn(0, 255)
-            canvas.drawCircle(p.x, p.y, p.radius * (0.35f + 0.65f * t), paint)
-        }
-        drawBubbles(canvas)
-        drawFlyers(canvas)
-        drawCombo(canvas)
-    }
-
     private fun drawFlyers(canvas: Canvas) {
         if (flyerAlive == 0) return
         // Same colour rule as the old fly view: ride the candidate bar's own text colour so
@@ -888,37 +746,9 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         canvas.drawText("${tracker.cpm} CPM", left, top + 14f * scaledDensity, textPaint)
     }
 
-    private fun startIfNeeded() {
-        // Nuclear self-heal: a trigger arrived while the loop claims to be running but no frame
-        // has been delivered for [HARD_RESET_MS] — measured on elapsedRealtime, so an overnight
-        // sleep counts in full and the morning's very first trigger resets a loop wedged at the
-        // sleep boundary (callback and watchdog both lost in Doze). Reset the control state; the
-        // fresh burst armed just below then animates on a clean loop.
-        if (running && SystemClock.elapsedRealtime() - lastDoFrameMs > HARD_RESET_MS) {
-            hardReset()
-        }
-        if (running && pendingCallback) {
-            // Loop is genuinely alive: a callback is outstanding and we are mid-animation.
-            return
-        }
-        // Either the loop ended naturally (running==false) or its callback was lost while
-        // running (window detach / process backgrounded, leaving running==true with nothing
-        // actually pending). The old code trusted a "silent <1s" shortcut here and skipped
-        // re-seeding, which left running stuck true forever — the reported "effects suddenly
-        // stop and only recover after a restart / IME switch" bug. We now always re-seed,
-        // relying on [armLoop]'s idempotency to never double the chain.
-        if (running && !pendingCallback) {
-            Timber.w("effects: frame loop was dead while running, re-seeding it")
-        }
-        Choreographer.getInstance().removeFrameCallback(this)
-        running = true
-        armLoop()
-        scheduleWatchdog()
-    }
-
     /**
-     * Real frame intervals rather than measured draw cost — Choreographer hands us the actual
-     * presentation timestamps, so a sustained gap above ~17.5ms means we are dropping frames
+     * Real frame intervals rather than measured draw cost — the [onDraw] cadence tracks the
+     * actual vsync rhythm, so a sustained gap above ~17.5ms means we are dropping frames
      * on this device and should thin the burst out.
      */
     private fun recordFrame(dtMs: Float) {

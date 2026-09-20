@@ -10,6 +10,7 @@ import android.widget.ImageView
 import androidx.annotation.ColorInt
 import androidx.annotation.DrawableRes
 import androidx.appcompat.content.res.AppCompatResources
+import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import timber.log.Timber
 import org.fcitx.fcitx5.android.data.theme.Theme
