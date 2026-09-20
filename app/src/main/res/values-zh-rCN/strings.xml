@@ -87,6 +87,7 @@
     <string name="hw_profile_blackberry">BlackBerry</string>
     <string name="hw_profile_tt2">Titan2</string>
     <string name="hw_profile_titan2_elite">Titan2 Elite</string>
+    <string name="hw_profile_titan2_elite_mod">Titan2 Elite（改键）</string>
     <!-- 伪按键显示名（见 HardwareSpecialKeys）：没有 fcitx5 KeySym 的物理功能键 -->
     <string name="hw_special_sym">Sym</string>
     <string name="hw_special_back">返回</string>

@@ -87,6 +87,7 @@
     <string name="hw_profile_blackberry">BlackBerry</string>
     <string name="hw_profile_tt2">Titan2</string>
     <string name="hw_profile_titan2_elite">Titan2 Elite</string>
+    <string name="hw_profile_titan2_elite_mod">Titan2 Elite (改键)</string>
     <!-- Labels for pseudo keys (see HardwareSpecialKeys): physical function keys that have no
          fcitx5 KeySym, so they are bound by name instead of a portableString. -->
     <string name="hw_special_sym">Sym</string>

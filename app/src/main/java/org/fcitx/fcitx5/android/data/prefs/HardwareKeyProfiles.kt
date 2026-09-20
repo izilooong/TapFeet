@@ -17,8 +17,9 @@ import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
  * Selecting a profile in the settings screen overwrites every individual key binding with the
  * profile's values.
  *
- * [BLACKBERRY] is the original/default set of bindings. [TT2] and [TITAN2_ELITE] are alternative
- * layouts.
+ * [BLACKBERRY] is the original/default set of bindings. [TT2], [TITAN2_ELITE] and
+ * [TITAN2_ELITE_MOD] are alternative layouts. [TITAN2_ELITE_MOD] is [TITAN2_ELITE] with the
+ * candidate-selection and paging keys remapped (see the operation manual).
  * The individual keys remain editable afterwards, so a profile is only an initial batch set.
  */
 object HardwareKeyProfiles {
@@ -26,9 +27,10 @@ object HardwareKeyProfiles {
     const val BLACKBERRY = "blackberry"
     const val TT2 = "tt2"
     const val TITAN2_ELITE = "titan2_elite"
+    const val TITAN2_ELITE_MOD = "titan2_elite_mod"
 
     /** All available profile ids, in display order. */
-    fun ids(): List<String> = listOf(BLACKBERRY, TT2, TITAN2_ELITE)
+    fun ids(): List<String> = listOf(BLACKBERRY, TT2, TITAN2_ELITE, TITAN2_ELITE_MOD)
 
     /**
      * 预设显示名。下拉框的 entries 与「恢复推荐键位」的摘要都从这里取，
@@ -38,6 +40,7 @@ object HardwareKeyProfiles {
     fun labelResFor(name: String): Int = when (name) {
         TT2 -> R.string.hw_profile_tt2
         TITAN2_ELITE -> R.string.hw_profile_titan2_elite
+        TITAN2_ELITE_MOD -> R.string.hw_profile_titan2_elite_mod
         else -> R.string.hw_profile_blackberry
     }
 
@@ -110,9 +113,37 @@ object HardwareKeyProfiles {
         "Alt_L",        // altLatchKey       本机只有左 Alt
     )
 
+    /**
+     * Titan2 Elite（改键）. 与 [titan2EliteValues] 同硬件、同符号窗口/Fn/Alt 这套，只是把
+     * 「选字」和「翻页」的键位重排（对应操作手册里的「Titan2 Elite（改键后）」布局）：
+     *
+     *  - 巨硬选字五键改为 `0 | 返回 | 空格 | Ctrl | Fn`（原 `左Shift | 返回 | 空格 | Fn | 右Shift`）。
+     *    其中 `0` 与 `Ctrl` 来自用户在系统设置里把 ⭕️Home、`⬛️`多任务 两个被窗口策略吃掉的键
+     *    分别重映射成 `0` / `Ctrl` —— 这两个键 IME 收不到，不重映射就空着。
+     *  - 翻页从 `Sym` / `Alt+Sym` 改到 `右Shift`(下一页) / `左Shift`(上一页)，把原本占着选字位的
+     *    左右 Shift 让出来给选字。
+     *
+     * `Ctrl` 用 `Control_L`：系统重映射一般发 `KEYCODE_CTRL_LEFT`（→ XK_Control_L）。若你的重映射器
+     * 发的是 `KEYCODE_CTRL_RIGHT`，把这一行改成 `"Control_R"` 即可。
+     */
+    private val titan2EliteModValues = listOf(
+        "space",        // candidate1Key     空格 —— 巨硬首选字（居中）
+        "NavBack",      // candidate2Key     返回
+        "Control_L",    // candidate3Key     Ctrl（系统重映射 ⬛️ 多任务键为 Ctrl 后）
+        "0",            // candidate4Key     0（系统重映射 ⭕️ Home 键为 0 后）
+        "NavFn",        // candidate5Key     Fn
+        "Shift_R",      // pageNextKey       右 Shift（下一页）
+        "Shift_L",      // pagePrevKey       左 Shift（上一页）
+        "NavFn",        // symbolPickerKey   Fn 键（轻按开符号窗口）
+        "Alt+space",    // toggleImeKey
+        "Shift+space",  // pickerKey
+        "Alt_L",        // altLatchKey       本机只有左 Alt
+    )
+
     private fun valuesFor(name: String): List<String> = when (name) {
         TT2 -> tt2Values
         TITAN2_ELITE -> titan2EliteValues
+        TITAN2_ELITE_MOD -> titan2EliteModValues
         else -> blackberryValues
     }
 
@@ -153,7 +184,8 @@ object HardwareKeyProfiles {
     /**
      * 该预设下的推荐动作键（[ShortcutAction] → 绑定串）。
      *
-     * 只有 Titan2 / Titan2 Elite 有值，一律 `Fn+字母`。Fn 没有 fcitx5 修饰位、也不进 metaState，属于
+     * 只有 BlackBerry 不提供（见 [actionShortcutsAvailable]）；其余预设 —— Titan2 / Titan2 Elite /
+     * Titan2 Elite（改键）—— 一律 `Fn+字母`。Fn 没有 fcitx5 修饰位、也不进 metaState，属于
      * 伪修饰键，靠 [HardwareChord] 自己跟踪按住状态 —— 见那边的说明。Elite 上 Fn 原本是符号窗口键，
      * 现在按 tap-hold 处理：轻按仍开符号窗口，按住才是修饰键。
      *

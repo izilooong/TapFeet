@@ -120,7 +120,7 @@ class CandidatesView(
 
     private val candidatesUi = PagedCandidatesUi(
         ctx, theme, setupTextView,
-        onCandidateClick = { index -> fcitx.launchOnReady { it.select(index) } },
+        onCandidateClick = { index -> selectAtVisiblePosition(index) },
         onCandidateAction = { index, text, view -> showCandidateActionMenu(index, text, view) },
         onPrevPage = { fcitx.launchOnReady { it.offsetCandidatePage(-1) } },
         onNextPage = { fcitx.launchOnReady { it.offsetCandidatePage(1) } }
@@ -342,8 +342,29 @@ class CandidatesView(
 
     private fun selectAtVisiblePosition(position: Int): Boolean {
         if (position !in 0 until paged.candidates.size) return false
+        armPickEffect(position)
         fcitx.launchOnReady { it.select(position) }
         return true
+    }
+
+    /**
+     * Arm the commit effect for a floating-window pick. Unlike the horizontal bar — whose tap
+     * and hardware-key paths call HorizontalCandidateComponent.prepareFlyAnimation — the
+     * floating window had no arm at all, so Fly/Bubble modes never fired on a floating
+     * selection. The overlay re-confirms the armed text against the commit that follows.
+     */
+    private fun armPickEffect(position: Int) {
+        val candidate = paged.candidates.getOrNull(position) ?: return
+        val holder = candidatesUi.candidateList
+            .findViewHolderForAdapterPosition(position) as? PagedCandidatesUi.UiHolder.Candidate
+            ?: return
+        val loc = IntArray(2)
+        holder.ui.root.getLocationOnScreen(loc)
+        service.effectsOverlay?.armCandidatePick(
+            candidate.text,
+            loc[0] + holder.ui.root.width / 2f,
+            loc[1] + holder.ui.root.height / 2f
+        )
     }
 
     private fun pageCandidates(direction: Int) {

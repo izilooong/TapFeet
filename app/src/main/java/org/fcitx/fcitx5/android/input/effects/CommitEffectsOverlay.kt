@@ -163,7 +163,13 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
 
     private var running = false
     private var lastFrameNs = 0L
-    /** Wall-clock stamp of the last delivered frame; drives the stale-loop watchdog. */
+    /**
+     * Stamp of the last delivered frame on the [SystemClock.elapsedRealtime] clock — which,
+     * unlike [SystemClock.uptimeMillis], keeps counting through deep sleep. This is what makes
+     * staleness detection see an overnight gap: uptimeMillis freezes while the device sleeps,
+     * so a loop wedged at the sleep boundary (callback and watchdog both lost in Doze) would
+     * look "fresh" the next morning and every burst would silently no-op until a restart.
+     */
     private var lastDoFrameMs = 0L
     /**
      * True exactly while a Choreographer frame callback is genuinely outstanding. This is what
@@ -232,7 +238,30 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         // Pull the live duration setting up front so comboVisibleUntil below uses the fresh value.
         durationScale = (prefs.effects.duration.getValue() / 100f).coerceAtLeast(0.1f)
         val effects = prefs.effects
-        if (!effects.enabled.getValue() || effects.mode.getValue() != EffectMode.Particles) {
+        if (!effects.enabled.getValue()) {
+            Timber.d("effects: skipped master-switch off (text=%s)", text)
+            return
+        }
+        // Floating-path pick arm: re-confirmed by THIS commit, consumed either way — same
+        // contract as the horizontal bar's pendingFlyText handshake. Fly/Bubble must spawn here
+        // because selection surfaces without a handshake of their own (the floating
+        // CandidatesView) rely on this arm; without it those modes never fire on a floating pick.
+        // No arm pending ⇒ burstFresh untouched (the horizontal bar's setBurstAtScreen owns it).
+        val pickedText = pendingPickText
+        pendingPickText = null
+        if (pickedText != null) {
+            if (pickedText != text) {
+                burstFresh = false
+            } else if (effects.mode.getValue() != EffectMode.Particles) {
+                when (effects.mode.getValue()) {
+                    EffectMode.Fly -> flyTextAtScreen(pendingPickX, pendingPickY, text)
+                    EffectMode.Bubble -> burstBubbleAtScreen(pendingPickX, pendingPickY, text)
+                    else -> {}
+                }
+                return
+            }
+        }
+        if (effects.mode.getValue() != EffectMode.Particles) {
             Timber.d(
                 "effects: skipped (enabled=%b mode=%s)",
                 effects.enabled.getValue(), effects.mode.getValue()
@@ -269,6 +298,13 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     private var burstY = 0f
     private var burstFresh = false
 
+    // Floating-path selection arm (CandidatesView has no handshake of its own): the armed text
+    // must be re-confirmed by the next commit; consumed either way, so a phantom arm never
+    // fires a stale effect.
+    private var pendingPickText: String? = null
+    private var pendingPickX = 0f
+    private var pendingPickY = 0f
+
     /**
      * Mirrors how the candidate fly animation locates a word: the selected candidate's
      * screen-centre is converted into this overlay's own space (it sits at the content view's
@@ -280,6 +316,21 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         burstX = screenX - loc[0]
         burstY = screenY - loc[1]
         burstFresh = true
+    }
+
+    /**
+     * Arms a candidate-pick effect for a selection surface with no handshake of its own — the
+     * floating [org.fcitx.fcitx5.android.input.CandidatesView]. The armed text must be confirmed
+     * by the next commit (the pick's own commit) before anything fires; a phantom arm is
+     * consumed silently. Also pairs with [setBurstAtScreen], so a Particles-mode burst erupts on
+     * the picked candidate rather than at the generic anchor.
+     */
+    fun armCandidatePick(text: String, screenX: Float, screenY: Float) {
+        if (!onMainThread("armPick") { armCandidatePick(text, screenX, screenY) }) return
+        pendingPickText = text
+        pendingPickX = screenX
+        pendingPickY = screenY
+        setBurstAtScreen(screenX, screenY)
     }
 
     /**
@@ -429,7 +480,7 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
      * ghosts still in the pools, and the drain guards must open in that state too.
      */
     private fun loopFrozen(): Boolean =
-        SystemClock.uptimeMillis() - lastDoFrameMs > STALE_LOOP_MS
+        SystemClock.elapsedRealtime() - lastDoFrameMs > STALE_LOOP_MS
 
     /**
      * Full control-state reset for a wedged loop: flags, timestamps, callback and watchdog all
@@ -441,13 +492,13 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
     private fun hardReset() {
         Timber.w(
             "effects: hard reset (silent %dms) pending=%b alive=%d bubbles=%d flyers=%d overlay=%dx%d attached=%b",
-            SystemClock.uptimeMillis() - lastDoFrameMs, pendingCallback,
+            SystemClock.elapsedRealtime() - lastDoFrameMs, pendingCallback,
             alive, bubbleAlive, flyerAlive, width, height, isAttachedToWindow
         )
         running = false
         pendingCallback = false
         lastFrameNs = 0L
-        lastDoFrameMs = SystemClock.uptimeMillis()
+        lastDoFrameMs = SystemClock.elapsedRealtime()
         comboVisibleUntil = 0L
         cancelWatchdog()
         Choreographer.getInstance().removeFrameCallback(this)
@@ -457,12 +508,14 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
      * Independent of any commit: while the loop is "running" but no frame has been delivered,
      * re-seed the lost callback ([STALE_LOOP_MS]) — or, if re-seeds keep failing
      * ([HARD_RESET_MS]), reset the control state outright. This is the safety net that makes
-     * recovery independent of the user pausing and typing again.
+     * recovery independent of the user pausing and typing again. Staleness is measured on
+     * [SystemClock.elapsedRealtime] so the hours spent in deep sleep count too — the loop
+     * wedged at the sleep boundary is dead on arrival the next morning, not "fresh".
      */
     private fun checkAlive() {
         watchdogScheduled = false
         if (!running) return
-        val sinceLast = SystemClock.uptimeMillis() - lastDoFrameMs
+        val sinceLast = SystemClock.elapsedRealtime() - lastDoFrameMs
         when {
             sinceLast > HARD_RESET_MS ->
                 // Two re-seeds have failed to produce a frame: stop re-posting into whatever
@@ -634,7 +687,9 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
         // burst keeps its shape — it is only played slower (scale > 1) or faster (scale < 1).
         val dtMs = rawDtMs / durationScale
         val now = SystemClock.uptimeMillis()
-        lastDoFrameMs = now
+        // Staleness stamp on elapsedRealtime (see the field doc): deep sleep must count toward
+        // it. `now` stays on uptimeMillis for combo timing, which never spans a sleep.
+        lastDoFrameMs = SystemClock.elapsedRealtime()
         step(dtMs, now)
         recordFrame(rawDtMs)
         invalidate()
@@ -835,10 +890,11 @@ class CommitEffectsOverlay(context: Context) : View(context), Choreographer.Fram
 
     private fun startIfNeeded() {
         // Nuclear self-heal: a trigger arrived while the loop claims to be running but no frame
-        // has been delivered for [HARD_RESET_MS] — the watchdog has already re-seeded at least
-        // twice into whatever is eating the callbacks. Reset the control state; the fresh
-        // burst armed just below then animates on a clean loop.
-        if (running && SystemClock.uptimeMillis() - lastDoFrameMs > HARD_RESET_MS) {
+        // has been delivered for [HARD_RESET_MS] — measured on elapsedRealtime, so an overnight
+        // sleep counts in full and the morning's very first trigger resets a loop wedged at the
+        // sleep boundary (callback and watchdog both lost in Doze). Reset the control state; the
+        // fresh burst armed just below then animates on a clean loop.
+        if (running && SystemClock.elapsedRealtime() - lastDoFrameMs > HARD_RESET_MS) {
             hardReset()
         }
         if (running && pendingCallback) {

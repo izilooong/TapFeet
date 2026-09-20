@@ -141,6 +141,7 @@ object HardwareKeySymbolMap {
     fun symbolMapFor(profileName: String): Map<Int, String> = when (profileName) {
         HardwareKeyProfiles.TT2 -> tt2SymbolMap
         HardwareKeyProfiles.TITAN2_ELITE -> titan2EliteSymbolMap
+        HardwareKeyProfiles.TITAN2_ELITE_MOD -> titan2EliteSymbolMap
         else -> blackberrySymbolMap
     }
 
