@@ -65,9 +65,11 @@ object HardwareKeyProfiles {
     /**
      * 黑莓（Q25）默认键位。
      *
-     * ⚠️ 里面那两个 `"Alt_R"` 指的是 **SYM 键** —— 真机上它就上报右 Alt（`KEYCODE_ALT_RIGHT`），
-     * 见 [HardwareSpecialKeys] 的 `Sym` 条目。`"Sym"` 与它是**同义写法**，两种都能匹配到那个键；
-     * 页面显示上 `"Sym"` 更贴键帽，但这两个值是你实机校正过的，改不改由你 —— 行为完全一致。
+     * ⚠️ SYM 按钮与右 Alt（`KEYCODE_ALT_RIGHT`）是**两个独立的物理键**，识别上不混用（见
+     * [HardwareSpecialKeys] 的 `Sym` 条目：那里已不含 `KEYCODE_ALT_RIGHT`）。这里把符号窗口键绑成
+     * `"Alt_R"`（fcitx5 的 Alt_R keysym）=「右 Alt 开符号窗口」，走 keysym 路径匹配，与 `Sym`
+     * 伪键（只匹配 `KEYCODE_SYM` / `KEYCODE_PICTSYMBOLS`）互不干扰。若想在真机用独立的 SYM 按钮
+     * 开符号窗口，把该值改成 `"Sym"` 即可。
      */
     private val blackberryValues = listOf(
         "space", "0", "Alt_R", "Shift_L", "Shift_R",

@@ -43,9 +43,14 @@ object HardwareChord {
     const val FN = "Fn"
 
     /**
-     * SYM 键。黑莓（Q25）的 SYM 实际就是**右 Alt**，编码为 `KEYCODE_ALT_RIGHT` ——
-     * [HardwareSpecialKeys] 的 `Sym` 条目已把该 keyCode 一起登记，两个名字从此收敛：写 `Sym`
-     * 能匹配到真机那个键，[setHeld] 也给得出 `symDown`（**分左右**，比 meta 可靠）。
+     * SYM 键（独立的物理按钮，专键专用）。
+     *
+     * ⚠️ SYM 与右 Alt（[KeyEvent.KEYCODE_ALT_RIGHT]）是**两个独立按钮**，识别不能混为一坛：右
+     * Alt 是真正的修饰键，走 fcitx5 keysym 路径当作 `Alt_R`；SYM 才是这个伪键，只匹配
+     * `KEYCODE_SYM` / `KEYCODE_PICTSYMBOLS`。[HardwareSpecialKeys] 的 `Sym` 条目**已不含**
+     * `KEYCODE_ALT_RIGHT`，所以两个名字不再收敛到同一个物理键 —— 右 Alt 不会再被错判成 `Sym`。
+     *
+     * [setHeld] 给的 `symDown` 只跟踪 SYM 按钮本身（**分左右**，比 meta 可靠）。
      *
      * ⚠️ 黑莓预设**不再**把动作快捷键建在这个前缀上（那边整块不提供这套配置，见
      * [HardwareKeyProfiles.actionShortcutsAvailable]）—— 但前缀本身仍然有效：用户在捕获窗口里

@@ -53,25 +53,25 @@ object HardwareSpecialKeys {
     }
 
     private val entries: List<Entry> = listOf(
-        // The BlackBerry-class SYM key. Three encodings exist in the wild and all of them must be
-        // listed here:
-        //  - KEYCODE_SYM / KEYCODE_PICTSYMBOLS — the documented Android codes;
-        //  - **KEYCODE_ALT_RIGHT — what the Q25's SYM key actually reports** (measured on-device).
-        //    The SYM key there is literally the right-Alt modifier, so without this entry the `Sym`
-        //    pseudo key matched nothing on that device; the only reason the symbol window still
-        //    worked is that the BlackBerry profile spells the key as the raw keysym `"Alt_R"`.
+        // The SYM key: a dedicated physical button on BlackBerry-class keyboards. Matched ONLY by
+        // the documented Android codes — KEYCODE_SYM / KEYCODE_PICTSYMBOLS.
         //
-        // Registering Alt_R is what makes the two spellings converge: a binding written `Sym` now
-        // matches the physical key, the capture dialog stores `Sym` (instead of `Alt_R`) when it is
-        // pressed, and [HardwareChord] gets an explicit [Entry.chordModifier] hook for it rather
-        // than falling back to its "any real modifier" heuristic.
+        // ⚠️ **KEYCODE_ALT_RIGHT is deliberately NOT listed here.** The right-Alt modifier and the
+        // SYM button are two *independent* physical keys and must be identified separately:
+        //  - right Alt is a real modifier → flows through the fcitx5 keysym path as `Alt_R`;
+        //  - the SYM button is this pseudo key → matched by the name `Sym`.
+        // Conflating the two (listing ALT_RIGHT here) made a right-Alt press be mis-identified as a
+        // `Sym` pseudo key, so it triggered `Sym` bindings (e.g. the symbol window) instead of
+        // behaving as Alt, and the two real keys could never be bound to distinct actions.
+        //
+        // The BlackBerry profile spells the symbol-picker key as the raw keysym `"Alt_R"`, which
+        // matches a right-Alt press via the keysym path — independent of this pseudo key.
         Entry(
             "Sym",
             R.string.hw_special_sym,
             intArrayOf(
                 KeyEvent.KEYCODE_SYM,
                 KeyEvent.KEYCODE_PICTSYMBOLS,
-                KeyEvent.KEYCODE_ALT_RIGHT,
             ),
             HardwareChord.SYM,
         ),
