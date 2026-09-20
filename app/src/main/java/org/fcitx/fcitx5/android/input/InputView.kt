@@ -62,7 +62,6 @@ import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.preedit.PreeditComponent
 import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
-import org.fcitx.fcitx5.android.utils.DeviceInfo
 import org.fcitx.fcitx5.android.utils.normalizeKeyString
 import org.fcitx.fcitx5.android.utils.unset
 import org.mechdancer.dependency.DynamicScope
@@ -791,12 +790,6 @@ class InputView(
             }
 
             ShortcutAction.ToggleFlyText -> {
-                // 飞字依赖键盘触摸面（Titan 2 Elite 的 KEYBOARD|TOUCHPAD 复合源）。没有该硬件的
-                // 机型上翻这个开关只会留个"看着开着却不工作"的坑，所以直接拒绝并说明原因。
-                if (!DeviceInfo.hasKeyboardTouchSurface()) {
-                    toast(R.string.shortcut_toast_flytext_unsupported)
-                    return
-                }
                 val pref = prefs.hardwareKeyboard.keyboardFlyText
                 val next = !pref.getValue()
                 pref.setValue(next)

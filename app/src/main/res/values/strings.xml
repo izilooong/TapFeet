@@ -78,7 +78,6 @@
     <string name="hw_keyboard_flytext_summary">Swipe up the keyboard surface to pick the candidate in your finger\'s column; left/right to page.</string>
     <string name="hw_flytext_swap_page">Swap page swipe direction</string>
     <string name="hw_flytext_swap_page_summary">Swipe left = previous, right = next (default is reversed).</string>
-    <string name="hw_flytext_unsupported_summary">This device has no keyboard touch surface.</string>
     <string name="hw_key_sound">Physical key sound</string>
     <string name="hw_key_sound_summary">Sounds on physical key presses and keyboard-surface swipes (up = pick, left/right = page); picking by number key or bar tap stays silent.</string>
     <string name="hw_key_sound_volume">Physical key sound volume</string>
@@ -120,7 +119,6 @@
     <string name="shortcut_toast_statusbar_shown">Status bar shown</string>
     <string name="shortcut_toast_flytext_on">Fly-text on</string>
     <string name="shortcut_toast_flytext_off">Fly-text off</string>
-    <string name="shortcut_toast_flytext_unsupported">This device\'s keyboard has no touch surface — fly-text unavailable</string>
     <string name="shortcut_toast_arrangement">Candidate arrangement: %1$s</string>
     <string name="shortcut_toast_sound_mode">Key sound mode: %1$s</string>
     <string name="key_capture_hint">Press any key to bind…</string>

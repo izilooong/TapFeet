@@ -77,7 +77,6 @@ import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
 import org.fcitx.fcitx5.android.input.effects.CommitEffectsOverlay
-import org.fcitx.fcitx5.android.utils.DeviceInfo
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.forceShowSelf
@@ -861,9 +860,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      *     [TouchProbeLog.recording] is on (the Lab page flips it in onResume/onPause), tagged
      *     [TouchProbeLog.PATH_IME_MOTION]. No switch, no window, no mask; on this hardware the
      *     samples arrive without any of that.
-     *  2. Keyboard fly-text — [AppPrefs.hardwareKeyboard.keyboardFlyText] + a device with a
-     *     keyboard touch surface + visible candidates, from EITHER candidate event source (this
-     *     device's config emits [FcitxEvent.CandidateListEvent], never PagedCandidateEvent).
+ *  2. Keyboard fly-text — [AppPrefs.hardwareKeyboard.keyboardFlyText] + visible candidates, from
+ *     EITHER candidate event source (this device's config emits [FcitxEvent.CandidateListEvent],
+ *     never PagedCandidateEvent). No "keyboard touch surface" hardware gate: the feature is offered
+ *     on every device; hardware without a TOUCHPAD source simply receives no motion events.
      *
      * History, because it cost a lot to get wrong: fly-text used to run on a PopupWindow that
      * claimed the surface's display band, on the theory that the dispatcher routes the
@@ -890,12 +890,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // the soft keyboard hidden — so that flag is NOT a reliable "physical mode" indicator here.
         val hasCandidates = lastPagedCandidateData.candidates.isNotEmpty() ||
                 lastCandidateListData.candidates.isNotEmpty()
-        flyTextOn = hw.keyboardFlyText.getValue() &&
-                DeviceInfo.hasKeyboardTouchSurface() &&
-                hasCandidates
+        flyTextOn = hw.keyboardFlyText.getValue() && hasCandidates
         flyTextDisarmReason = when {
             !hw.keyboardFlyText.getValue() -> "pref-off"
-            !DeviceInfo.hasKeyboardTouchSurface() -> "unsupported"
             !hasCandidates -> "no-candidates"
             else -> "none"
         }

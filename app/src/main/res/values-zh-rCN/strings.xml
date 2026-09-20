@@ -78,7 +78,6 @@
     <string name="hw_keyboard_flytext_summary">键盘面上滑选字，左右滑翻页。</string>
     <string name="hw_flytext_swap_page">翻页方向互换</string>
     <string name="hw_flytext_swap_page_summary">左滑上一页、右滑下一页（默认相反）。</string>
-    <string name="hw_flytext_unsupported_summary">此设备没有键盘触摸面。</string>
     <string name="hw_key_sound">物理按键音</string>
     <string name="hw_key_sound_summary">物理按键、键盘面手势发声。</string>
     <string name="hw_key_sound_volume">物理按键音音量</string>
@@ -116,7 +115,6 @@
     <string name="shortcut_toast_statusbar_shown">状态栏已显示</string>
     <string name="shortcut_toast_flytext_on">飞字已开启</string>
     <string name="shortcut_toast_flytext_off">飞字已关闭</string>
-    <string name="shortcut_toast_flytext_unsupported">本机键盘没有触摸面，飞字不可用</string>
     <string name="shortcut_toast_arrangement">候选排列：%1$s</string>
     <string name="shortcut_toast_sound_mode">按键音模式：%1$s</string>
     <string name="key_capture_hint">按任意键以绑定…</string>

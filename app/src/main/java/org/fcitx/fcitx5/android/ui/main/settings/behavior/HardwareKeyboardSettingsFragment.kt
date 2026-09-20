@@ -21,7 +21,6 @@ import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCaptureUi
-import org.fcitx.fcitx5.android.utils.DeviceInfo
 
 class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
 
@@ -34,9 +33,6 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
     /** The fly-text switches; the swap toggle is only enabled while fly-text itself is on. */
     private lateinit var flyTextSwitch: SwitchPreference
     private lateinit var flyTextSwapSwitch: SwitchPreference
-
-    /** Whether this device has the keyboard touch surface fly-text needs (Titan 2 Elite). */
-    private var flyTextSupported: Boolean = false
 
     /**
      * References to the candidate2-5 [KeyCapturePreference] views. Their visibility is driven by
@@ -104,10 +100,8 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         profileScreen.addPreference(quickPickSwitch)
 
         // —— 飞字独立 Tab ——
-        // 键盘飞字依赖"键盘触摸面"（KEYBOARD|TOUCHPAD 复合源，Titan 2 Elite 的键盘面）。
-        // 没有该硬件能力的设备：整个 Tab 内的开关禁用，并说明原因；运行时 service 侧同样以该能力
-        // 闸门兜底（flyTextOn），避免继承的 true 值在无触摸面的设备上留下一个永不生效的开关。
-        flyTextSupported = DeviceInfo.hasKeyboardTouchSurface()
+        // 飞字不依赖任何硬件能力闸门：任意设备都开放。无键盘触摸面的机型只是收不到触摸事件、
+        // 功能自然不触发，但设置项始终可用（service 侧 flyTextOn 也不再以此能力做门）。
         flyTextSwitch = SwitchPreference(context).apply {
             key = hw.keyboardFlyText.key
             title = getString(R.string.hw_keyboard_flytext)
@@ -123,17 +117,12 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             setDefaultValue(hw.keyboardFlyTextSwapPage.getValue())
             isChecked = hw.keyboardFlyTextSwapPage.getValue()
             isIconSpaceReserved = false
-            // Sub-toggle only meaningful while fly-text is on (and the device supports it at all).
-            isEnabled = flyTextSupported && hw.keyboardFlyText.getValue()
-        }
-        if (!flyTextSupported) {
-            flyTextSwitch.isEnabled = false
-            flyTextSwitch.summary = getString(R.string.hw_keyboard_flytext_summary) + "\n" +
-                    getString(R.string.hw_flytext_unsupported_summary)
+            // Sub-toggle only meaningful while fly-text is on.
+            isEnabled = hw.keyboardFlyText.getValue()
         }
         flyTextSwitch.setOnPreferenceChangeListener { _, newValue ->
             val on = newValue as Boolean
-            flyTextSwapSwitch.isEnabled = flyTextSupported && on
+            flyTextSwapSwitch.isEnabled = on
             true
         }
         flyTextScreen.addPreference(flyTextSwitch)
