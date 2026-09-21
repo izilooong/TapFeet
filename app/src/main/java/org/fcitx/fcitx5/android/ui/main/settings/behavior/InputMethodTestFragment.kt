@@ -27,6 +27,7 @@ import org.fcitx.fcitx5.android.input.KeyProbeLog
 import org.fcitx.fcitx5.android.input.TouchProbeLog
 import org.fcitx.fcitx5.android.input.swipe.SWIPE_BASE_SLOP_DP
 import org.fcitx.fcitx5.android.input.swipe.SwipeDirection
+import org.fcitx.fcitx5.android.input.swipe.flyTextSensitivityScale
 import splitties.dimensions.dp
 import splitties.views.backgroundColor
 import splitties.views.padding
@@ -483,7 +484,12 @@ class InputMethodTestFragment : Fragment() {
      */
     private fun renderGesture() {
         if (!isAdded || !::touchGestureText.isInitialized) return
-        val density = resources.displayMetrics.density
+        // Scale density by the fly-text sensitivity pref so the read-out judges strokes with the
+        // very same effective thresholds the keyboard uses right now (single mapping in
+        // SwipeGeometry.flyTextSensitivityScale — the selector passes the identical product).
+        val density = resources.displayMetrics.density * flyTextSensitivityScale(
+            AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextSensitivity.getValue()
+        )
         val report = buildGestureReport(TouchProbeLog.snapshot(), density)
 
         val latest = report.latest

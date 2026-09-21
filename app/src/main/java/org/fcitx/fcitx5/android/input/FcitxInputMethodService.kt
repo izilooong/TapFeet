@@ -823,6 +823,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshFlyTextState() }
 
     /**
+     * [SystemClock.elapsedRealtime] of the most recent hardware key event (down or up). Drives the
+     * selector's typing guard: a surface contact while keys are being hit is a graze between
+     * keystrokes, not a gesture. Recorded in [onKeyDown]/[onKeyUp] before any dispatch decision,
+     * so keys consumed by shortcuts still count as typing activity.
+     */
+    private var lastHardwareKeyAt = 0L
+
+    /**
      * Live state: fly-text is armed (pref on AND visible candidates, from either candidate event
      * source — this device's config emits [FcitxEvent.CandidateListEvent], not the paged variant).
      * Recomputed on every [refreshFlyTextState], read by [installDecorMotionListener] and by
@@ -1010,6 +1018,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     if (inputView?.flyPageCandidates(d) != true) {
                         postFcitxJob { offsetCandidatePage(d) }
                     }
+                },
+                typingGuard = {
+                    SystemClock.elapsedRealtime() - lastHardwareKeyAt <
+                        AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextGuardMs.getValue()
+                },
+                sensitivityProvider = {
+                    AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextSensitivity.getValue()
                 }
             )
             flyTextSelectorInitialized = true
@@ -1400,6 +1415,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Typing guard clock: any hardware key (consumed or not) marks the surface stream as
+        // "typing in progress" for the window configured by hw.keyboardFlyTextGuardMs — grazes
+        // between keystrokes must not arm fly-text gestures.
+        lastHardwareKeyAt = SystemClock.elapsedRealtime()
+
         // Lab-page probe: record every key BEFORE any dispatch decision, so the log also covers keys
         // a shortcut ends up consuming — and, by their absence, proves which keys never get
         // dispatched to the IME window at all. No-op unless the Lab page turned recording on.
@@ -1724,6 +1744,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        lastHardwareKeyAt = SystemClock.elapsedRealtime()
         KeyProbeLog.record(event)
 
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {

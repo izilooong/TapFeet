@@ -37,7 +37,16 @@ class KeyboardFlyTextSelector(
     private val density: Float,
     private val candidateRectsProvider: () -> List<Pair<Int, Rect>>,
     private val onSelect: (Int) -> Unit,
-    private val onPage: (Int) -> Unit
+    private val onPage: (Int) -> Unit,
+    /**
+     * True while hardware keys are being hit (the caller compares the age of the last key event
+     * against its configured guard window, AppPrefs `keyboardFlyTextGuardMs`). A surface contact
+     * during typing is a graze between keystrokes, not a gesture — the single most reliable
+     * mis-touch filter there is, because it uses a signal the graze cannot fake.
+     */
+    private val typingGuard: () -> Boolean = { false },
+    /** Fly-text sensitivity in percent (50–150, from AppPrefs); 100 = untouched thresholds. */
+    private val sensitivityProvider: () -> Int = { 100 }
 ) {
     private var downX = 0f
     private var downY = 0f
@@ -77,6 +86,13 @@ class KeyboardFlyTextSelector(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                // Typing guard: keys are still being hit, so this contact is a graze between
+                // keystrokes — never arm a gesture from it.
+                if (typingGuard()) {
+                    Timber.d("FlyText: DOWN suppressed (typing)")
+                    reset()
+                    return
+                }
                 reset()
                 downX = event.rawX
                 downY = event.rawY
@@ -85,23 +101,33 @@ class KeyboardFlyTextSelector(
             }
             MotionEvent.ACTION_MOVE -> {
                 if (classified || downTime == 0L) return
+                // Typing guard: a key press mid-gesture (or within the guard window of this MOVE)
+                // means the finger is typing, not gesturing — drop the in-flight gesture entirely.
+                if (typingGuard()) {
+                    Timber.d("FlyText: gesture cancelled (typing)")
+                    reset()
+                    return
+                }
+                // Sensitivity scales every slop uniformly: all thresholds are linear in density,
+                // so scaling density scales base/up/page together (single mapping in SwipeGeometry).
+                val d = density * flyTextSensitivityScale(sensitivityProvider())
                 val dx = event.rawX - downX
                 val dy = event.rawY - downY
                 // Reversal guard: the finger returned to the start (travel back under the base slop)
                 // — this was a brush, not a swipe. Drop the locked direction so it cannot fire later.
-                if (hypot(dx, dy) < SWIPE_BASE_SLOP_DP * density) {
+                if (hypot(dx, dy) < SWIPE_BASE_SLOP_DP * d) {
                     pendingDir = null
                     return
                 }
                 // Lock the direction as soon as the travel is clearly one axis (below the higher
                 // commit slop). From here the direction is fixed; a wobble cannot reclassify it.
-                if (pendingDir == null) pendingDir = swipeAxis(dx, dy, density)
+                if (pendingDir == null) pendingDir = swipeAxis(dx, dy, d)
                 val dir = pendingDir ?: return
                 // Fire only once the travel also clears the *commit* slop for this direction — the
                 // hysteresis that separates a deliberate swipe from a stray touch that merely grazed
                 // the base slop. swipeDirection re-applies the same axis ratio + per-direction slop
                 // the Lab page reports, so the read-out still matches what happens here.
-                if (swipeDirection(dx, dy, density) != dir) return
+                if (swipeDirection(dx, dy, d) != dir) return
                 when (dir) {
                     SwipeDirection.UP -> {
                         val rects = candidateRectsProvider()

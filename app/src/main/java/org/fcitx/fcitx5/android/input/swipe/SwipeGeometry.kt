@@ -41,6 +41,16 @@ const val SWIPE_PAGE_SLOP_DP = 32f
  */
 const val SWIPE_AXIS_RATIO = 1.5f
 
+/**
+ * Fly-text sensitivity (percent, [org.fcitx.fcitx5.android.data.prefs.AppPrefs] 50–150) → the
+ * scale every swipe slop is multiplied by. 100 = untouched thresholds; 50 doubles every travel
+ * requirement (harder to trigger); 150 shrinks them by a third (more responsive). Callers apply
+ * it by passing `density * flyTextSensitivityScale(pct)` — since every slop is linear in density,
+ * scaling density scales all of them at once, and the Lab page passes the same product so the
+ * read-out cannot drift from what the keyboard actually does.
+ */
+fun flyTextSensitivityScale(sensitivityPct: Int): Float = 100f / sensitivityPct
+
 /** The four swipes the keyboard surface recognises. */
 enum class SwipeDirection { UP, DOWN, LEFT, RIGHT }
 

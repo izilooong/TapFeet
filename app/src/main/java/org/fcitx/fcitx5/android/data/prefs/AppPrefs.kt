@@ -627,6 +627,29 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // previous) so left = previous and right = next. Only meaningful while fly-text is on.
         val keyboardFlyTextSwapPage = bool("hw_keyboard_flytext_swap_page", false)
 
+        // Keyboard fly-text sensitivity (percent). Scales every swipe travel threshold: lower =
+        // the finger must travel farther before a gesture fires (fewer accidental triggers while
+        // typing fast), higher = more responsive. Applied via [flyTextSensitivityScale] so the
+        // selector and the Lab page's read-out share one mapping.
+        val keyboardFlyTextSensitivity = int(
+            R.string.hw_flytext_sensitivity,
+            "hw_keyboard_flytext_sensitivity",
+            100, 50, 150,
+            unit = "%",
+            step = 5
+        )
+
+        // Keyboard fly-text typing guard: a hardware key event marks the surface stream as
+        // "typing" for this many milliseconds — surface contacts inside the window are grazes
+        // between keystrokes, not gestures. 0 disables the guard.
+        val keyboardFlyTextGuardMs = int(
+            R.string.hw_flytext_guard_ms,
+            "hw_keyboard_flytext_guard_ms",
+            250, 0, 1000,
+            unit = "ms",
+            step = 50
+        )
+
         private val seededKeys = listOf(
             keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,
             pageNextKey, pagePrevKey, symbolPickerKey, toggleImeKey, pickerKey, altLatchKey

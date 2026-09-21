@@ -120,13 +120,51 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             // Sub-toggle only meaningful while fly-text is on.
             isEnabled = hw.keyboardFlyText.getValue()
         }
-        flyTextSwitch.setOnPreferenceChangeListener { _, newValue ->
-            val on = newValue as Boolean
-            flyTextSwapSwitch.isEnabled = on
-            true
+        // Sensitivity: scales every fly-text travel threshold (50% = twice the travel needed,
+        // 150% = a third less). Same manual enable/disable wiring as the swap toggle above —
+        // Preference.dependency cannot be used while building the screen dynamically.
+        val flyTextSensitivityPref = DialogSeekBarPreference(context).apply {
+            key = hw.keyboardFlyTextSensitivity.key
+            title = getString(R.string.hw_flytext_sensitivity)
+            dialogTitle = getString(R.string.hw_flytext_sensitivity)
+            setDefaultValue(hw.keyboardFlyTextSensitivity.defaultValue)
+            min = 50
+            max = 150
+            step = 5
+            unit = "%"
+            summaryProvider = DialogSeekBarPreference.SimpleSummaryProvider
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+            isEnabled = hw.keyboardFlyText.getValue()
         }
         flyTextScreen.addPreference(flyTextSwitch)
         flyTextScreen.addPreference(flyTextSwapSwitch)
+        flyTextScreen.addPreference(flyTextSensitivityPref)
+
+        // Typing-guard window: how long after a hardware key event a surface contact is treated
+        // as typing residue (0 = guard off). Same manual enable/disable wiring as above.
+        val flyTextGuardPref = DialogSeekBarPreference(context).apply {
+            key = hw.keyboardFlyTextGuardMs.key
+            title = getString(R.string.hw_flytext_guard_ms)
+            dialogTitle = getString(R.string.hw_flytext_guard_ms)
+            setDefaultValue(hw.keyboardFlyTextGuardMs.defaultValue)
+            min = 0
+            max = 1000
+            step = 50
+            unit = "ms"
+            summaryProvider = DialogSeekBarPreference.SimpleSummaryProvider
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+            isEnabled = hw.keyboardFlyText.getValue()
+        }
+        flyTextScreen.addPreference(flyTextGuardPref)
+        flyTextSwitch.setOnPreferenceChangeListener { _, newValue ->
+            val on = newValue as Boolean
+            flyTextSwapSwitch.isEnabled = on
+            flyTextSensitivityPref.isEnabled = on
+            flyTextGuardPref.isEnabled = on
+            true
+        }
 
         // Master toggle: double-tap left Alt to latch the Alt modifier.
         val altLatchSwitch = SwitchPreference(context).apply {

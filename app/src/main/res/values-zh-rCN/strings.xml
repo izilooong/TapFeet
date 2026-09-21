@@ -78,6 +78,8 @@
     <string name="hw_keyboard_flytext_summary">键盘面上滑选字，左右滑翻页。</string>
     <string name="hw_flytext_swap_page">翻页方向互换</string>
     <string name="hw_flytext_swap_page_summary">左滑上一页、右滑下一页（默认相反）。</string>
+    <string name="hw_flytext_sensitivity">飞字灵敏度</string>
+    <string name="hw_flytext_guard_ms">防误触时长</string>
     <string name="hw_key_sound">物理按键音</string>
     <string name="hw_key_sound_summary">物理按键、键盘面手势发声。</string>
     <string name="hw_key_sound_volume">物理按键音音量</string>
