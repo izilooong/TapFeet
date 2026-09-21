@@ -5,8 +5,10 @@
 package org.fcitx.fcitx5.android.input.picker
 
 import android.content.Context
+import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.updateLayoutParams
 import org.fcitx.fcitx5.android.R
@@ -41,15 +43,23 @@ import splitties.views.dsl.constraintlayout.rightOfParent
 import splitties.views.dsl.constraintlayout.rightToLeftOf
 import splitties.views.dsl.constraintlayout.topOfParent
 import splitties.views.dsl.constraintlayout.topToBottomOf
+import splitties.dimensions.dp
 import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.matchParent
+import splitties.views.dsl.core.view
+import splitties.views.dsl.core.wrapContent
 
 class PickerPageUi(
     override val ctx: Context,
     theme: Theme,
     density: Density,
-    bordered: Boolean = false
+    bordered: Boolean = false,
+    /**
+     * 在每格右上角叠加对应物理键位字母（QWERTY），最小字号、浅色。
+     * 仅符号窗口启用，纯位置提示，不随符号内容变化。
+     */
+    letterOverlay: Boolean = false
 ) : Ui {
 
     /**
@@ -86,12 +96,26 @@ class PickerPageUi(
 
     private val keyViews = Array(density.pageSize) {
         TextKeyView(ctx, theme, keyAppearance).apply {
+            id = View.generateViewId()
             if (density.autoScale) {
                 mainText.apply {
                     scaleMode = AutoScaleTextView.Mode.Proportional
                     setPadding(hMargin, vMargin, hMargin, vMargin)
                 }
             }
+        }
+    }
+
+    private val letterLabels = Array(density.pageSize) { i ->
+        view(::TextView) {
+            text = KEYBOARD_LETTERS[i]
+            setTextSize(TypedValue.COMPLEX_UNIT_DIP, LETTER_SIZE_DP)
+            setTextColor(LETTER_COLOR)
+            alpha = LETTER_ALPHA
+            isClickable = false
+            isFocusable = false
+            background = null
+            visibility = if (letterOverlay) View.VISIBLE else View.GONE
         }
     }
 
@@ -163,6 +187,15 @@ class PickerPageUi(
             // 与主键盘 BackspaceKey 同宽（0.15）：85%~100%
             matchConstraintPercentWidth = 0.15f
         })
+        // 每格右上角叠加对应物理键位字母，位置提示、不参与点击；显隐由 letterOverlay 实时控制
+        letterLabels.forEachIndexed { i, label ->
+            add(label, lParams(wrapContent, wrapContent) {
+                topToTop = keyViews[i].id
+                rightToRight = keyViews[i].id
+                topMargin = dp(6)
+                rightMargin = dp(8)
+            })
+        }
         layoutParams = ViewGroup.LayoutParams(matchParent, matchParent)
     }
 
@@ -233,6 +266,12 @@ class PickerPageUi(
         }
     }
 
+    /** 实时切换键位字母显隐（开关变化时由 PickerWindow.onAttached 调用）。 */
+    fun setLetterOverlay(visible: Boolean) {
+        val v = if (visible) View.VISIBLE else View.GONE
+        letterLabels.forEach { it.visibility = v }
+    }
+
     private fun onItemClick(item: String) {
         keyActionListener?.onKeyAction(CommitAction(item), Source.Keyboard)
     }
@@ -277,5 +316,14 @@ class PickerPageUi(
     }
 
     companion object {
+        // 与 keyViews 填充顺序及 HardwarePickerLetterMap 一致：R0(Q..P)/R1(A..L)/R2(Z..M)
+        private val KEYBOARD_LETTERS = arrayOf(
+            "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
+            "A", "S", "D", "F", "G", "H", "J", "K", "L",
+            "Z", "X", "C", "V", "B", "N", "M"
+        )
+        private val LETTER_COLOR = 0xFFB0B0B0.toInt() // 绝对浅灰，不随主题变化
+        private const val LETTER_SIZE_DP = 10f
+        private const val LETTER_ALPHA = 0.8f
     }
 }

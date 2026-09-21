@@ -451,6 +451,7 @@
     <string name="hide_candidates_list">隐藏</string>
     <string name="switch_to_voice_input">切换到语音输入</string>
     <string name="hide_keyboard">隐藏键盘</string>
+    <string name="hide_window">隐藏窗口</string>
     <string name="private_mode">隐私模式（点击以切换工具栏）</string>
     <string name="hide_toolbar">隐藏工具栏</string>
     <string name="expand_toolbar">展开工具栏</string>
@@ -474,6 +475,7 @@
     <string name="emoji_skin_tone_type_5">🏾 中等深肤色 (Type-5)</string>
     <string name="emoji_skin_tone_type_6">🏿 深肤色 (Type-6)</string>
     <string name="hide_unsupported_emojis">隐藏不支持的表情</string>
+    <string name="show_key_letter">显示键位字母</string>
     <string name="key_border_stroke">启用按键边框描边</string>
     <string name="preferred_voice_input">首选语音输入</string>
     <string name="check_update">检查更新</string>

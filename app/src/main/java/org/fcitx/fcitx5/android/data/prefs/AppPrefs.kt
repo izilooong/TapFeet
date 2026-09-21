@@ -461,6 +461,13 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             true
         )
 
+        // 符号/表情/颜文字面板每格右上角叠加对应物理键位字母（QWERTY），方便物理键盘盲打选符号。
+        val showKeyLetter = switch(
+            R.string.show_key_letter,
+            "show_key_letter",
+            true
+        )
+
         val defaultEmojiSkinTone = enumList(
             R.string.default_emoji_skin_tone,
             "default_emoji_skin_tone",

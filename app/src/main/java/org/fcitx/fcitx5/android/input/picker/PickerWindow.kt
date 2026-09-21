@@ -126,7 +126,8 @@ class PickerWindow(
         val bordered = followKeyBorder && keyBorder
         pickerPagesAdapter = PickerPagesAdapter(
             theme, keyActionListener, popupActionListener, data,
-            density, key.name, bordered, policy
+            density, key.name, bordered, policy,
+            AppPrefs.getInstance().symbols.showKeyLetter.getValue()
         )
         tabsUi.apply {
             setTabs(pickerPagesAdapter.getCategoryList())
@@ -171,6 +172,8 @@ class PickerWindow(
             embeddedKeyboardEnabledState = enabled
             pickerLayout.rebuildEmbeddedKeyboard()
         }
+        // 键位字母开关实时生效：每次打开面板把最新偏好应用到所有页面
+        pickerPagesAdapter.setLetterOverlay(AppPrefs.getInstance().symbols.showKeyLetter.getValue())
         pickerLayout.embeddedKeyboard.also {
             pickerPagesAdapter.refreshIfNeeded()
             it.onReturnDrawableUpdate(returnKeyDrawable.resourceId)

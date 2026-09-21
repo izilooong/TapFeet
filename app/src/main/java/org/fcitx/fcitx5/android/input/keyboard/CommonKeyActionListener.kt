@@ -73,6 +73,12 @@ class CommonKeyActionListener :
      */
     var onPanelCycle: (() -> Unit)? = null
 
+    /**
+     * 「隐藏窗口」回调：由 [org.fcitx.fcitx5.android.input.InputView] 注入，
+     * 把顶栏（状态栏）隐藏按钮导向 InputView 的「关闭当前面板/窗口」逻辑。
+     */
+    var onHideWindow: (() -> Unit)? = null
+
     private suspend fun FcitxAPI.selectCurrentLocalCandidate(number: Int): Boolean {
         val index = horizontalCandidate.selectionIndexForLocalNumber(number) ?: return false
         setCandidatePagingMode(horizontalCandidate.currentCandidatePagingMode())

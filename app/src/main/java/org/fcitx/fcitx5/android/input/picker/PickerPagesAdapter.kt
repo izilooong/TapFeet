@@ -20,7 +20,8 @@ class PickerPagesAdapter(
     private val density: PickerPageUi.Density,
     recentlyUsedFileName: String,
     private val bordered: Boolean,
-    private val policy: PickerPolicy
+    private val policy: PickerPolicy,
+    private var letterOverlay: Boolean = false
 ) : RecyclerView.Adapter<PickerPagesAdapter.ViewHolder>() {
 
     class ViewHolder(val ui: PickerPageUi) : RecyclerView.ViewHolder(ui.root)
@@ -76,6 +77,9 @@ class PickerPagesAdapter(
 
     private val recentlyUsed = RecentlyUsed(recentlyUsedFileName, density.pageSize)
 
+    // 已创建并仍挂载的页面（供实时切换键位字母显隐）；按 attach/detach 维护
+    private val liveUis = mutableListOf<PickerPageUi>()
+
     fun insertRecent(text: String) {
         if (text.length == 1 && text[0].code.let { it in Digit || it in FullWidthDigit }) return
         recentlyUsed.insert(text)
@@ -109,7 +113,9 @@ class PickerPagesAdapter(
     override fun getItemCount() = pages.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        return ViewHolder(PickerPageUi(parent.context, theme, density, bordered))
+        val ui = PickerPageUi(parent.context, theme, density, bordered, letterOverlay)
+        liveUis.add(ui)
+        return ViewHolder(ui)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
@@ -134,6 +140,13 @@ class PickerPagesAdapter(
     override fun onViewDetachedFromWindow(holder: ViewHolder) {
         holder.ui.keyActionListener = null
         holder.ui.popupActionListener = null
+        liveUis.remove(holder.ui)
+    }
+
+    /** 实时切换所有已挂载页面的键位字母显隐（开关变化时由 PickerWindow.onAttached 调用）。 */
+    fun setLetterOverlay(visible: Boolean) {
+        letterOverlay = visible
+        liveUis.forEach { it.setLetterOverlay(visible) }
     }
 
     companion object {

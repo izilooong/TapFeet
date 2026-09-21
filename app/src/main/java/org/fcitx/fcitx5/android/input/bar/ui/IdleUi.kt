@@ -25,7 +25,6 @@ import org.fcitx.fcitx5.android.input.bar.ui.idle.InlineSuggestionsUi
 import org.fcitx.fcitx5.android.input.bar.ui.idle.NumberRow
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
-import org.fcitx.fcitx5.android.utils.borderlessRippleDrawable
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.after
 import splitties.views.dsl.constraintlayout.before
@@ -89,18 +88,6 @@ class IdleUi(
 
     val keyboardToggleButton = ToolButton(ctx, R.drawable.ic_baseline_keyboard_24, theme)
 
-    /** 「⑩」自定义键盘开关：单击打开/关闭自定义一行键盘（样式对齐 [ToolButton]）。
-     *  总开关（[AppPrefs.CustomKeyboard.enabled]）关闭时隐藏，由 KawaiiBarComponent 监听实时切换。 */
-    val customKeyboardButton = textView {
-        text = "⑩"
-        textSize = 18f
-        setTextColor(theme.altKeyTextColor)
-        gravity = Gravity.CENTER
-        background = borderlessRippleDrawable(theme.keyPressHighlightColor, dp(20))
-    }.apply {
-        visibility = if (AppPrefs.getInstance().customKeyboard.enabled.getValue()) View.VISIBLE else View.GONE
-    }
-
     val inputMethodButton = ToolButton(ctx, R.drawable.ic_status_pinyin, theme)
 
     val altLockButton = ToolButton(ctx, R.drawable.ic_alt_key_24, theme)
@@ -109,11 +96,11 @@ class IdleUi(
 
     /**
      * 「快捷窗口」常驻触发按钮：点一次按排序轮换 符号→表情→自定义→关闭；图标随当前面板变化。
-     * 默认隐藏（不在状态栏常驻），循环仍可由屏幕 `!?#` 键与物理 SYM 键触发。
+     * 在状态栏常驻显示，循环仍可由屏幕 `!?#` 键与物理 SYM 键触发。
      */
     val panelCycleButton = ToolButton(ctx, R.drawable.ic_baseline_view_module_24, theme).apply {
         contentDescription = ctx.getString(R.string.panel_cycle)
-        visibility = View.GONE
+        visibility = View.VISIBLE
     }
 
     val emptyBar = Space(ctx)
@@ -167,10 +154,6 @@ class IdleUi(
             centerVertically()
         })
         add(inputMethodButton, lParams(size, size) {
-            before(customKeyboardButton)
-            centerVertically()
-        })
-        add(customKeyboardButton, lParams(size, size) {
             before(panelCycleButton)
             centerVertically()
         })

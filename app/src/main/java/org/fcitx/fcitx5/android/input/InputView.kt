@@ -147,6 +147,8 @@ class InputView(
         scope += commonKeyActionListener
         // 把「符号窗口」循环动作（屏幕 !?# 键、顶栏常驻按钮）导向 InputView 的有序面板循环
         commonKeyActionListener.onPanelCycle = { cyclePanels() }
+        // 把顶栏（状态栏）「隐藏窗口」按钮导向 InputView 的关闭当前面板逻辑
+        commonKeyActionListener.onHideWindow = { hideCurrentWindow() }
         scope += windowManager
         scope += kawaiiBar
         scope += horizontalCandidate
@@ -1041,6 +1043,17 @@ class InputView(
         service.requestInsetsUpdate()
         // 同步顶栏循环按钮图标到新态
         kawaiiBar.updatePanelCycleButton(next)
+    }
+
+    /**
+     * 隐藏当前打开的面板 / 窗口，回到无软键盘态（与面板循环「关闭」态一致）：
+     * 切回主键盘布局、隐藏虚拟键盘窗口；物理键盘继续工作，IME 顶栏仍可见。
+     * 顶栏（状态栏）右上角「隐藏窗口」按钮走此入口。
+     */
+    internal fun hideCurrentWindow() {
+        applyPanelModule(null)
+        service.requestInsetsUpdate()
+        kawaiiBar.updatePanelCycleButton(null)
     }
 
     /**

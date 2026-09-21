@@ -12,8 +12,8 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.after
+import splitties.views.dsl.constraintlayout.before
 import splitties.views.dsl.constraintlayout.bottomOfParent
-import splitties.views.dsl.constraintlayout.centerHorizontally
 import splitties.views.dsl.constraintlayout.centerVertically
 import splitties.views.dsl.constraintlayout.constraintLayout
 import splitties.views.dsl.constraintlayout.endOfParent
@@ -40,6 +40,11 @@ class TitleUi(override val ctx: Context, theme: Theme) : Ui {
         textSize = 16f
     }
 
+    private val hideButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme).apply {
+        contentDescription = ctx.getString(R.string.hide_window)
+        isVisible = false
+    }
+
     private var extension: View? = null
 
     override val root = constraintLayout {
@@ -53,10 +58,21 @@ class TitleUi(override val ctx: Context, theme: Theme) : Ui {
             after(backButton, dp(8))
             bottomOfParent()
         })
+        add(hideButton, lParams(dp(40), dp(40)) {
+            topOfParent()
+            endOfParent()
+            bottomOfParent()
+        })
     }
 
     fun setReturnButtonOnClickListener(block: () -> Unit) {
         backButton.setOnClickListener {
+            block()
+        }
+    }
+
+    fun setHideButtonOnClickListener(block: () -> Unit) {
+        hideButton.setOnClickListener {
             block()
         }
     }
@@ -71,15 +87,14 @@ class TitleUi(override val ctx: Context, theme: Theme) : Ui {
         }
         backButton.isVisible = showTitle
         titleText.isVisible = showTitle
+        // 仅无标题栏的扩展窗口（符号 / 表情 / 自定义面板）在右上角显示隐藏按钮
+        hideButton.isVisible = !showTitle
         extension = view
         root.run {
             add(view, lParams(matchConstraints, dp(40)) {
                 centerVertically()
-                if (showTitle) {
-                    endOfParent(dp(5))
-                } else {
-                    centerHorizontally()
-                }
+                before(hideButton)
+                if (showTitle) after(titleText) else startOfParent()
             })
         }
     }
@@ -89,5 +104,6 @@ class TitleUi(override val ctx: Context, theme: Theme) : Ui {
             root.removeView(it)
             extension = null
         }
+        hideButton.isVisible = false
     }
 }

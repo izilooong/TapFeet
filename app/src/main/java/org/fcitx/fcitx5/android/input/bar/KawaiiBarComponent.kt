@@ -187,14 +187,6 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             }
         }
 
-    /** 自定义键盘总开关：关闭时隐藏状态栏⑩按钮 */
-    @Keep
-    private val onCustomKeyboardEnabledListener =
-        ManagedPreference.OnChangeListener<Boolean> { _, enabled ->
-            idleUi.customKeyboardButton.visibility =
-                if (enabled) View.VISIBLE else View.GONE
-        }
-
     /** 「隐藏状态栏」开关：切换后立即重算顶栏可见性，无需重启输入法。 */
     @Keep
     private val onHideStatusBarChangeListener =
@@ -393,18 +385,6 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 } else {
                     windowManager.setKeyboardWindowVisible(true)
                     keyboardWindow.switchLayoutSync(TextKeyboard.Name)
-                }
-                updateKeyboardToggleButton()
-            }
-            customKeyboardButton.setOnClickListener {
-                // 总开关守卫（按钮正常情况下已隐藏，双保险）
-                if (!prefs.customKeyboard.enabled.getValue()) return@setOnClickListener
-                // 「⑩」自定义键盘开关：显示中且是自定义键盘 → 关闭；否则 → 打开自定义键盘
-                if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == CustomKeyboard.Name) {
-                    windowManager.setKeyboardWindowVisible(false)
-                } else {
-                    windowManager.setKeyboardWindowVisible(true)
-                    keyboardWindow.switchLayoutSync(CustomKeyboard.Name)
                 }
                 updateKeyboardToggleButton()
             }
@@ -618,6 +598,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         val new = view.getChildAt(index)
         if (new != titleUi.root) {
             titleUi.setReturnButtonOnClickListener { }
+            titleUi.setHideButtonOnClickListener { }
             titleUi.setTitle("")
             titleUi.removeExtension()
         }
@@ -649,7 +630,6 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         ClipboardManager.addOnUpdateListener(onClipboardUpdateListener)
         clipboardSuggestion.registerOnChangeListener(onClipboardSuggestionUpdateListener)
         clipboardItemTimeout.registerOnChangeListener(onClipboardTimeoutUpdateListener)
-        prefs.customKeyboard.enabled.registerOnChangeListener(onCustomKeyboardEnabledListener)
         prefs.candidateBar.hideStatusBar.registerOnChangeListener(onHideStatusBarChangeListener)
     }
 
@@ -710,6 +690,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 window.onCreateBarExtension()?.let { titleUi.addExtension(it, window.showTitle) }
                 titleUi.setReturnButtonOnClickListener {
                     windowManager.attachWindow(KeyboardWindow)
+                }
+                titleUi.setHideButtonOnClickListener {
+                    commonKeyActionListener.onHideWindow?.invoke()
                 }
                 barStateMachine.push(ExtendedWindowAttached)
             }
