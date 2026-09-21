@@ -647,22 +647,73 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             super.onConfigurationChanged(newConfig)
             // `super` -> InputMethodService.onConfigurationChanged ->
             // resetStateForNewConfiguration() -> initViews() -> mWindow.setContentView(mRootView),
-            // which wipes ALL children of android.R.id.content — the effects overlay bolted
-            // there in onCreate goes with them and nothing re-adds it. Any non-skipped config
-            // change (screen size / density / locale / rotation; vendor "mini mode" resolution
-            // switching included) thus detached the overlay forever: every spawn became a
-            // postInvalidateOnAnimation() on a detached view, i.e. a silent no-op — the
-            // "effects gone until restart" report. Re-bolt it onto the fresh content view.
-            ensureEffectsOverlayAttached()
+            // which wipes ALL children of android.R.id.content. The framework only redoes ITS
+            // views; anything this service bolted on in onCreate is gone or stale — and every
+            // captured reference (decorView, content children, dp densities) may be outdated.
+            // Don't patch individual pieces (the overlay alone went through four rounds of
+            // "spontaneously dead until restart" reports): re-run the whole init chain.
+            reinitializeAfterConfigChange()
         }
         lastKnownConfig = newConfig
     }
 
     /**
-     * Re-bolts the effects overlay onto [contentView] when the framework's
-     * `resetStateForNewConfiguration()` (config changes outside the skip mask in
-     * [onConfigurationChanged]) replaced the window's content children and detached it.
-     * Idempotent: a no-op while the overlay is still attached.
+     * Full re-initialization of everything this service attached to the IME window, after the
+     * framework's `resetStateForNewConfiguration()` rebuilt its view hierarchy on a non-skipped
+     * config change (screen size / density / locale / rotation — vendor "mini mode" resolution
+     * switching included). One deterministic path instead of per-view band-aids, so no view can
+     * survive a config change in a stale or detached state:
+     *  1. window references (decorView / contentView) refreshed in case the window was recreated;
+     *  2. InputView + CandidatesView fully rebuilt (KawaiiBar, InputDeviceManager sync, navbar);
+     *  3. effects overlay recreated — its captured density/scaledDensity must match the new
+     *     resolution — and re-bolted onto the fresh content view;
+     *  4. the decor generic-motion channel reinstalled on the (possibly new) decorView.
+     */
+    private fun reinitializeAfterConfigChange() {
+        // 1. Window references may themselves be stale if the window was recreated.
+        window.window?.let { w ->
+            decorView = w.decorView
+            contentView = w.decorView.findViewById(android.R.id.content)
+        }
+        // 2. Keyboard + candidate views: full rebuild.
+        replaceInputViews(ThemeManager.activeTheme)
+        // 3. Effects overlay: recreate from scratch, then re-bolt above the fresh content.
+        effectsOverlay?.release()
+        (effectsOverlay as? View)?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        effectsOverlay = CommitEffectsOverlay(this).also {
+            it.setCandidatesView(candidatesView)
+            contentView.addView(
+                it,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        // 4. The fly-text channel rides on the decorView; reinstall unconditionally
+        //    (setOnGenericMotionListener replaces, so re-running is safe even if unchanged).
+        decorMotionListenerInstalled = false
+        installDecorMotionListener()
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        try {
+            highlightColor = styledColor(android.R.attr.colorAccent).alpha(0.4f)
+        } catch (_: Exception) {
+            Timber.w("Device does not support android.R.attr.colorAccent which it should have.")
+        }
+        InputFeedbacks.syncSystemPrefs()
+        installDecorMotionListener()
+        // A config change that fell outside the skip mask may have detached the overlay while
+        // the window was hidden (reinitializeAfterConfigChange covers the change itself; this
+        // catches any other detach path). Idempotent.
+        ensureEffectsOverlayAttached()
+    }
+
+    /**
+     * Re-bolts the effects overlay onto [contentView] if anything detached it. Idempotent:
+     * a no-op while the overlay is still attached.
      */
     private fun ensureEffectsOverlayAttached() {
         val overlay = effectsOverlay ?: return
@@ -680,20 +731,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
-    }
-
-    override fun onWindowShown() {
-        super.onWindowShown()
-        try {
-            highlightColor = styledColor(android.R.attr.colorAccent).alpha(0.4f)
-        } catch (_: Exception) {
-            Timber.w("Device does not support android.R.attr.colorAccent which it should have.")
-        }
-        InputFeedbacks.syncSystemPrefs()
-        installDecorMotionListener()
-        // A config change that fell outside the skip mask (resolution/density/locale...) may
-        // have detached the overlay while the window was hidden; belt-and-braces on every show.
-        ensureEffectsOverlayAttached()
     }
 
     /** Set once per process; [onWindowShown] may fire again for a re-shown window. */
