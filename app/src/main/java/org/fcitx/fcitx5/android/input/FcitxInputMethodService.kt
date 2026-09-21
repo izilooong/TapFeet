@@ -645,8 +645,41 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
          */
         if (diff and f != diff) {
             super.onConfigurationChanged(newConfig)
+            // `super` -> InputMethodService.onConfigurationChanged ->
+            // resetStateForNewConfiguration() -> initViews() -> mWindow.setContentView(mRootView),
+            // which wipes ALL children of android.R.id.content — the effects overlay bolted
+            // there in onCreate goes with them and nothing re-adds it. Any non-skipped config
+            // change (screen size / density / locale / rotation; vendor "mini mode" resolution
+            // switching included) thus detached the overlay forever: every spawn became a
+            // postInvalidateOnAnimation() on a detached view, i.e. a silent no-op — the
+            // "effects gone until restart" report. Re-bolt it onto the fresh content view.
+            ensureEffectsOverlayAttached()
         }
         lastKnownConfig = newConfig
+    }
+
+    /**
+     * Re-bolts the effects overlay onto [contentView] when the framework's
+     * `resetStateForNewConfiguration()` (config changes outside the skip mask in
+     * [onConfigurationChanged]) replaced the window's content children and detached it.
+     * Idempotent: a no-op while the overlay is still attached.
+     */
+    private fun ensureEffectsOverlayAttached() {
+        val overlay = effectsOverlay ?: return
+        if (overlay.parent === contentView) return
+        Timber.w(
+            "effects: overlay detached from content view (parent=%s), re-attaching",
+            overlay.parent
+        )
+        (overlay.parent as? ViewGroup)?.removeView(overlay)
+        overlay.setCandidatesView(candidatesView)
+        contentView.addView(
+            overlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
     }
 
     override fun onWindowShown() {
@@ -658,6 +691,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         InputFeedbacks.syncSystemPrefs()
         installDecorMotionListener()
+        // A config change that fell outside the skip mask (resolution/density/locale...) may
+        // have detached the overlay while the window was hidden; belt-and-braces on every show.
+        ensureEffectsOverlayAttached()
     }
 
     /** Set once per process; [onWindowShown] may fire again for a re-shown window. */

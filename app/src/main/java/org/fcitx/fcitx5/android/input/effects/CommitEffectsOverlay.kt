@@ -448,6 +448,17 @@ class CommitEffectsOverlay(context: Context) : View(context) {
         flyerAlive = 0
     }
 
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // The service re-attaches us after config-change view rebuilds (see
+        // FcitxInputMethodService.ensureEffectsOverlayAttached); while detached every spawn
+        // is a silent no-op. Loud so logcat names the detach the moment it happens.
+        Timber.w(
+            "effects: overlay DETACHED (alive=%d bubbles=%d flyers=%d)",
+            alive, bubbleAlive, flyerAlive
+        )
+    }
+
     private fun emit(x: Float, y: Float, tier: Int, densityPref: Int) {
         // Firing before the very first layout would launch from (0,0) and the whole burst
         // would sail off-screen unseen — on some devices that is exactly the first commit.
