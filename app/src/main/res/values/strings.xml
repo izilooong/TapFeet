@@ -102,6 +102,8 @@
     <string name="hw_enable_candidate_quick_pick_summary">Physical keys pick candidates: %1$s</string>
     <!-- Shortcut module: bind a physical key to an action (see ShortcutAction) -->
     <string name="shortcut_keys">Shortcut keys</string>
+    <string name="shortcut_tab_fn">Fn shortcuts</string>
+    <string name="shortcut_tab_sym">Sym shortcuts</string>
     <string name="shortcut_intro">Bind a physical key to a common action. Tap a row to capture a key: Fn / Sym compose chords like \"Fn+e\", or just press the key. Picking, paging, the symbol window and IME switching live under \"Physical keyboard\".</string>
     <string name="shortcut_toggle_effects">Toggle input effects</string>
     <string name="shortcut_toggle_sound">Toggle key sound</string>
@@ -109,6 +111,20 @@
     <string name="shortcut_toggle_flytext">Toggle fly-text</string>
     <string name="shortcut_toggle_arrangement">Switch candidate arrangement</string>
     <string name="shortcut_cycle_sound_mode">Cycle key sound mode</string>
+    <string name="shortcut_select_all">Select all</string>
+    <string name="shortcut_copy">Copy</string>
+    <string name="shortcut_cut">Cut</string>
+    <string name="shortcut_paste">Paste</string>
+    <string name="shortcut_clear_all">Delete all text</string>
+    <string name="shortcut_undo">Undo</string>
+    <string name="shortcut_cursor_left">Move cursor left</string>
+    <string name="shortcut_cursor_right">Move cursor right</string>
+    <string name="shortcut_cursor_up">Move cursor up</string>
+    <string name="shortcut_cursor_down">Move cursor down</string>
+    <string name="shortcut_select_left">Extend selection left</string>
+    <string name="shortcut_select_right">Extend selection right</string>
+    <string name="shortcut_select_up">Extend selection up</string>
+    <string name="shortcut_select_down">Extend selection down</string>
     <string name="shortcut_reset_all">Unbind all</string>
     <string name="shortcut_reset_all_summary">Clear every shortcut binding on this page</string>
     <string name="shortcut_apply_preset">Restore recommended keys</string>

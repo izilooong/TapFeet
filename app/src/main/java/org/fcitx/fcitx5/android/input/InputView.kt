@@ -734,7 +734,7 @@ class InputView(
         HardwareShortcutResolver.isHardwareShortcutKey(event)
 
     /**
-     * 动作快捷键（开关类）：命中即执行并消费该键。
+     * 动作快捷键（开关类 + 文本编辑类）：命中即执行并消费该键。
      *
      * 由 [FcitxInputMethodService.onKeyDown] 放在整条派发链**最前面**调用，于是：
      * - 物理 / 虚拟两种模式下都生效（探测点在 `isVirtualKeyboard` 分支之前）；
@@ -755,6 +755,8 @@ class InputView(
      * 不需要任何额外接线。
      *
      * Toast 不是装饰：这些开关在输入法窗口里没有任何可见状态，没有回执用户不知道自己按中没按中。
+     *
+     * 文本编辑类动作不在这翻转偏好，统一交 [runEditorAction]。
      */
     private fun performShortcutAction(action: ShortcutAction) {
         val prefs = AppPrefs.getInstance()
@@ -831,6 +833,59 @@ class InputView(
                     )
                 )
             }
+
+            // 文本编辑类：全选 / 复制 / 剪切 / 粘贴 / 全删 / 撤销 / 光标四向；
+            // 选字类：选区四向扩（右 Shift + E/D/S/F）
+            ShortcutAction.SelectAll,
+            ShortcutAction.Copy,
+            ShortcutAction.Cut,
+            ShortcutAction.Paste,
+            ShortcutAction.ClearAll,
+            ShortcutAction.Undo,
+            ShortcutAction.CursorLeft,
+            ShortcutAction.CursorRight,
+            ShortcutAction.CursorUp,
+            ShortcutAction.CursorDown,
+            ShortcutAction.SelectUp,
+            ShortcutAction.SelectDown,
+            ShortcutAction.SelectLeft,
+            ShortcutAction.SelectRight
+            -> runEditorAction(action)
+        }
+    }
+
+    /**
+     * 文本编辑类动作：直接作用于焦点编辑器（InputConnection），编辑器自身给出可见反馈
+     * （光标动了 / 文本没了），不再叠加 Toast。没有焦点编辑器时静默不动作。
+     *
+     * 取跨编辑器兼容面最广的路径：全选/复制/剪切/粘贴走编辑器上下文菜单
+     * （[InputConnection.performContextMenuAction]，TextView 支持，WebView/Compose 参差）；
+     * 光标与选区走 DPAD keyevent（选区附加 Shift meta）；撤销发 Ctrl+Z
+     * （android.R.id 没有 undo 常量，keyevent 是唯一通用入口）。
+     */
+    private fun runEditorAction(action: ShortcutAction) {
+        val ic = service.currentInputConnection ?: return
+        val sendKey = { code: Int, meta: Int ->
+            ic.sendKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, code, 0, meta))
+        }
+        when (action) {
+            ShortcutAction.SelectAll -> ic.performContextMenuAction(android.R.id.selectAll)
+            ShortcutAction.Copy -> ic.performContextMenuAction(android.R.id.copy)
+            ShortcutAction.Cut -> ic.performContextMenuAction(android.R.id.cut)
+            ShortcutAction.Paste -> ic.performContextMenuAction(android.R.id.paste)
+            // selectAll 失败（编辑器不支持）就不补刀：此时无选区，commitText("") 等于空操作
+            ShortcutAction.ClearAll ->
+                if (ic.performContextMenuAction(android.R.id.selectAll)) ic.commitText("", 1)
+            ShortcutAction.Undo -> sendKey(KeyEvent.KEYCODE_Z, KeyEvent.META_CTRL_ON)
+            ShortcutAction.CursorLeft -> sendKey(KeyEvent.KEYCODE_DPAD_LEFT, 0)
+            ShortcutAction.CursorRight -> sendKey(KeyEvent.KEYCODE_DPAD_RIGHT, 0)
+            ShortcutAction.CursorUp -> sendKey(KeyEvent.KEYCODE_DPAD_UP, 0)
+            ShortcutAction.CursorDown -> sendKey(KeyEvent.KEYCODE_DPAD_DOWN, 0)
+            ShortcutAction.SelectLeft -> sendKey(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.META_SHIFT_ON)
+            ShortcutAction.SelectRight -> sendKey(KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.META_SHIFT_ON)
+            ShortcutAction.SelectUp -> sendKey(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.META_SHIFT_ON)
+            ShortcutAction.SelectDown -> sendKey(KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.META_SHIFT_ON)
+            else -> Unit
         }
     }
 

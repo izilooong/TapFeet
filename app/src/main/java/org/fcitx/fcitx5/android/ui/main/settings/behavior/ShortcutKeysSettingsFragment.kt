@@ -4,8 +4,14 @@
  */
 package org.fcitx.fcitx5.android.ui.main.settings.behavior
 
+import android.content.Context
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import androidx.preference.Preference
+import androidx.preference.PreferenceScreen
+import com.google.android.material.tabs.TabLayout
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -13,7 +19,9 @@ import org.fcitx.fcitx5.android.data.prefs.HardwareChord
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
+import org.fcitx.fcitx5.android.input.shortcut.ShortcutChord
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
+import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCapturePreference
 import org.fcitx.fcitx5.android.ui.main.settings.KeyCaptureUi
 import org.fcitx.fcitx5.android.utils.normalizeKeyString
@@ -21,26 +29,42 @@ import org.fcitx.fcitx5.android.utils.normalizeKeyString
 /**
  * 「快捷键」配置页：为常用动作绑定物理键。
  *
- * 逐行渲染 [ShortcutAction]（单一事实来源），每行直接复用 [KeyCapturePreference] ——
- * 捕获 / 修改 / 重置三件套它自带，本页不重写任何捕获或渲染逻辑，只额外接一个冲突提示。
+ * 两个**固定 Tab**（复用 [HardwareKeyboardSettingsFragment] 的 TabLayout 模式）：
+ *  - **Fn 快捷键**：文本编辑类（含选字四向，[ShortcutChord.FN]，推荐 `Fn+字母`）；
+ *  - **Sym 快捷键**：开关类（[ShortcutChord.SYM]，推荐 `Sym+字母`）。
+ *
+ * 分组只按 [ShortcutAction.chord] 这一份标记走，本页不写第二份分类判断。每行直接复用
+ * [KeyCapturePreference] —— 捕获 / 修改 / 重置三件套它自带，本页不重写任何捕获或渲染逻辑，
+ * 只额外接一个冲突提示。「恢复推荐键位 / 全部解绑」作用于整页配置，两个 Tab 底部各放一份入口。
  *
  * 与「物理键绑定」页的分工：那边管**输入行为**（候选字 / 翻页 / 符号窗口 / 切输入法），由
- * keyProfile 预设统一播种；这边管**动作开关**，纯用户自定义、不受预设影响。冲突检测会把两边的
- * 键位一起算进来 —— 它们抢的是同一个物理键盘。
+ * keyProfile 预设统一播种；这边管**动作 / 编辑**，纯用户自定义、不受预设影响。冲突检测会把
+ * 两边的键位一起算进来 —— 它们抢的是同一个物理键盘。
  */
 class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
 
     private lateinit var shortcuts: AppPrefs.Shortcuts
     private val keyPrefs = mutableListOf<KeyCapturePreference>()
 
+    private var tabLayout: TabLayout? = null
+    private var screens: List<Pair<String, PreferenceScreen>> = emptyList()
+    private var selectedTab = 0
+
+    private companion object {
+        const val KEY_SELECTED_TAB = "shortcut_selected_tab"
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
-        val screen = preferenceManager.createPreferenceScreen(context)
         shortcuts = AppPrefs.getInstance().shortcuts
 
+        // 两个固定 Tab：Fn = 文本编辑类（含选字四向），Sym = 开关类（按 ShortcutAction.chord 分组）。
+        val fnScreen = preferenceManager.createPreferenceScreen(context)
+        val symScreen = preferenceManager.createPreferenceScreen(context)
+
         // 说明行。两点必须说清：① 只在物理键按下时生效（软键盘点按不经过 onKeyDown）；
-        // ② 留空 = 不绑定 —— 本页默认全空，用户看到一片「无」得知道那是有意为之，而不是坏了。
-        screen.addPreference(Preference(context).apply {
+        // ② 留空 = 不绑定 —— 未绑定的行显示「无」是有意为之，而不是坏了。
+        fnScreen.addPreference(Preference(context).apply {
             key = "shortcut_intro"
             title = getString(R.string.shortcut_intro)
             isIconSpaceReserved = false
@@ -61,51 +85,63 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
                 summaryProvider = KeyCapturePreference.KeySummaryProvider
                 conflictHint = { candidate -> conflictMessage(candidate, pref.key) }
             }
-            screen.addPreference(capture)
+            when (action.chord) {
+                ShortcutChord.FN -> fnScreen
+                ShortcutChord.SYM -> symScreen
+            }.addPreference(capture)
             keyPrefs.add(capture)
         }
 
-        // 恢复推荐键位：按当前**键盘预设**播一套推荐动作键（Titan 系 = `Fn+字母`，伪修饰键和弦）。
-        // 预设若整体不提供这套配置（BlackBerry，见 HardwareKeyProfiles.actionShortcutsAvailable），
-        // 同一个 shortcutValuesFor 会返回**全空串** ⇒ 这里等价于「清空」，不必另写清空逻辑。
-        // 首次安装与切换键盘预设时也走同一份（HardwareKeyProfiles.applyShortcutPreset）。
-        // 注：黑莓预设下本页是隐藏的（MainFragment 按同一判据显隐），这个按钮到不了。
-        screen.addPreference(Preference(context).apply {
-            key = "shortcut_apply_preset"
-            title = getString(R.string.shortcut_apply_preset)
-            val profile = AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue()
-            summary = getString(
-                R.string.shortcut_apply_preset_summary,
-                getString(HardwareKeyProfiles.labelResFor(profile))
+        // 恢复推荐键位 + 全部解绑：作用于整页配置（两族动作一起写/一起清），
+        // 每个 Tab 底部各放一份入口，免去为按个按钮来回切 Tab。
+        listOf(fnScreen, symScreen).forEach { screen ->
+            screen.addPreference(presetButton(context))
+            screen.addPreference(resetButton(context))
+        }
+
+        screens = listOf(
+            getString(R.string.shortcut_tab_fn) to fnScreen,
+            getString(R.string.shortcut_tab_sym) to symScreen,
+        )
+        selectedTab = (savedInstanceState?.getInt(KEY_SELECTED_TAB) ?: 0).coerceIn(0, screens.lastIndex)
+        preferenceScreen = screens[selectedTab].second
+    }
+
+    /** 「恢复推荐键位」：按当前**键盘预设**播一套推荐动作键（编辑类 `Fn+字母`，开关类 `Sym+字母`）。 */
+    private fun presetButton(context: Context): Preference = Preference(context).apply {
+        key = "shortcut_apply_preset"
+        title = getString(R.string.shortcut_apply_preset)
+        val profile = AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue()
+        summary = getString(
+            R.string.shortcut_apply_preset_summary,
+            getString(HardwareKeyProfiles.labelResFor(profile))
+        )
+        isIconSpaceReserved = false
+        isSingleLineTitle = false
+        setOnPreferenceClickListener {
+            HardwareKeyProfiles.applyShortcutPreset(
+                AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue(),
+                AppPrefs.getInstance()
             )
-            isIconSpaceReserved = false
-            isSingleLineTitle = false
-            setOnPreferenceClickListener {
-                HardwareKeyProfiles.applyShortcutPreset(
-                    AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue(),
-                    AppPrefs.getInstance()
-                )
-                keyPrefs.forEach { it.refresh() }
-                true
-            }
-        })
+            keyPrefs.forEach { it.refresh() }
+            true
+        }
+    }
 
-        screen.addPreference(Preference(context).apply {
-            key = "shortcut_reset_all"
-            title = getString(R.string.shortcut_reset_all)
-            summary = getString(R.string.shortcut_reset_all_summary)
-            isIconSpaceReserved = false
-            isSingleLineTitle = false
-            setOnPreferenceClickListener {
-                ShortcutAction.entries.forEach { action -> shortcuts.key(action).setValue("") }
-                // 外部直接写 SharedPreferences 不会刷新 androidx Preference 的摘要，必须手动 refresh
-                // （applyProfile / applyQuickPick 也是这么做的）。
-                keyPrefs.forEach { it.refresh() }
-                true
-            }
-        })
-
-        preferenceScreen = screen
+    /** 「全部解绑」：清空本页所有快捷键绑定。 */
+    private fun resetButton(context: Context): Preference = Preference(context).apply {
+        key = "shortcut_reset_all"
+        title = getString(R.string.shortcut_reset_all)
+        summary = getString(R.string.shortcut_reset_all_summary)
+        isIconSpaceReserved = false
+        isSingleLineTitle = false
+        setOnPreferenceClickListener {
+            ShortcutAction.entries.forEach { action -> shortcuts.key(action).setValue("") }
+            // 外部直接写 SharedPreferences 不会刷新 androidx Preference 的摘要，必须手动 refresh
+            // （applyProfile / applyQuickPick 也是这么做的）。
+            keyPrefs.forEach { it.refresh() }
+            true
+        }
     }
 
     /** 一条已存在的键位绑定，用于冲突检测。 */
@@ -176,5 +212,40 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
         if (specialA != null || specialB != null) return specialA?.name == specialB?.name
         return Key.parse(normalizeKeyString(innerA)).portableString ==
                 Key.parse(normalizeKeyString(innerB)).portableString
+    }
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        val root = super.onCreateView(inflater, container, savedInstanceState)
+        tabLayout = createSettingsTabBar(requireContext())
+        (root as? ViewGroup)?.addView(tabLayout, 0)
+        return root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        setupTabLayout()
+    }
+
+    private fun setupTabLayout() {
+        val tl = tabLayout ?: return
+        tl.visibility = View.VISIBLE
+        tl.removeAllTabs()
+        screens.forEach { (title, _) -> tl.addTab(tl.newTab().setText(title)) }
+        tl.selectTab(tl.getTabAt(selectedTab))
+        tl.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                val pos = tab?.position ?: return
+                selectedTab = pos
+                preferenceScreen = screens[pos].second
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_SELECTED_TAB, selectedTab)
     }
 }

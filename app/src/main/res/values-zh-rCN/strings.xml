@@ -98,6 +98,8 @@
     <string name="hw_enable_candidate_quick_pick_summary">物理键选词：%1$s</string>
     <!-- 「快捷键」模块：动作 → 物理键 的自定义绑定（动作表见 ShortcutAction） -->
     <string name="shortcut_keys">快捷键</string>
+    <string name="shortcut_tab_fn">Fn 快捷键</string>
+    <string name="shortcut_tab_sym">Sym 快捷键</string>
     <string name="shortcut_intro"></string>
     <string name="shortcut_toggle_effects">开关特效</string>
     <string name="shortcut_toggle_sound">开关音效</string>
@@ -105,6 +107,20 @@
     <string name="shortcut_toggle_flytext">开关飞字</string>
     <string name="shortcut_toggle_arrangement">切换候选排列</string>
     <string name="shortcut_cycle_sound_mode">循环音效模式</string>
+    <string name="shortcut_select_all">全选</string>
+    <string name="shortcut_copy">复制</string>
+    <string name="shortcut_cut">剪切</string>
+    <string name="shortcut_paste">粘贴</string>
+    <string name="shortcut_clear_all">全删</string>
+    <string name="shortcut_undo">撤销操作</string>
+    <string name="shortcut_cursor_left">左移光标</string>
+    <string name="shortcut_cursor_right">右移光标</string>
+    <string name="shortcut_cursor_up">上移光标</string>
+    <string name="shortcut_cursor_down">下移光标</string>
+    <string name="shortcut_select_left">向左选中</string>
+    <string name="shortcut_select_right">向右选中</string>
+    <string name="shortcut_select_up">向上选中</string>
+    <string name="shortcut_select_down">向下选中</string>
     <string name="shortcut_reset_all">全部解绑</string>
     <string name="shortcut_reset_all_summary">清空本页所有快捷键绑定</string>
     <string name="shortcut_apply_preset">恢复推荐键位</string>

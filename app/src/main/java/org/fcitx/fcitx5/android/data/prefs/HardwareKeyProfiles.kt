@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.data.prefs
 import androidx.annotation.StringRes
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
+import org.fcitx.fcitx5.android.input.shortcut.ShortcutChord
 
 /**
  * Predefined sets ("profiles") of hardware keyboard key bindings.
@@ -148,8 +149,13 @@ object HardwareKeyProfiles {
     }
 
     /**
-     * 「快捷键」动作键的字母。取动作名首字母（Effect / Sound / Bar / Fly / Arrangement / Mode），
-     * 与巨硬候选键（空格 / 返回 / Fn / 左右 Shift）不冲突。
+     * 「快捷键」动作键的字母。
+     *
+     * 两族动作各挂一个伪修饰键（归属见 [ShortcutAction.chord]），**前缀不同 = 不同手势**，
+     * 所以跨族字母允许重叠、各取自然助记：
+     *  - 文本编辑类（Fn）：字母由用户敲定的键位表钦定 —— 编辑 A/C/X/V/Q/Z、光标簇 S/F/E/D、
+     *    选字簇 U/J/H/K（U=上 J=下 H=左 K=右，与光标簇成对），不可动；
+     *  - 开关类（Sym）：取动作名首字母（Effect / Sound / Bar / Fly / Arrangement / Mode）。
      *
      * `when` 显式穷举 [ShortcutAction]：以后加动作若忘了给字母会直接编译不过，
      * 不会静默漏一个（「加了枚举项却没有绑定」正是本项目最怕的那类静默失效）。
@@ -161,6 +167,20 @@ object HardwareKeyProfiles {
         ShortcutAction.ToggleFlyText -> "f"
         ShortcutAction.ToggleArrangement -> "a"
         ShortcutAction.CycleSoundMode -> "m"
+        ShortcutAction.SelectAll -> "a"
+        ShortcutAction.Copy -> "c"
+        ShortcutAction.Cut -> "x"
+        ShortcutAction.Paste -> "v"
+        ShortcutAction.ClearAll -> "q"
+        ShortcutAction.Undo -> "z"
+        ShortcutAction.CursorLeft -> "s"
+        ShortcutAction.CursorRight -> "f"
+        ShortcutAction.CursorUp -> "e"
+        ShortcutAction.CursorDown -> "d"
+        ShortcutAction.SelectLeft -> "h"
+        ShortcutAction.SelectRight -> "k"
+        ShortcutAction.SelectUp -> "u"
+        ShortcutAction.SelectDown -> "j"
     }
 
     /**
@@ -176,8 +196,8 @@ object HardwareKeyProfiles {
      *  - 真修饰键的 meta **分不出左右 Alt**（`isAltPressed` = `META_ALT_ON`），所以写 `Alt+字母` 会把
      *    上一条一起吞掉 —— 这正是「Alt+字母 打不出键帽符号」那个 bug 的根源。
      *
-     * 与其留一套按不出反应、还暗地里抢原生键位的手势，不如整块不提供。Titan 系有 Fn 这个真正的空闲
-     * 修饰键（伪键，不占 meta 位），所以那边照常提供。
+     * 与其留一套按不出反应、还暗地里抢原生键位的手势，不如整块不提供。Titan 系有 Sym / Fn 这类
+     * 伪修饰键（不占 meta 位，见 [HardwareChord]），所以那边照常提供。
      */
     fun actionShortcutsAvailable(name: String): Boolean = name != BLACKBERRY
 
@@ -185,20 +205,32 @@ object HardwareKeyProfiles {
      * 该预设下的推荐动作键（[ShortcutAction] → 绑定串）。
      *
      * 只有 BlackBerry 不提供（见 [actionShortcutsAvailable]）；其余预设 —— Titan2 / Titan2 Elite /
-     * Titan2 Elite（改键）—— 一律 `Fn+字母`。Fn 没有 fcitx5 修饰位、也不进 metaState，属于
-     * 伪修饰键，靠 [HardwareChord] 自己跟踪按住状态 —— 见那边的说明。Elite 上 Fn 原本是符号窗口键，
-     * 现在按 tap-hold 处理：轻按仍开符号窗口，按住才是修饰键。
+     * Titan2 Elite（改键）—— 按动作家族分两套伪修饰键和弦（归属见 [ShortcutAction.chord]）：
+     *  - **文本编辑类**（含选字四向）→ `Fn+字母`（用户钦定的键位表）；
+     *  - **开关类** → `Sym+字母`。
+     * 两个都是伪修饰键：没有 fcitx5 修饰位、也不进 metaState，靠 [HardwareChord] 自己跟踪按住
+     * 状态 —— 见那边的说明。
+     *
+     * ⚠️ 开关类用 Sym 的前提是 **Sym 这个裸键没绑别的东西**：`titan2_elite`（原版）预设把
+     * `pageNextKey` 绑成了 `Sym` —— 那套预设下按住 Sym 触发开关会先翻一页；`titan2_elite_mod`
+     * 的翻页已挪到左右 Shift，Sym 空闲，是这套推荐键位的目标预设。
      *
      * **不支持该套配置的预设返回「全空串」而不是空 Map** —— 这样 [applyShortcutPreset] 走同一条
      * `forEach` 路径就会把动作键写成空（解绑），既不用第二套清空逻辑，也不会在偏好里留下一批
      * 「看不见、却还在抢键」的历史值。判据见 [actionShortcutsAvailable]。
      *
-     * 默认值全是「按住 Fn + 字母」这种组合，避开所有裸键：裸键（字母）本来就要打字。
+     * 默认值全是「按住修饰键 + 字母」这种组合，避开所有裸键：裸键（字母）本来就要打字。
      */
     fun shortcutValuesFor(name: String): Map<ShortcutAction, String> {
         if (!actionShortcutsAvailable(name)) return ShortcutAction.entries.associateWith { "" }
         return ShortcutAction.entries.associateWith {
-            HardwareChord.compose(HardwareChord.FN, leaderFor(it))
+            HardwareChord.compose(
+                when (it.chord) {
+                    ShortcutChord.FN -> HardwareChord.FN
+                    ShortcutChord.SYM -> HardwareChord.SYM
+                },
+                leaderFor(it)
+            )
         }
     }
 

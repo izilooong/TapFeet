@@ -1684,7 +1684,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             forceShowSelf()
         }
         if (event.repeatCount == 0) {
-            // 动作快捷键（开关类…）第一优先。刻意放在候选 / 符号 / 翻页判断之前，并且放在
+            // 动作快捷键（开关类 + 文本编辑类）第一优先。刻意放在候选 / 符号 / 翻页判断之前，并且放在
             // `inputDeviceMgr.isVirtualKeyboard` 分支**之外**：
             //  - 开关类动作与候选窗状态、preedit、编辑器焦点全无关系，若挂在后面的 early-return
             //    之下，就会变成"没在打字时按不动"的静默失效（hideStatusBar、选字特效都栽过这类坑）；
