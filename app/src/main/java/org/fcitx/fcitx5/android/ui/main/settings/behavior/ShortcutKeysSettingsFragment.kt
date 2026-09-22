@@ -33,8 +33,8 @@ import org.fcitx.fcitx5.android.utils.normalizeKeyString
  * 「快捷键」配置页：为常用动作绑定物理键。
  *
  * 两个**固定 Tab**（复用 [HardwareKeyboardSettingsFragment] 的 TabLayout 模式）：
- *  - **编辑**：编辑类（含选字四向，[ShortcutChord.FN]，Titan 系 `Fn+字母` / 黑莓 `Alt_R+字母`）；
- *  - **开关**：开关类（[ShortcutChord.SYM]，Titan 系 `Sym+字母` / 黑莓 `Alt_R+字母`）。
+ *  - **编辑**：编辑类（含选字四向，[ShortcutChord.FN]，Titan 系 `Fn+字母` / 黑莓 `Shift_R+字母`）；
+ *  - **开关**：开关类（[ShortcutChord.SYM]，Titan 系 `Sym+字母` / 黑莓 `Shift_R+字母`）。
  *
  * 分组只按 [ShortcutAction.chord] 这一份标记走，本页不写第二份分类判断。每行直接复用
  * [KeyCapturePreference] —— 捕获 / 修改 / 重置三件套它自带，本页不重写任何捕获或渲染逻辑，
@@ -59,8 +59,8 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
     private companion object {
         const val KEY_SELECTED_TAB = "shortcut_selected_tab"
 
-        /** 双列下仍要占满整行的偏好（说明行 + 底部两个按钮），按 preference.key 识别。 */
-        val FULL_SPAN_KEYS = setOf("shortcut_intro", "shortcut_apply_preset", "shortcut_reset_all")
+        /** 双列下仍要占满整行的偏好（底部两个按钮），按 preference.key 识别。 */
+        val FULL_SPAN_KEYS = setOf("shortcut_apply_preset", "shortcut_reset_all")
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
@@ -70,16 +70,6 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
         // 两个固定 Tab：编辑 = 编辑类（含选字四向），开关 = 开关类（按 ShortcutAction.chord 分组）。
         val fnScreen = preferenceManager.createPreferenceScreen(context)
         val symScreen = preferenceManager.createPreferenceScreen(context)
-
-        // 说明行。两点必须说清：① 只在物理键按下时生效（软键盘点按不经过 onKeyDown）；
-        // ② 留空 = 不绑定 —— 未绑定的行显示「无」是有意为之，而不是坏了。
-        fnScreen.addPreference(Preference(context).apply {
-            key = "shortcut_intro"
-            title = getString(R.string.shortcut_intro)
-            isIconSpaceReserved = false
-            isSingleLineTitle = false
-            isSelectable = false
-        })
 
         ShortcutAction.entries.forEach { action ->
             val pref = shortcuts.key(action)
@@ -116,7 +106,7 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
         preferenceScreen = screens[selectedTab].second
     }
 
-    /** 「恢复推荐键位」：按当前**键盘预设**播一套推荐动作键（Titan 系 Fn/Sym 分族；黑莓统一 `Alt_R+字母`）。 */
+    /** 「恢复推荐键位」：按当前**键盘预设**播一套推荐动作键（Titan 系 Fn/Sym 分族；黑莓统一 `Shift_R+字母`）。 */
     private fun presetButton(context: Context): Preference = Preference(context).apply {
         key = "shortcut_apply_preset"
         title = getString(R.string.shortcut_apply_preset)

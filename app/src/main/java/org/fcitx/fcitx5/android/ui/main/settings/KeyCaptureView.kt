@@ -88,11 +88,14 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
     }
 
     /**
-     * 伪修饰键按钮（Fn / Sym）。语义跟 Ctrl/Alt/Shift 一样是「给下一个键加前缀」，只是值不能是
-     * [KeyState] —— Fn/Sym 没有 fcitx5 修饰位，只能写成字符串前缀（见 [HardwareChord]）。
+     * 和弦前缀按钮。语义跟 Ctrl/Alt/Shift 一样是「给下一个键加前缀」：
+     *  - Fn / Sym：伪修饰键，没有 fcitx5 修饰位，只能写成字符串前缀（见 [HardwareChord]）；
+     *  - 左/右 Alt、左/右 Shift：真修饰键的**侧别精确**前缀 —— 通用 Alt/Shift 按钮录不出侧别
+     *    （物理按 Shift_R 只会置通用的 Shift 状态，存成 `Shift+键` 左右不分），要
+     *    「只认右 Shift」这类绑定（如黑莓预设统一挂 Shift_R）必须走这里。
      *
-     * 这是**唯一**能做出 `Fn+字母` 的地方：物理按 Fn 只会上报一个裸伪键名（`NavFn`），
-     * 「按住 Fn 再按字母」在捕获窗口里根本录不出来（录到的永远是后一个键）。
+     * 这是**唯一**能做出 `Fn+字母` / `Shift_R+字母` 的地方：物理按修饰键录到的永远是
+     * 「修饰状态 + 后一个键」，前缀本身在捕获流里立不住。
      */
     private inner class ChordButton(val name: String, @StringRes labelRes: Int) : Ui {
         override val ctx = this@KeyCaptureUi.ctx
@@ -137,7 +140,11 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
 
     private val chordButtons = arrayOf(
         ChordButton(HardwareChord.FN, R.string.hw_special_fn),
-        ChordButton(HardwareChord.SYM, R.string.hw_special_sym)
+        ChordButton(HardwareChord.SYM, R.string.hw_special_sym),
+        ChordButton(HardwareChord.ALT_L, R.string.hw_special_alt_l),
+        ChordButton(HardwareChord.ALT_R, R.string.hw_special_alt_r),
+        ChordButton(HardwareChord.SHIFT_L, R.string.hw_special_shift_l),
+        ChordButton(HardwareChord.SHIFT_R, R.string.hw_special_shift_r),
     )
 
     /** 当前勾选的伪修饰键；"" = 没有。直接从按钮读，不另存一份字段（省掉一次同步机会）。 */

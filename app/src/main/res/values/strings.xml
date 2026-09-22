@@ -90,11 +90,17 @@
     <string name="hw_profile_tt2">Titan2</string>
     <string name="hw_profile_titan2_elite">Titan2 Elite</string>
     <string name="hw_profile_titan2_elite_mod">Titan2 Elite (改键)</string>
+    <string name="main_header_subtitle">%1$s · %2$s</string>
+    <string name="switch_keyboard_preset">Switch keyboard preset</string>
     <!-- Labels for pseudo keys (see HardwareSpecialKeys): physical function keys that have no
          fcitx5 KeySym, so they are bound by name instead of a portableString. -->
     <string name="hw_special_sym">Sym</string>
     <string name="hw_special_back">Back</string>
     <string name="hw_special_fn">Fn</string>
+    <string name="hw_special_alt_l">L Alt</string>
+    <string name="hw_special_alt_r">R Alt</string>
+    <string name="hw_special_shift_l">L Shift</string>
+    <string name="hw_special_shift_r">R Shift</string>
     <string name="hw_candidate_display_mode">Candidate display mode</string>
     <string name="hw_candidate_display_mode_macrohard">Macrohard</string>
     <string name="hw_candidate_display_mode_linear">Linear</string>
@@ -104,7 +110,6 @@
     <string name="shortcut_keys">Shortcut keys</string>
     <string name="shortcut_tab_editing">Editing</string>
     <string name="shortcut_tab_toggle">Toggles</string>
-    <string name="shortcut_intro">Bind a physical key to a common action. Tap a row to capture a key: Fn / Sym compose chords like \"Fn+e\", or just press the key. Picking, paging, the symbol window and IME switching live under \"Physical keyboard\".</string>
     <string name="shortcut_toggle_effects">Toggle input effects</string>
     <string name="shortcut_toggle_sound">Toggle key sound</string>
     <string name="shortcut_toggle_statusbar">Toggle status bar</string>

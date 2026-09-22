@@ -90,17 +90,22 @@
     <string name="hw_profile_tt2">Titan2</string>
     <string name="hw_profile_titan2_elite">Titan2 Elite</string>
     <string name="hw_profile_titan2_elite_mod">Titan2 Elite（改键）</string>
+    <string name="main_header_subtitle">%1$s · %2$s</string>
+    <string name="switch_keyboard_preset">切换键盘预设</string>
     <!-- 伪按键显示名（见 HardwareSpecialKeys）：没有 fcitx5 KeySym 的物理功能键 -->
     <string name="hw_special_sym">Sym</string>
     <string name="hw_special_back">返回</string>
     <string name="hw_special_fn">Fn</string>
+    <string name="hw_special_alt_l">左Alt</string>
+    <string name="hw_special_alt_r">右Alt</string>
+    <string name="hw_special_shift_l">左Shift</string>
+    <string name="hw_special_shift_r">右Shift</string>
     <string name="hw_enable_candidate_quick_pick">巨硬模式</string>
     <string name="hw_enable_candidate_quick_pick_summary">物理键选词：%1$s</string>
     <!-- 「快捷键」模块：动作 → 物理键 的自定义绑定（动作表见 ShortcutAction） -->
     <string name="shortcut_keys">快捷键</string>
     <string name="shortcut_tab_editing">编辑</string>
     <string name="shortcut_tab_toggle">开关</string>
-    <string name="shortcut_intro"></string>
     <string name="shortcut_toggle_effects">开关特效</string>
     <string name="shortcut_toggle_sound">开关音效</string>
     <string name="shortcut_toggle_statusbar">开关状态栏</string>

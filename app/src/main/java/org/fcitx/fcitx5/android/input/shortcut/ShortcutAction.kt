@@ -10,14 +10,14 @@ import org.fcitx.fcitx5.android.R
 /**
  * 动作的修饰键家族，决定推荐预设挂哪个修饰键。字符串真源是
  * [org.fcitx.fcitx5.android.data.prefs.HardwareChord] 的常量，这里不存串、只存归属。
- * Titan 系两族各挂一个（Fn / Sym）；黑莓两族统一挂 Alt_R（见 HardwareKeyProfiles），
+ * Titan 系两族各挂一个（Fn / Sym）；黑莓两族统一挂 Shift_R（见 HardwareKeyProfiles），
  * 所以两族的字母必须**全局唯一**（见 HardwareKeyProfiles.leaderFor）。
  */
 enum class ShortcutChord {
-    /** 编辑类（含选字四向）：Titan 系 `Fn+字母`，黑莓 `Alt_R+字母`。 */
+    /** 编辑类（含选字四向）：Titan 系 `Fn+字母`，黑莓 `Shift_R+字母`。 */
     FN,
 
-    /** 开关类：Titan 系 `Sym+字母`，黑莓 `Alt_R+字母`。 */
+    /** 开关类：Titan 系 `Sym+字母`，黑莓 `Shift_R+字母`。 */
     SYM,
 }
 
@@ -34,12 +34,11 @@ enum class ShortcutChord {
  * 偏好默认值一律为空串（不绑定），但**首次安装 / 切换键盘预设**时会按机型播一套推荐键位
  * （见 [org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles.shortcutValuesFor]），按 [chord]
  * 分两族：**编辑类**（含选字四向）写 `Fn+字母`、**开关类**写 `Sym+字母` —— Titan 系各挂一个伪
- * 修饰键；**黑莓（Q25）**没有空闲伪修饰键，两族统一挂 `Alt_R+字母`（真修饰键侧别精确，见
- * [org.fcitx.fcitx5.android.data.prefs.HardwareChord.ALT_R]），所以两族字母**全局唯一**。
+ * 修饰键；**黑莓（Q25）**没有空闲伪修饰键，两族统一挂 `Shift_R+字母`（真修饰键侧别精确，见
+ * [org.fcitx.fcitx5.android.data.prefs.HardwareChord.SHIFT_R]），所以两族字母**全局唯一**。
  *
- * ⚠️ 黑莓的 `Alt_R` 裸键绑着符号窗口 / 候选 3：按住 Alt_R 和弦时，裸键按下那一下会先触发
- * 对应绑定（按与按住+字母是两个可区分的手势）。Alt Latch 注入无侧别的 META_ALT_ON，
- * 锁 Alt 状态下和弦不触发，左 Alt 键帽符号输入不受影响。
+ * ⚠️ 黑莓的 `Shift_R` 裸键绑着候选 5：按住 Shift_R 和弦时，裸键按下那一下会先触发候选 5
+ * （按与按住+字母是两个可区分的手势）。左 Shift（候选 4）与打字不受影响。
  *
  * 为什么不默认绑 Ctrl+C/V/A/Z 这类系统编辑键：Android 的 TextView 本来就支持它们，默认抢占等于
  * 遮蔽一条已经在工作的原生路径（WebView / Compose 下未必等价）。

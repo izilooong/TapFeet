@@ -8,7 +8,8 @@ package org.fcitx.fcitx5.android.data.prefs
 import android.view.KeyEvent
 
 /**
- * 「伪修饰键和弦」：`Fn+字母` / `Sym+字母` / `Alt_R+字母`。
+ * 「修饰键和弦」：`Fn+字母` / `Sym+字母`（伪键，自己跟踪按住状态），以及侧别精确的
+ * `Alt_L / Alt_R / Shift_L / Shift_R + 字母`（真修饰键，直接读 meta 侧别位）。
  *
  * **为什么需要它**：[org.fcitx.fcitx5.android.core.KeyState] 只有 Shift / Ctrl / Alt / Meta / Super /
  * Hyper 六个修饰位，**没有 Fn，也没有 Sym**；[HardwareSpecialKeys] 那种伪键只能表达「独立按一下」。
@@ -52,28 +53,41 @@ object HardwareChord {
      *
      * [setHeld] 给的 `symDown` 只跟踪 SYM 按钮本身（**分左右**，比 meta 可靠）。
      *
-     * ⚠️ 黑莓预设的动作快捷键不建在这个前缀上（那边两族统一挂 [ALT_R]，见
+     * ⚠️ 黑莓预设的动作快捷键不建在这个前缀上（那边两族统一挂 [SHIFT_R]，见
      * HardwareKeyProfiles.shortcutValuesFor）—— 但前缀本身仍然有效：用户在捕获窗口里
      * 手工拼 `Sym+字母` 照样能绑、能匹配。**绝不要改用 `Alt+字母`**：真修饰键的 meta 分不出左右
      * Alt，会把左 Alt（键帽符号 + Alt Latch 用的那个）一起吞掉，详见 [modifierHeld]。
      */
     const val SYM = "Sym"
 
-    /**
-     * 右 Alt（真修饰键的**侧别精确**和弦前缀，黑莓快捷键专用）。
-     *
-     * 为什么不直接写 `Alt+字母` 走 fcitx5 状态位：KeyStates 的 Alt 位**分不出左右**（`isAltPressed`
-     * = `META_ALT_ON`），`Alt+a` 会把左 Alt 一起吞掉 —— 而黑莓的**左** Alt + 字母恰恰是系统原生的
-     * 「键帽符号」输入（Alt Latch 双击锁定也是为它服务的），吞掉它正是当年「Alt+字母打不出键帽符号」
-     * 那个 bug 的根源。所以走和弦前缀：解析时剥出 `Alt_R+`，匹配时 [modifierHeld] 直接读
-     * `META_ALT_RIGHT_ON`（KeyEvent 自带侧别信息，无需 fnDown 式按住跟踪）。
-     *
-     * ⚠️ 黑莓预设里 `Alt_R` 裸键绑着符号窗口（symbolPickerKey）与候选 3（candidate3Key）：
-     * 按住 Alt_R 和弦时，裸键按下那一下会先触发对应绑定 —— 按与按住+字母是两个可区分的手势，
-     * 冲突检测也不会误报。Alt Latch 注入的是无侧别的 `META_ALT_ON`，锁 Alt 状态下和弦不触发，
-     * 键帽符号输入不受影响。
-     */
+    // —— 侧别精确的「真修饰键」和弦前缀（Alt_L / Alt_R / Shift_L / Shift_R）——
+    //
+    // 为什么真修饰键也要走和弦前缀：fcitx5 KeyStates 的 Alt / Shift 位**分不出左右**，存 `Alt+e`
+    // 会把左右两份一起吞。要「只认某一侧」（黑莓快捷键统一挂 Shift_R；左 Alt + 字母是黑莓原生
+    // 键帽符号输入，绝不能吞）就走和弦前缀：解析时剥出 `Alt_R+` 这类前缀，匹配时 [modifierHeld]
+    // 直接读 meta 的侧别位（META_ALT_LEFT_ON 等，KeyEvent 自带，无需 fnDown 式按住跟踪）。
+    //
+    // ⚠️ 存储串形如 `"Shift_R+s"`；裸键 `"Shift_R"` / `"Alt_L"`（黑莓预设把右 Shift 绑候选 5、
+    // 左 Alt 绑 Alt Latch）不含 `+` 后缀，[split] 不会误剥。
+    //
+    // ⚠️ 捕获窗口的「左/右 Alt、左/右 Shift」四个按钮产出这些前缀（KeyCaptureUi.ChordButton）；
+    // 冲突检测、formatKey 显示都经 [split] 自动识别，别处不许再写第二份前缀表。
+
+    /** 左 Alt。黑莓上左 Alt + 字母是系统原生键帽符号输入，选它做和弦前缀时心里要有数。 */
+    const val ALT_L = "Alt_L"
+
+    /** 右 Alt。 */
     const val ALT_R = "Alt_R"
+
+    /** 左 Shift。 */
+    const val SHIFT_L = "Shift_L"
+
+    /**
+     * 右 Shift。黑莓快捷键的默认修饰键（两族统一挂它）—— 黑莓预设里 `Shift_R` 裸键绑着
+     * 候选 5（candidate5Key）：按住 Shift_R 和弦时，裸键按下那一下会先触发候选 5 ——
+     * 按与按住+字母是两个可区分的手势，冲突检测也不会误报。左 Shift（候选 4）与打字不受影响。
+     */
+    const val SHIFT_R = "Shift_R"
 
     /**
      * 前缀 → 修饰键名。[split] / [compose] 共用；**别处不许再写第二份前缀字面量**
@@ -82,7 +96,10 @@ object HardwareChord {
     private val prefixToName: List<Pair<String, String>> = listOf(
         "$FN+" to FN,
         "$SYM+" to SYM,
+        "$ALT_L+" to ALT_L,
         "$ALT_R+" to ALT_R,
+        "$SHIFT_L+" to SHIFT_L,
+        "$SHIFT_R+" to SHIFT_R,
     )
 
     /** 可用来拼和弦的**真**修饰键（Fn / Sym 走 [HardwareSpecialKeys] 那一条）。 */
@@ -170,8 +187,11 @@ object HardwareChord {
     fun modifierHeld(name: String, event: KeyEvent): Boolean = when (name) {
         FN -> event.isFunctionPressed || fnDown
         SYM -> event.isSymPressed || symDown
-        // 右 Alt 是真修饰键，meta 自带侧别（META_ALT_RIGHT_ON），直接读，无需跟踪。
+        // 侧别精确的真修饰键：meta 自带侧别位，直接读，无需跟踪。
+        ALT_L -> event.metaState and KeyEvent.META_ALT_LEFT_ON != 0
         ALT_R -> event.metaState and KeyEvent.META_ALT_RIGHT_ON != 0
+        SHIFT_L -> event.metaState and KeyEvent.META_SHIFT_LEFT_ON != 0
+        SHIFT_R -> event.metaState and KeyEvent.META_SHIFT_RIGHT_ON != 0
         else -> false
     }
 

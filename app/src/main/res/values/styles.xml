@@ -76,6 +76,17 @@
         <item name="android:textColor">?android:attr/textColorSecondary</item>
     </style>
 
+    <!-- 主页导航栏的主标题。AppCompat 默认偏大偏粗，压到 18sp 让「图标 + 两行文本」的头部更协调。 -->
+    <style name="TextAppearance.Toolbar.Title" parent="TextAppearance.Widget.AppCompat.Toolbar.Title">
+        <item name="android:textSize">18sp</item>
+    </style>
+
+    <!-- 主页导航栏的副标题（当前键盘布局）。AppCompat 默认 16sp，跟主标题几乎一样大，
+         压到和设置项说明同级；只改字号，颜色仍走 Toolbar 自己的主题色。 -->
+    <style name="TextAppearance.Toolbar.Subtitle" parent="TextAppearance.Widget.AppCompat.Toolbar.Subtitle">
+        <item name="android:textSize">13sp</item>
+    </style>
+
     <!-- Small accented label: the cue that a new section starts here. -->
     <style name="TextAppearance.Settings.Category" parent="TextAppearance.AppCompat.Caption">
         <item name="android:textSize">13sp</item>
