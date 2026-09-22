@@ -1,8 +1,8 @@
 {
-    "versionCode": 222,
-    "versionName": "V1.0.11",
-    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.11/tapfeet.ime-v1.0.11.apk",
-    "releaseNotes": "- 适配Titan2 Elite\n- 键盘飞字功能 \n- 快捷符号窗口, 可自定义成表情/符号/自定义键盘\n- 可以隐藏状态栏, 选项-候选栏-隐藏状态栏\n- Titan2 添加快捷键, 如: Fn+ B = 隐藏/显示状态栏\n- 修复若干已知问题",
+    "versionCode": 232,
+    "versionName": "v1.0.12",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.12/tapfeet.ime-v1.0.12.apk",
+    "releaseNotes": "- 增加快捷键方案, 如: Fn+x,c,v = 剪切,复制,粘贴...等\n- 快捷键适配 Q25, 快捷使用 Shift_R+x,c,v...等\n- 符号/表情窗口增加键位标识, 对应26字母键位",
     "minVersionCode": 0,
-    "publishDate": "2026-09-20"
+    "publishDate": "2026-09-22"
 }
