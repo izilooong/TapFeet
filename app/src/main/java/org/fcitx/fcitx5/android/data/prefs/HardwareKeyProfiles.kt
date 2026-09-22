@@ -151,21 +151,22 @@ object HardwareKeyProfiles {
     /**
      * 「快捷键」动作键的字母。
      *
-     * 两族动作各挂一个伪修饰键（归属见 [ShortcutAction.chord]），**前缀不同 = 不同手势**，
-     * 所以跨族字母允许重叠、各取自然助记：
-     *  - 文本编辑类（Fn）：字母由用户敲定的键位表钦定 —— 编辑 A/C/X/V/Q/Z、光标簇 S/F/E/D、
-     *    选字簇 U/J/H/K（U=上 J=下 H=左 K=右，与光标簇成对），不可动；
-     *  - 开关类（Sym）：取动作名首字母（Effect / Sound / Bar / Fly / Arrangement / Mode）。
+     * Titan 系两族各挂一个伪修饰键（Fn / Sym，前缀不同=不同手势，字母本可重叠）；但**黑莓把两族
+     * 统一挂到 `Alt_R`** 上（见 [shortcutValuesFor]），同一个修饰键下字母撞了就真的抢键，
+     * 所以这里**全局唯一**：
+     *  - 编辑类（Fn/Alt_R）：A/C/X/V/Q/Z 编辑、S/F/E/D 光标簇、U/J/H/K 选字簇（U=上 J=下 H=左 K=右）；
+     *  - 开关类（Sym/Alt_R）：拼音助记 特效 t、音 y、排列 p、fLy l、Bar b、Mode m。
      *
      * `when` 显式穷举 [ShortcutAction]：以后加动作若忘了给字母会直接编译不过，
      * 不会静默漏一个（「加了枚举项却没有绑定」正是本项目最怕的那类静默失效）。
+     * ⚠️ 新字母必须先核对与上表 20 个字母不重 —— 黑莓下没有前缀可以救你。
      */
     private fun leaderFor(action: ShortcutAction): String = when (action) {
-        ShortcutAction.ToggleEffects -> "e"
-        ShortcutAction.ToggleSound -> "s"
+        ShortcutAction.ToggleEffects -> "t"
+        ShortcutAction.ToggleSound -> "y"
         ShortcutAction.ToggleStatusBar -> "b"
-        ShortcutAction.ToggleFlyText -> "f"
-        ShortcutAction.ToggleArrangement -> "a"
+        ShortcutAction.ToggleFlyText -> "l"
+        ShortcutAction.ToggleArrangement -> "p"
         ShortcutAction.CycleSoundMode -> "m"
         ShortcutAction.SelectAll -> "a"
         ShortcutAction.Copy -> "c"
@@ -184,45 +185,26 @@ object HardwareKeyProfiles {
     }
 
     /**
-     * 该预设是否提供「动作快捷键」（[ShortcutAction]）这一套配置。
-     *
-     * **BlackBerry（Q25）不提供**，并且这是**唯一的事实来源** —— 设置页入口的可见性
-     * （`MainFragment`）与运行期匹配（`HardwareShortcutResolver`）都读它，两处不许各写一份
-     * `!= "blackberry"` 判断（判断抄两份必然漂移，本项目已多次栽在这上面）。
-     *
-     * 为什么干脆整块不给：和弦必须挂在一个**空闲的修饰键**上，而 Q25 一个都没有 ——
-     *  - **左** Alt + 字母是系统原生的「键帽符号」输入（双击左 Alt 的 Alt Latch 也是为它服务的），占不得；
-     *  - **右** Alt 就是 SYM 键本身（`symbolPickerKey`），轻按开符号窗口，也占不得；
-     *  - 真修饰键的 meta **分不出左右 Alt**（`isAltPressed` = `META_ALT_ON`），所以写 `Alt+字母` 会把
-     *    上一条一起吞掉 —— 这正是「Alt+字母 打不出键帽符号」那个 bug 的根源。
-     *
-     * 与其留一套按不出反应、还暗地里抢原生键位的手势，不如整块不提供。Titan 系有 Sym / Fn 这类
-     * 伪修饰键（不占 meta 位，见 [HardwareChord]），所以那边照常提供。
-     */
-    fun actionShortcutsAvailable(name: String): Boolean = name != BLACKBERRY
-
-    /**
      * 该预设下的推荐动作键（[ShortcutAction] → 绑定串）。
      *
-     * 只有 BlackBerry 不提供（见 [actionShortcutsAvailable]）；其余预设 —— Titan2 / Titan2 Elite /
-     * Titan2 Elite（改键）—— 按动作家族分两套伪修饰键和弦（归属见 [ShortcutAction.chord]）：
-     *  - **文本编辑类**（含选字四向）→ `Fn+字母`（用户钦定的键位表）；
-     *  - **开关类** → `Sym+字母`。
-     * 两个都是伪修饰键：没有 fcitx5 修饰位、也不进 metaState，靠 [HardwareChord] 自己跟踪按住
-     * 状态 —— 见那边的说明。
+     * Titan 系（tt2 / titan2_elite / titan2_elite_mod）按动作家族分两套伪修饰键
+     * （归属见 [ShortcutAction.chord]）：编辑类 `Fn+字母`、开关类 `Sym+字母`。
+     * **黑莓**没有空闲伪修饰键（左 Alt 是键帽符号，右 Alt 已绑符号窗口），两族统一挂
+     * `Alt_R+字母` —— 真修饰键侧别精确（[HardwareChord.ALT_R] 读 META_ALT_RIGHT_ON），
+     * 左 Alt 的键帽符号输入不受影响。因为黑莓两族共用同一个修饰键，
+     * [leaderFor] 的字母必须**全局唯一**。
      *
-     * ⚠️ 开关类用 Sym 的前提是 **Sym 这个裸键没绑别的东西**：`titan2_elite`（原版）预设把
-     * `pageNextKey` 绑成了 `Sym` —— 那套预设下按住 Sym 触发开关会先翻一页；`titan2_elite_mod`
-     * 的翻页已挪到左右 Shift，Sym 空闲，是这套推荐键位的目标预设。
-     *
-     * **不支持该套配置的预设返回「全空串」而不是空 Map** —— 这样 [applyShortcutPreset] 走同一条
-     * `forEach` 路径就会把动作键写成空（解绑），既不用第二套清空逻辑，也不会在偏好里留下一批
-     * 「看不见、却还在抢键」的历史值。判据见 [actionShortcutsAvailable]。
+     * ⚠️ 黑莓的 `Alt_R` 裸键绑着符号窗口（symbolPickerKey）与候选 3（candidate3Key）：
+     * 按住 Alt_R 和弦时，裸键按下那一下会先触发对应绑定（按与按住+字母是可区分的手势）。
      *
      * 默认值全是「按住修饰键 + 字母」这种组合，避开所有裸键：裸键（字母）本来就要打字。
      */
     fun shortcutValuesFor(name: String): Map<ShortcutAction, String> {
-        if (!actionShortcutsAvailable(name)) return ShortcutAction.entries.associateWith { "" }
+        if (name == BLACKBERRY) {
+            return ShortcutAction.entries.associateWith {
+                HardwareChord.compose(HardwareChord.ALT_R, leaderFor(it))
+            }
+        }
         return ShortcutAction.entries.associateWith {
             HardwareChord.compose(
                 when (it.chord) {

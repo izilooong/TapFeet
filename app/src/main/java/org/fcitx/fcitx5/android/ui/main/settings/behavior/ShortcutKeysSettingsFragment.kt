@@ -10,7 +10,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.preference.Preference
+import androidx.preference.PreferenceGroupAdapter
 import androidx.preference.PreferenceScreen
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.tabs.TabLayout
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.Key
@@ -30,8 +33,8 @@ import org.fcitx.fcitx5.android.utils.normalizeKeyString
  * 「快捷键」配置页：为常用动作绑定物理键。
  *
  * 两个**固定 Tab**（复用 [HardwareKeyboardSettingsFragment] 的 TabLayout 模式）：
- *  - **Fn 快捷键**：文本编辑类（含选字四向，[ShortcutChord.FN]，推荐 `Fn+字母`）；
- *  - **Sym 快捷键**：开关类（[ShortcutChord.SYM]，推荐 `Sym+字母`）。
+ *  - **编辑**：编辑类（含选字四向，[ShortcutChord.FN]，Titan 系 `Fn+字母` / 黑莓 `Alt_R+字母`）；
+ *  - **开关**：开关类（[ShortcutChord.SYM]，Titan 系 `Sym+字母` / 黑莓 `Alt_R+字母`）。
  *
  * 分组只按 [ShortcutAction.chord] 这一份标记走，本页不写第二份分类判断。每行直接复用
  * [KeyCapturePreference] —— 捕获 / 修改 / 重置三件套它自带，本页不重写任何捕获或渲染逻辑，
@@ -50,15 +53,21 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
     private var screens: List<Pair<String, PreferenceScreen>> = emptyList()
     private var selectedTab = 0
 
+    /** 键位行排成双列网格（见 [gridSpanCount]）；说明行与底部按钮仍占满整行。 */
+    override val gridSpanCount: Int = 2
+
     private companion object {
         const val KEY_SELECTED_TAB = "shortcut_selected_tab"
+
+        /** 双列下仍要占满整行的偏好（说明行 + 底部两个按钮），按 preference.key 识别。 */
+        val FULL_SPAN_KEYS = setOf("shortcut_intro", "shortcut_apply_preset", "shortcut_reset_all")
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
         shortcuts = AppPrefs.getInstance().shortcuts
 
-        // 两个固定 Tab：Fn = 文本编辑类（含选字四向），Sym = 开关类（按 ShortcutAction.chord 分组）。
+        // 两个固定 Tab：编辑 = 编辑类（含选字四向），开关 = 开关类（按 ShortcutAction.chord 分组）。
         val fnScreen = preferenceManager.createPreferenceScreen(context)
         val symScreen = preferenceManager.createPreferenceScreen(context)
 
@@ -100,14 +109,14 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
         }
 
         screens = listOf(
-            getString(R.string.shortcut_tab_fn) to fnScreen,
-            getString(R.string.shortcut_tab_sym) to symScreen,
+            getString(R.string.shortcut_tab_editing) to fnScreen,
+            getString(R.string.shortcut_tab_toggle) to symScreen,
         )
         selectedTab = (savedInstanceState?.getInt(KEY_SELECTED_TAB) ?: 0).coerceIn(0, screens.lastIndex)
         preferenceScreen = screens[selectedTab].second
     }
 
-    /** 「恢复推荐键位」：按当前**键盘预设**播一套推荐动作键（编辑类 `Fn+字母`，开关类 `Sym+字母`）。 */
+    /** 「恢复推荐键位」：按当前**键盘预设**播一套推荐动作键（Titan 系 Fn/Sym 分族；黑莓统一 `Alt_R+字母`）。 */
     private fun presetButton(context: Context): Preference = Preference(context).apply {
         key = "shortcut_apply_preset"
         title = getString(R.string.shortcut_apply_preset)
@@ -219,6 +228,27 @@ class ShortcutKeysSettingsFragment : PaddingPreferenceFragment() {
         tabLayout = createSettingsTabBar(requireContext())
         (root as? ViewGroup)?.addView(tabLayout, 0)
         return root
+    }
+
+    /**
+     * 双列网格：键位行一格一个；说明行 / 「恢复推荐键位 / 全部解绑」按 key 占满整行。
+     * LayoutManager 挂在 RecyclerView 上，Tab 切换只换 adapter，网格设置自然延续。
+     */
+    override fun onCreateRecyclerView(
+        inflater: LayoutInflater,
+        parent: ViewGroup,
+        savedInstanceState: Bundle?
+    ): RecyclerView {
+        val rv = super.onCreateRecyclerView(inflater, parent, savedInstanceState)
+        rv.layoutManager = GridLayoutManager(requireContext(), gridSpanCount).apply {
+            spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int): Int {
+                    val pref = (rv.adapter as? PreferenceGroupAdapter)?.getItem(position)
+                    return if (pref != null && pref.key in FULL_SPAN_KEYS) gridSpanCount else 1
+                }
+            }
+        }
+        return rv
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

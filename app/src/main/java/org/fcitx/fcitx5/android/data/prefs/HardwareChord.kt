@@ -8,7 +8,7 @@ package org.fcitx.fcitx5.android.data.prefs
 import android.view.KeyEvent
 
 /**
- * 「伪修饰键和弦」：`Fn+字母` / `Sym+字母`。
+ * 「伪修饰键和弦」：`Fn+字母` / `Sym+字母` / `Alt_R+字母`。
  *
  * **为什么需要它**：[org.fcitx.fcitx5.android.core.KeyState] 只有 Shift / Ctrl / Alt / Meta / Super /
  * Hyper 六个修饰位，**没有 Fn，也没有 Sym**；[HardwareSpecialKeys] 那种伪键只能表达「独立按一下」。
@@ -52,12 +52,28 @@ object HardwareChord {
      *
      * [setHeld] 给的 `symDown` 只跟踪 SYM 按钮本身（**分左右**，比 meta 可靠）。
      *
-     * ⚠️ 黑莓预设**不再**把动作快捷键建在这个前缀上（那边整块不提供这套配置，见
-     * [HardwareKeyProfiles.actionShortcutsAvailable]）—— 但前缀本身仍然有效：用户在捕获窗口里
+     * ⚠️ 黑莓预设的动作快捷键不建在这个前缀上（那边两族统一挂 [ALT_R]，见
+     * HardwareKeyProfiles.shortcutValuesFor）—— 但前缀本身仍然有效：用户在捕获窗口里
      * 手工拼 `Sym+字母` 照样能绑、能匹配。**绝不要改用 `Alt+字母`**：真修饰键的 meta 分不出左右
      * Alt，会把左 Alt（键帽符号 + Alt Latch 用的那个）一起吞掉，详见 [modifierHeld]。
      */
     const val SYM = "Sym"
+
+    /**
+     * 右 Alt（真修饰键的**侧别精确**和弦前缀，黑莓快捷键专用）。
+     *
+     * 为什么不直接写 `Alt+字母` 走 fcitx5 状态位：KeyStates 的 Alt 位**分不出左右**（`isAltPressed`
+     * = `META_ALT_ON`），`Alt+a` 会把左 Alt 一起吞掉 —— 而黑莓的**左** Alt + 字母恰恰是系统原生的
+     * 「键帽符号」输入（Alt Latch 双击锁定也是为它服务的），吞掉它正是当年「Alt+字母打不出键帽符号」
+     * 那个 bug 的根源。所以走和弦前缀：解析时剥出 `Alt_R+`，匹配时 [modifierHeld] 直接读
+     * `META_ALT_RIGHT_ON`（KeyEvent 自带侧别信息，无需 fnDown 式按住跟踪）。
+     *
+     * ⚠️ 黑莓预设里 `Alt_R` 裸键绑着符号窗口（symbolPickerKey）与候选 3（candidate3Key）：
+     * 按住 Alt_R 和弦时，裸键按下那一下会先触发对应绑定 —— 按与按住+字母是两个可区分的手势，
+     * 冲突检测也不会误报。Alt Latch 注入的是无侧别的 `META_ALT_ON`，锁 Alt 状态下和弦不触发，
+     * 键帽符号输入不受影响。
+     */
+    const val ALT_R = "Alt_R"
 
     /**
      * 前缀 → 修饰键名。[split] / [compose] 共用；**别处不许再写第二份前缀字面量**
@@ -66,6 +82,7 @@ object HardwareChord {
     private val prefixToName: List<Pair<String, String>> = listOf(
         "$FN+" to FN,
         "$SYM+" to SYM,
+        "$ALT_R+" to ALT_R,
     )
 
     /** 可用来拼和弦的**真**修饰键（Fn / Sym 走 [HardwareSpecialKeys] 那一条）。 */
@@ -153,6 +170,8 @@ object HardwareChord {
     fun modifierHeld(name: String, event: KeyEvent): Boolean = when (name) {
         FN -> event.isFunctionPressed || fnDown
         SYM -> event.isSymPressed || symDown
+        // 右 Alt 是真修饰键，meta 自带侧别（META_ALT_RIGHT_ON），直接读，无需跟踪。
+        ALT_R -> event.metaState and KeyEvent.META_ALT_RIGHT_ON != 0
         else -> false
     }
 

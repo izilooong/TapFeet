@@ -98,8 +98,8 @@
     <string name="hw_enable_candidate_quick_pick_summary">物理键选词：%1$s</string>
     <!-- 「快捷键」模块：动作 → 物理键 的自定义绑定（动作表见 ShortcutAction） -->
     <string name="shortcut_keys">快捷键</string>
-    <string name="shortcut_tab_fn">Fn 快捷键</string>
-    <string name="shortcut_tab_sym">Sym 快捷键</string>
+    <string name="shortcut_tab_editing">编辑</string>
+    <string name="shortcut_tab_toggle">开关</string>
     <string name="shortcut_intro"></string>
     <string name="shortcut_toggle_effects">开关特效</string>
     <string name="shortcut_toggle_sound">开关音效</string>

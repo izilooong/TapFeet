@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.ui.common
 
+import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -20,6 +21,18 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.ui.main.modified.MyPreferenceFragment
 
 abstract class PaddingPreferenceFragment : MyPreferenceFragment() {
+
+    /**
+     * 列表列数：1 = 默认的整行卡片组（首尾合并圆角）；>1 = 网格布局，每格一张独立圆角小卡片
+     * （不做首尾合并 —— 多列下相邻项是横向邻居，首尾判定没有意义）。网格页由子类同时把
+     * RecyclerView 的 LayoutManager 换成 GridLayoutManager（见 ShortcutKeysSettingsFragment）。
+     */
+    protected open val gridSpanCount: Int = 1
+
+    private companion object {
+        /** 网格模式下每格卡片四周的内缩（同时就是格间距），dp。 */
+        const val TILE_GAP_DP = 6
+    }
 
     @CallSuper
     override fun onCreateView(
@@ -67,6 +80,20 @@ abstract class PaddingPreferenceFragment : MyPreferenceFragment() {
                         // 标题行不设卡片背景
                         if (view.background != null) view.background = null
                         view.foreground = null
+                        return
+                    }
+                    // 网格页：每格一张独立的四角圆角小卡片，InsetDrawable 内缩撑出格间距。
+                    // 背景"定死在 view 上"的规则照旧 —— 网格里所有格子的 drawable 都一样，
+                    // view 复用也不存在串背景的问题。
+                    if (gridSpanCount > 1) {
+                        val gap = (TILE_GAP_DP * resources.displayMetrics.density).toInt()
+                        val bg = InsetDrawable(
+                            CardGroupDecoration.shapeFor(requireContext(), isFirst = true, isLast = true),
+                            gap
+                        )
+                        view.background = bg
+                        view.foreground =
+                            RippleDrawable(CardGroupDecoration.rippleColor(requireContext()), null, bg)
                         return
                     }
                     val isFirst = pos == 0 || adapter.getItem(pos - 1) is PreferenceCategory

@@ -24,7 +24,6 @@ import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.BuildConfig
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
-import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.main.settings.SettingsRoute
 import org.fcitx.fcitx5.android.update.UpdateChecker
@@ -40,11 +39,6 @@ class MainFragment : PaddingPreferenceFragment() {
 
     // "Check for updates" preference; its summary reflects the cached / last-check state.
     private var checkUpdatePref: Preference? = null
-
-    // 「快捷键」入口。它的可见性随键盘预设走（BlackBerry 整体不提供这套配置 —— 见
-    // HardwareKeyProfiles.actionShortcutsAvailable）。持有引用是因为预设可以在「物理键盘」页里改，
-    // 而本页不会为此重建：只在建树时判一次会留下一个过期的入口，所以在 onStart 里再校一次。
-    private var shortcutEntryPref: Preference? = null
 
     // Set when we jumped to settings to grant the "install unknown apps" permission;
     // cleared once the install is (re)triggered or the user denies it.
@@ -73,17 +67,6 @@ class MainFragment : PaddingPreferenceFragment() {
         // Show any cached result immediately, then refresh in the background (throttled).
         checkUpdatePref?.let { refreshSummaryFromCache(it) }
         maybeAutoCheck()
-        refreshShortcutEntryVisibility()
-    }
-
-    /**
-     * 按当前键盘预设校一次「快捷键」入口的可见性。预设可以在「物理键盘」页里被改，而本页不会因此
-     * 重建 ⇒ 只靠建树时判一次会留下过期入口（比如刚从 Titan 预设切到黑莓）。
-     */
-    private fun refreshShortcutEntryVisibility() {
-        shortcutEntryPref?.isVisible = HardwareKeyProfiles.actionShortcutsAvailable(
-            AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue()
-        )
     }
 
     private fun PreferenceCategory.addDestinationPreference(
@@ -138,7 +121,7 @@ class MainFragment : PaddingPreferenceFragment() {
                     R.drawable.ic_baseline_keyboard_24,
                     SettingsRoute.HardwareKeyboard
                 )
-                shortcutEntryPref = addDestinationPreference(
+                addDestinationPreference(
                     R.string.shortcut_keys,
                     R.drawable.ic_baseline_keyboard_tab_24,
                     SettingsRoute.ShortcutKeys
@@ -221,8 +204,6 @@ class MainFragment : PaddingPreferenceFragment() {
                 }
             }
         }
-        // 建树时先定一次可见性；之后的会话由 onStart 校正（预设可在别处被改）。
-        refreshShortcutEntryVisibility()
     }
 
     // ============ Online update logic ============

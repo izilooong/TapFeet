@@ -102,8 +102,8 @@
     <string name="hw_enable_candidate_quick_pick_summary">Physical keys pick candidates: %1$s</string>
     <!-- Shortcut module: bind a physical key to an action (see ShortcutAction) -->
     <string name="shortcut_keys">Shortcut keys</string>
-    <string name="shortcut_tab_fn">Fn shortcuts</string>
-    <string name="shortcut_tab_sym">Sym shortcuts</string>
+    <string name="shortcut_tab_editing">Editing</string>
+    <string name="shortcut_tab_toggle">Toggles</string>
     <string name="shortcut_intro">Bind a physical key to a common action. Tap a row to capture a key: Fn / Sym compose chords like \"Fn+e\", or just press the key. Picking, paging, the symbol window and IME switching live under \"Physical keyboard\".</string>
     <string name="shortcut_toggle_effects">Toggle input effects</string>
     <string name="shortcut_toggle_sound">Toggle key sound</string>

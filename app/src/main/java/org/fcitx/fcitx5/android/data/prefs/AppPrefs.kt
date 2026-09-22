@@ -666,6 +666,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             if (seededKeys.any { sharedPreferences.contains(it.key) }) return
             HardwareKeyProfiles.applyProfile(keyProfile.getValue(), this@AppPrefs)
         }
+
+        init {
+            // 键盘预设变化 → 动作快捷键按新预设自动重播（编辑/开关两族整批重写，用户自定值一并覆盖，
+            // 与物理键位同一个取舍）。挂在偏好监听上而不是只依赖「物理键盘」页的下拉处理器：
+            // 任何代码路径改 keyProfile 都自动带上快捷键重置。下拉路径会经 applyProfile 先播一遍、
+            // 监听再播一遍 —— 幂等重复，无害。
+            keyProfile.registerOnChangeListener { _, newValue ->
+                HardwareKeyProfiles.applyShortcutPreset(newValue, AppPrefs.getInstance())
+            }
+        }
     }
 
     inner class Effects : ManagedPreferenceCategory(R.string.input_effects, sharedPreferences) {

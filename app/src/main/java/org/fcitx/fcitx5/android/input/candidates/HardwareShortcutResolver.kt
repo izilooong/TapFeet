@@ -11,7 +11,6 @@ import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareChord
-import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
 import org.fcitx.fcitx5.android.input.candidates.horizontal.CandidateArrangementMode
@@ -183,27 +182,15 @@ object HardwareShortcutResolver {
         actionParsedKeys().firstOrNull { matchesParsedKey(event, it.second) }?.first
 
     /**
-     * 已绑定的动作键（跳过空串），与缓存同生共死。
-     *
-     * ⚠️ 当前键盘预设整体不提供这套配置时（BlackBerry，见
-     * [HardwareKeyProfiles.actionShortcutsAvailable]）**直接算作「一个都没绑」**：偏好里可能还留着
-     * 历史值（旧版本播过的 `Alt+字母`、或用户切预设前的绑定），不清掉的话会变成一批「设置页里看不见、
-     * 运行期却还在抢键」的幽灵 —— 而那正是「按住左 Alt 打键帽符号，结果触发了开关」的成因。
-     * 设置页入口的可见性读的是同一个函数，两边同源。
-     *
-     * 缓存失效不需要额外接线：预设存在 `hardwareKeyboardPrefs` 里，那个分类已注册
-     * `invalidateCaches()` 监听（改预设 → 缓存清 → 下次调用重新判定）。
+     * 已绑定的动作键（跳过空串），与缓存同生共死。所有预设（含黑莓）统一放行：
+     * 黑莓现在也提供动作快捷键（统一挂 `Alt_R`，见 HardwareKeyProfiles.shortcutValuesFor），
+     * 不再有「幽灵绑定」门控 —— 预设切换会整批重写偏好，历史值随「恢复推荐键位」清掉。
      */
     private fun actionParsedKeys(): List<Pair<ShortcutAction, ParsedKey>> {
         actionParsedKeysCache?.let { return it }
-        val available = HardwareKeyProfiles.actionShortcutsAvailable(
-            hardwareKeyboardPrefs.keyProfile.getValue()
-        )
-        val keys: List<Pair<ShortcutAction, ParsedKey>> =
-            if (!available) emptyList()
-            else ShortcutAction.entries.mapNotNull { action ->
-                parseKeyString(shortcutsPrefs.key(action).getValue())?.let { action to it }
-            }
+        val keys = ShortcutAction.entries.mapNotNull { action ->
+            parseKeyString(shortcutsPrefs.key(action).getValue())?.let { action to it }
+        }
         actionParsedKeysCache = keys
         return keys
     }
