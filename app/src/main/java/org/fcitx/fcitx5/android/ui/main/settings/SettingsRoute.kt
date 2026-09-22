@@ -19,6 +19,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.RawConfig
 import org.fcitx.fcitx5.android.data.quickphrase.QuickPhrase
 import org.fcitx.fcitx5.android.ui.main.AboutFragment
+import org.fcitx.fcitx5.android.ui.main.ChangelogFragment
 import org.fcitx.fcitx5.android.ui.main.DeveloperFragment
 import org.fcitx.fcitx5.android.ui.main.LicensesFragment
 import org.fcitx.fcitx5.android.ui.main.MainFragment
@@ -123,6 +124,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object About : SettingsRoute()
+
+    @Serializable
+    data object Changelog : SettingsRoute()
 
     @Serializable
     data object AppDisplayName : SettingsRoute()
@@ -292,6 +296,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<AboutFragment, About> {
                 label = ctx.getString(R.string.about)
+            }
+            fragment<ChangelogFragment, Changelog> {
+                label = ctx.getString(R.string.changelog)
             }
             fragment<AppDisplayNameSettingsFragment, AppDisplayName> {
                 label = ctx.getString(R.string.app_display_name)

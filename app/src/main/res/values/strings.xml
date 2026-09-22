@@ -522,6 +522,7 @@
     <string name="install_permission_denied">Install permission not granted. Enable \"Install unknown apps\" for TapFeet, then tap Download Update again.</string>
     <string name="open_settings">Open Settings</string>
     <string name="about_app">About TapFeet</string>
+    <string name="changelog">Changelog</string>
     <string name="update_source_url">Update source URL (advanced)</string>
     <string name="update_source_url_default">Default (Gitee mirror)</string>
     <string name="update_source_url_saved">Update source saved</string>

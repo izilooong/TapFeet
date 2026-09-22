@@ -92,6 +92,15 @@ android {
 
 
 
+// 把 docs/更新内容.txt 同步为 res/raw/changelog.txt（单一编辑源 = docs/），
+// 在 preBuild 前执行，避免两份内容漂移。
+val syncChangelog by tasks.registering(Copy::class) {
+    from(rootProject.file("docs/更新内容.txt"))
+    into(layout.projectDirectory.dir("src/main/res/raw"))
+    rename { "changelog.txt" }
+}
+tasks.named("preBuild").configure { dependsOn(syncChangelog) }
+
 fcitxComponent {
     includeLibs = listOf(
         "fcitx5",

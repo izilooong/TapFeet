@@ -515,6 +515,7 @@
     <string name="install_permission_denied">未授予安装权限。请为「大脚输入法」开启“安装未知应用”，然后重新点击下载更新。</string>
     <string name="open_settings">去设置</string>
     <string name="about_app">关于大脚输入法</string>
+    <string name="changelog">变更记录</string>
     <string name="update_source_url">更新源地址（高级）</string>
     <string name="update_source_url_default">默认（Gitee 镜像）</string>
     <string name="update_source_url_saved">更新源已保存</string>

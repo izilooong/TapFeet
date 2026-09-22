@@ -202,6 +202,11 @@ class MainFragment : PaddingPreferenceFragment() {
                 ) {
                     navigateWithAnim(SettingsRoute.About)
                 }
+                addDestinationPreference(
+                    R.string.changelog,
+                    R.drawable.ic_baseline_list_alt_24,
+                    SettingsRoute.Changelog
+                )
             }
         }
     }
