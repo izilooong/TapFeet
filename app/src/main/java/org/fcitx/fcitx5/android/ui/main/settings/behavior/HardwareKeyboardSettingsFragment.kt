@@ -33,6 +33,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
     /** The fly-text switches; the swap toggle is only enabled while fly-text itself is on. */
     private lateinit var flyTextSwitch: SwitchPreference
     private lateinit var flyTextSwapSwitch: SwitchPreference
+    private lateinit var flyTextCornerDeleteSwitch: SwitchPreference
 
     /**
      * References to the candidate2-5 [KeyCapturePreference] views. Their visibility is driven by
@@ -139,6 +140,19 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         flyTextScreen.addPreference(flyTextSwitch)
         flyTextScreen.addPreference(flyTextSwapSwitch)
+        // Corner-delete: a left swipe from the keyboard surface's top-right corner acts as Backspace.
+        // Sub-toggle of fly-text (disabled unless the master switch is on), and destructive, so it
+        // defaults off — the user opts in.
+        flyTextCornerDeleteSwitch = SwitchPreference(context).apply {
+            key = hw.keyboardFlyTextCornerDelete.key
+            title = getString(R.string.hw_flytext_corner_delete)
+            summary = getString(R.string.hw_flytext_corner_delete_summary)
+            setDefaultValue(hw.keyboardFlyTextCornerDelete.getValue())
+            isChecked = hw.keyboardFlyTextCornerDelete.getValue()
+            isIconSpaceReserved = false
+            isEnabled = hw.keyboardFlyText.getValue()
+        }
+        flyTextScreen.addPreference(flyTextCornerDeleteSwitch)
         flyTextScreen.addPreference(flyTextSensitivityPref)
 
         // Typing-guard window: how long after a hardware key event a surface contact is treated
@@ -161,6 +175,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         flyTextSwitch.setOnPreferenceChangeListener { _, newValue ->
             val on = newValue as Boolean
             flyTextSwapSwitch.isEnabled = on
+            flyTextCornerDeleteSwitch.isEnabled = on
             flyTextSensitivityPref.isEnabled = on
             flyTextGuardPref.isEnabled = on
             true

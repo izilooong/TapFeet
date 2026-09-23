@@ -26,6 +26,8 @@ import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
 import org.fcitx.fcitx5.android.input.swipe.KeyboardFlyTextSelector
+import org.fcitx.fcitx5.android.input.swipe.cornerDeleteRegion
+import org.fcitx.fcitx5.android.utils.DeviceInfo
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -795,9 +797,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 false
             } else {
                 TouchProbeLog.record(TouchProbeLog.PATH_IME_MOTION, event)
-                // Fed while armed, and also while a gesture already in flight has to see its own
-                // UP/CANCEL — a latched `gestureActive` would misread the next gesture.
-                if (flyTextSelectorInitialized && (flyTextOn || flyTextSelector.gestureActive)) {
+                // Fed while armed (either gesture), and also while a gesture already in flight has
+                // to see its own UP/CANCEL — a latched `gestureActive` would misread the next gesture.
+                if (flyTextSelectorInitialized &&
+                    (flyTextOn || flyTextCornerDeleteOn || flyTextSelector.gestureActive
+                            || flyTextPickerPagingOn)
+                ) {
                     flyTextSelector.onTouchEvent(event)
                 }
                 true
@@ -865,6 +870,26 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * claiming popup ate the app's touches while it was up, and there is no popup left to bound.
      */
     private var flyTextOn = false
+    /**
+     * Corner-delete gesture armed: [AppPrefs.hardwareKeyboard.keyboardFlyText] + the corner-delete
+     * sub-toggle, independent of candidate visibility (Backspace is valid even with no candidates,
+     * unlike select/page). Read by the two motion channels to decide whether to feed the selector.
+     */
+    private var flyTextCornerDeleteOn = false
+    /**
+     * Master fly-text pref on (cached from [AppPrefs.hardwareKeyboard.keyboardFlyText]); feeds the
+     * picker-paging arming gate so a keyboard-surface swipe can page an open symbol/emoji/emoticon
+     * panel even when the candidate bar is hidden behind it.
+     */
+    private var flyTextPrefOn = false
+    /**
+     * True while the fly-text master pref is on AND a symbol/emoji/emoticon panel is the active
+     * input window. The keyboard-surface swipe should then page that panel instead of the candidate
+     * bar, and the motion channel must stay armed so the swipe reaches the selector even when the
+     * candidate bar is hidden behind the panel.
+     */
+    private val flyTextPickerPagingOn: Boolean
+        get() = flyTextPrefOn && inputView?.isPickerWindowOpen() == true
     /** Tracks the last logged [flyTextOn] value; arm/disarm transitions are logged once each. */
     private var lastFlyTextLogged = false
 
@@ -984,18 +1009,25 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private fun refreshFlyTextState() {
         val hw = AppPrefs.getInstance().hardwareKeyboard
         if (!flyTextListenerRegistered) {
+            // One listener re-evaluates both fly-text arming inputs (the master pref AND the
+            // corner-delete sub-toggle), so toggling either takes effect immediately, no re-focus.
             hw.keyboardFlyText.registerOnChangeListener(flyTextListener)
+            hw.keyboardFlyTextCornerDelete.registerOnChangeListener(flyTextListener)
             flyTextListenerRegistered = true
         }
         // Neither gate uses !isVirtualKeyboard: on this device the candidates-window mode
         // (show_candidates_window) defaults to Disabled, whose evaluate* paths FORCE
         // isVirtualKeyboard=true while the user is in fact typing on the physical keyboard with
         // the soft keyboard hidden — so that flag is NOT a reliable "physical mode" indicator here.
+        flyTextPrefOn = hw.keyboardFlyText.getValue()
         val hasCandidates = lastPagedCandidateData.candidates.isNotEmpty() ||
                 lastCandidateListData.candidates.isNotEmpty()
-        flyTextOn = hw.keyboardFlyText.getValue() && hasCandidates
+        flyTextOn = flyTextPrefOn && hasCandidates
+        // Corner-delete does not need candidates (Backspace always applies), so it arms on the two
+        // prefs alone — but only while the parent fly-text pref is on (it is a sub-feature).
+        flyTextCornerDeleteOn = flyTextPrefOn && hw.keyboardFlyTextCornerDelete.getValue()
         flyTextDisarmReason = when {
-            !hw.keyboardFlyText.getValue() -> "pref-off"
+            !flyTextPrefOn -> "pref-off"
             !hasCandidates -> "no-candidates"
             else -> "none"
         }
@@ -1011,8 +1043,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
         // Lazily build the selector (needs resources + fcitx, available at runtime). It has to exist
         // before the first touch arrives, and the channel is installed independently of arming, so
-        // both [flyTextSelectorInitialized] and [flyTextOn] are checked at event time.
-        if (flyTextOn && !flyTextSelectorInitialized) {
+        // both [flyTextSelectorInitialized] and the armed flags are checked at event time.
+        if ((flyTextOn || flyTextCornerDeleteOn) && !flyTextSelectorInitialized) {
             flyTextSelector = KeyboardFlyTextSelector(
                 density = resources.displayMetrics.density,
                 candidateRectsProvider = { flyCandidateRects() },
@@ -1041,8 +1073,39 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     val d = if (AppPrefs.getInstance().hardwareKeyboard
                             .keyboardFlyTextSwapPage.getValue()
                     ) -dir else dir
-                    if (inputView?.flyPageCandidates(d) != true) {
-                        postFcitxJob { offsetCandidatePage(d) }
+                    // A symbol/emoji/emoticon panel is open → page it (same as the physical
+                    // pageNext/pagePrev keys); skip the candidate bar so the two never fight.
+                    if (inputView?.flyPagePicker(d) != true) {
+                        if (inputView?.flyPageCandidates(d) != true) {
+                            postFcitxJob { offsetCandidatePage(d) }
+                        }
+                    }
+                },
+                cornerRegionProvider = {
+                    // The top-right corner of the keyboard surface, in display coordinates — the
+                    // only zone a left swipe is read as Backspace from. Null when this device has no
+                    // keyboard touch surface, in which case the selector's corner-delete is inert and
+                    // a left swipe just pages.
+                    DeviceInfo.keyboardSurfaceRect()?.let { cornerDeleteRegion(it) }
+                },
+                cornerDeleteEnabled = {
+                    AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextCornerDelete.getValue()
+                },
+                onDelete = {
+                    // Click feedback like a physical Backspace key: the finger is on the keyboard
+                    // surface, not the screen, so the click is the only confirmation the delete fired.
+                    playHardwareSound(InputFeedbacks.SoundEffect.Delete)
+                    // Behave exactly like the physical Backspace key: the key goes through fcitx, which
+                    // deletes the last composing character (pinyin preedit) FIRST and only falls back to
+                    // deleting already-committed editor text when the preedit is empty. `handleBackspaceKey`
+                    // instead sends KEYCODE_DEL straight to the editor and would skip the composing text
+                    // entirely — so a flick from the corner deleted the wrong thing (committed text) while
+                    // the candidate bar stayed put. Mirrors onKeyDown: clear 联想 prediction candidates on
+                    // the first Delete when there is no preedit but candidates are showing.
+                    val del = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)
+                    if (inputView?.handleDeleteClearsPrediction(del) != true) {
+                        forwardKeyEvent(del)
+                        forwardKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
                     }
                 },
                 typingGuard = {
@@ -1871,7 +1934,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // device reports for dev=6 while the IME is active) belongs to fly-text; hover / scroll
         // from other devices must keep falling through to super, per the "==" source rule.
         if (flyTextSelectorInitialized &&
-            (flyTextOn || flyTextSelector.gestureActive) &&
+            (flyTextOn || flyTextCornerDeleteOn || flyTextSelector.gestureActive
+                    || flyTextPickerPagingOn) &&
             event.source == InputDevice.SOURCE_TOUCHPAD
         ) {
             flyTextSelector.onTouchEvent(event)

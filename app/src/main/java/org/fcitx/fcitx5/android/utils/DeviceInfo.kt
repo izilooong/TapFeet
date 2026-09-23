@@ -6,7 +6,9 @@ package org.fcitx.fcitx5.android.utils
 
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.graphics.Point
+import android.graphics.Rect
 import android.os.Build
 import org.fcitx.fcitx5.android.BuildConfig
 
@@ -56,6 +58,40 @@ object DeviceInfo {
             android.view.MotionEvent.AXIS_Y, android.view.InputDevice.SOURCE_TOUCHPAD
         ) ?: return null
         return range.min.toInt()..range.max.toInt()
+    }
+
+    /**
+     * The keyboard touch surface's FULL display-space bounding box (X and Y motion ranges for
+     * `SOURCE_TOUCHPAD`), or null when this device has no such surface.
+     *
+     * Like [keyboardSurfaceYRange] the ranges come straight from the device's declared motion
+     * bounds — already scaled into display space by InputReader's `RawToDisplay` factor — so the
+     * result lives in the SAME coordinate space as a touch's [android.view.MotionEvent.getRawX] /
+     * [android.view.MotionEvent.getRawY]. That is what makes the fly-text corner-delete gate a
+     * direct `Rect.contains(rawX, rawY)` hit test, with no hand-written screen-fraction guess that
+     * would be wrong by ~200px on this hardware.
+     */
+    fun keyboardSurfaceRect(): Rect? {
+        val id = keyboardTouchSurfaceDeviceId() ?: return null
+        val device = android.view.InputDevice.getDevice(id) ?: return null
+        // Prefer the touchpad-sourced axis range; some firmware registers the X range without the
+        // TOUCHPAD source bit, so fall back to the axis' default (source-agnostic) range before
+        // giving up. A null X or Y alone must NOT void the whole rect — the fly-text corner-delete
+        // gate only needs a plausible top-right zone, and the missing axis is safely substituted by
+        // the display edge (rawX/rawY are already display-space, proven by candidate hit-testing).
+        val xr = device.getMotionRange(
+            android.view.MotionEvent.AXIS_X, android.view.InputDevice.SOURCE_TOUCHPAD
+        ) ?: device.getMotionRange(android.view.MotionEvent.AXIS_X)
+        val yr = device.getMotionRange(
+            android.view.MotionEvent.AXIS_Y, android.view.InputDevice.SOURCE_TOUCHPAD
+        ) ?: device.getMotionRange(android.view.MotionEvent.AXIS_Y)
+        if (xr == null && yr == null) return null
+        val dm = Resources.getSystem().displayMetrics
+        val left = if (xr != null) xr.min.toInt() else 0
+        val right = if (xr != null) xr.max.toInt() else dm.widthPixels
+        val top = if (yr != null) yr.min.toInt() else 0
+        val bottom = if (yr != null) yr.max.toInt() else dm.heightPixels
+        return Rect(left, top, right, bottom)
     }
 
     fun get(context: Context) = buildString {

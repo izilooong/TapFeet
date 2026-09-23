@@ -55,6 +55,39 @@ fun flyTextSensitivityScale(sensitivityPct: Int): Float = 100f / sensitivityPct
 enum class SwipeDirection { UP, DOWN, LEFT, RIGHT }
 
 /**
+ * Corner-delete zone: fraction of the keyboard surface's WIDTH (measured inward from the right edge)
+ * and HEIGHT (measured down from the top edge) that counts as the "top-right corner". A contact must
+ * START inside this zone for a left swipe to be read as Backspace.
+ *
+ * The zone itself is the gesture's PRIMARY mis-touch filter — a corner, not a band: a stray left
+ * swipe across the middle of the keyboard still pages candidates, and only a flick that begins up in
+ * the right portion of the surface deletes.
+ *
+ * Height is deliberately generous: on the Titan2 Elite the keyboard touch surface spans roughly the
+ * upper two-thirds of the display, and a natural "flick from the top-right" actually STARTS well
+ * below the literal top edge (the real swipes land at ~y=240–336 of a ~747px-tall surface). A 30%
+ * cap (≈224px) sat entirely above where fingers naturally begin, so the gesture never armed. 50%
+ * (≈373px) comfortably covers the observed start band while staying clear of the lower half, where a
+ * left swipe should still page. Width keeps the old 30% so the zone stays on the right third only.
+ */
+const val SWIPE_CORNER_DELETE_WIDTH_FRAC = 0.30f
+const val SWIPE_CORNER_DELETE_HEIGHT_FRAC = 0.50f
+
+/**
+ * Top-right corner of [surface] as a display-space [Rect]: x from the right edge inward by
+ * [SWIPE_CORNER_DELETE_WIDTH_FRAC] of the width, y from the top edge down by
+ * [SWIPE_CORNER_DELETE_HEIGHT_FRAC] of the height. [surface] is the keyboard touch surface's full
+ * declared motion bounds ([DeviceInfo.keyboardSurfaceRect]), already in the same display coordinate
+ * space as the touch's `rawX`/`rawY`, so the selector's hit test is a direct `contains()`.
+ */
+fun cornerDeleteRegion(surface: Rect): Rect = Rect(
+    (surface.right - surface.width() * SWIPE_CORNER_DELETE_WIDTH_FRAC).toInt(),
+    surface.top,
+    surface.right,
+    (surface.top + surface.height() * SWIPE_CORNER_DELETE_HEIGHT_FRAC).toInt()
+)
+
+/**
  * Tentative direction: the axis the gesture has clearly committed to, decided as soon as the travel
  * passes [SWIPE_BASE_SLOP_DP] with a dominant axis ≥ [SWIPE_AXIS_RATIO]× the cross axis. Returns
  * `null` while undecided (below the base slop or inside the deadzone).

@@ -638,6 +638,21 @@ class InputView(
         return true
     }
 
+    /**
+     * Fly-text left/right swipe paging for an open symbol/emoji/emoticon window: a horizontal swipe
+     * pages that panel (same [PickerWindow.page] the physical pageNext/pagePrev keys use). Returns
+     * true when one of those panels is the active input window so the caller skips candidate-bar
+     * paging; false otherwise.
+     */
+    internal fun flyPagePicker(direction: Int): Boolean {
+        val picker = currentPickerWindow() ?: return false
+        picker.page(direction)
+        return true
+    }
+
+    /** True while any symbol/emoji/emoticon panel is the active input window (for fly-text arming). */
+    internal fun isPickerWindowOpen(): Boolean = currentPickerWindow() != null
+
     // 单条物理键 → 可见位置 的映射规则（键用 fcitx5 portableString 标识，见下方 preciseShortcuts()）。
     private data class ShortcutRule(val parsedKey: ParsedKey?, val position: Int)
 

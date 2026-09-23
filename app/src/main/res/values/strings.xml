@@ -78,6 +78,8 @@
     <string name="hw_keyboard_flytext_summary">Swipe up the keyboard surface to pick the candidate in your finger\'s column; left/right to page.</string>
     <string name="hw_flytext_swap_page">Swap page swipe direction</string>
     <string name="hw_flytext_swap_page_summary">Swipe left = previous, right = next (default is reversed).</string>
+    <string name="hw_flytext_corner_delete">Corner swipe deletes</string>
+    <string name="hw_flytext_corner_delete_summary">Swipe left from the keyboard\'s top-right corner to backspace. Gesture starts there only, to avoid mis-deletes.</string>
     <string name="hw_flytext_sensitivity">Fly-text sensitivity</string>
     <string name="hw_flytext_guard_ms">Mis-touch guard duration</string>
     <string name="hw_key_sound">Physical key sound</string>

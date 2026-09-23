@@ -78,6 +78,8 @@
     <string name="hw_keyboard_flytext_summary">键盘面上滑选字，左右滑翻页。</string>
     <string name="hw_flytext_swap_page">翻页方向互换</string>
     <string name="hw_flytext_swap_page_summary">左滑上一页、右滑下一页（默认相反）。</string>
+    <string name="hw_flytext_corner_delete">右上角左滑删除</string>
+    <string name="hw_flytext_corner_delete_summary">从键盘右上角往左滑即退格。仅在右上角起手，避免误删。</string>
     <string name="hw_flytext_sensitivity">飞字灵敏度</string>
     <string name="hw_flytext_guard_ms">防误触时长</string>
     <string name="hw_key_sound">物理按键音</string>

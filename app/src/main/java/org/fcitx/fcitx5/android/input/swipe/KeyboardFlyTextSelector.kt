@@ -15,10 +15,15 @@ import timber.log.Timber
  * the keyboard surface's motion samples as the IME receives them on its own window
  * (`FcitxInputMethodService.installDecorMotionListener`).
  *
- * Two gestures:
+ * Three gestures:
  *  - **Up-swipe** (vertical-dominant, upward): pick the candidate whose on-screen column the finger
  *    is over — resolved by [candidateIndexAtX] against live [candidateRectsProvider] rects.
  *  - **Left / right swipe** (horizontal-dominant): page candidates. Left = next page, right = previous.
+ *  - **Corner-delete**: a swipe that STARTS inside the keyboard surface's top-right corner
+ *    ([cornerRegionProvider]) and travels clearly leftward acts as Backspace ([onDelete]). The corner
+ *    is reserved — a contact that begins there never pages or picks a candidate, so a graze near the
+ *    physical backspace key cannot mangle the candidate strip. This is the gesture's primary mis-touch
+ *    filter; the typing guard and the commit slop below are additional belt-and-braces.
  *
  * Coordinates: candidate rects are absolute screen coordinates ([android.view.View.getLocationOnScreen]),
  * so the incoming [MotionEvent] must be tested against [MotionEvent.getRawX] / [MotionEvent.getRawY]
@@ -38,6 +43,21 @@ class KeyboardFlyTextSelector(
     private val candidateRectsProvider: () -> List<Pair<Int, Rect>>,
     private val onSelect: (Int) -> Unit,
     private val onPage: (Int) -> Unit,
+    /**
+     * Returns the top-right corner of the keyboard surface as a display-space [Rect] (the zone a
+     * left swipe must START in to be read as Backspace), or null when the surface geometry is
+     * unavailable on this device — in which case corner-delete is silently disabled and a left
+     * swipe from anywhere just pages. Computed fresh per gesture so it tracks config/rotation.
+     */
+    private val cornerRegionProvider: () -> Rect?,
+    /**
+     * True while the corner-delete gesture is enabled (AppPrefs `keyboardFlyTextCornerDelete`). When
+     * false, a left swipe from the corner is a normal page swipe — the corner is reserved only while
+     * the user has opted into the delete gesture.
+     */
+    private val cornerDeleteEnabled: () -> Boolean,
+    /** Fired once when a corner-started, clearly leftward swipe clears the commit slop. */
+    private val onDelete: () -> Unit,
     /**
      * True while hardware keys are being hit (the caller compares the age of the last key event
      * against its configured guard window, AppPrefs `keyboardFlyTextGuardMs`). A surface contact
@@ -60,6 +80,13 @@ class KeyboardFlyTextSelector(
      * per-direction commit slop (the hysteresis that separates a deliberate swipe from a graze).
      */
     private var pendingDir: SwipeDirection? = null
+    /**
+     * Set on a fresh DOWN whose coordinates fall inside the top-right corner zone (and only while
+     * [cornerDeleteEnabled]). While true the in-flight gesture is reserved for Backspace: only a
+     * clearly leftward swipe fires it, and up/down/right from the corner are no-ops. Reset on every
+     * fresh DOWN / UP / CANCEL so the reservation never leaks across gestures.
+     */
+    private var cornerDeleteArmed = false
     private var lastEventTime = 0L
 
     /**
@@ -97,7 +124,21 @@ class KeyboardFlyTextSelector(
                 downX = event.rawX
                 downY = event.rawY
                 downTime = t
-                Timber.i("FlyText: DOWN rawX=${event.rawX} rawY=${event.rawY}")
+                // Corner-delete is reserved for contacts that START in the surface's top-right
+                // corner: a left swipe from there is Backspace, and nothing else fires from a corner
+                // contact (so a stray brush near the backspace key can't page or pick a candidate).
+                // The corner is the gesture's main mis-touch filter; the typing guard + commit slop
+                // below are belt-and-braces. Disabled when the feature is off or the surface geometry
+                // is unknown, in which case a left swipe from the corner just pages like anywhere else.
+                cornerDeleteArmed = cornerDeleteEnabled() &&
+                    cornerRegionProvider()?.contains(event.rawX.toInt(), event.rawY.toInt()) == true
+                if (cornerDeleteEnabled()) {
+                    val region = cornerRegionProvider()
+                    Timber.i(
+                        "FlyText: DOWN rawX=${event.rawX} rawY=${event.rawY} " +
+                            "cornerDelete=${cornerDeleteArmed} region=${region}"
+                    )
+                }
             }
             MotionEvent.ACTION_MOVE -> {
                 if (classified || downTime == 0L) return
@@ -123,6 +164,19 @@ class KeyboardFlyTextSelector(
                 // commit slop). From here the direction is fixed; a wobble cannot reclassify it.
                 if (pendingDir == null) pendingDir = swipeAxis(dx, dy, d)
                 val dir = pendingDir ?: return
+                // Corner-delete path: a contact that began in the top-right corner is reserved for
+                // Backspace. Only a clearly leftward swipe fires it; up/down/right from the corner are
+                // no-ops (locked, but never page/select — protecting candidates from a corner graze).
+                // The commit slop is the same horizontal one the page gestures use, scaled by the
+                // fly-text sensitivity, so the delete threshold tracks the same mis-touch tuning.
+                if (cornerDeleteArmed) {
+                    if (swipeDirection(dx, dy, d) == SwipeDirection.LEFT) {
+                        Timber.i("FlyText: corner-delete (rawX=${event.rawX})")
+                        onDelete()
+                        classified = true
+                    }
+                    return
+                }
                 // Fire only once the travel also clears the *commit* slop for this direction — the
                 // hysteresis that separates a deliberate swipe from a stray touch that merely grazed
                 // the base slop. swipeDirection re-applies the same axis ratio + per-direction slop
@@ -164,5 +218,6 @@ class KeyboardFlyTextSelector(
         downTime = 0L
         classified = false
         pendingDir = null
+        cornerDeleteArmed = false
     }
 }

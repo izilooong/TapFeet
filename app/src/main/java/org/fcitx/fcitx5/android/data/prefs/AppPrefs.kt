@@ -634,6 +634,12 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // previous) so left = previous and right = next. Only meaningful while fly-text is on.
         val keyboardFlyTextSwapPage = bool("hw_keyboard_flytext_swap_page", false)
 
+        // Keyboard fly-text corner delete: a swipe from the top-right corner of the keyboard surface
+        // to the left acts as Backspace. Off by default — the gesture is destructive, so it starts
+        // disabled and the user opts in; the corner zone, the typing guard, and the swipe slop all
+        // keep it from firing on a graze. Only meaningful while fly-text is on.
+        val keyboardFlyTextCornerDelete = bool("hw_keyboard_flytext_corner_delete", true)
+
         // Keyboard fly-text sensitivity (percent). Scales every swipe travel threshold: lower =
         // the finger must travel farther before a gesture fires (fewer accidental triggers while
         // typing fast), higher = more responsive. Applied via [flyTextSensitivityScale] so the
