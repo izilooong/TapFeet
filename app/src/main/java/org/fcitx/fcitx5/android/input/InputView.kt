@@ -9,11 +9,15 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InlineSuggestionsResponse
+import android.view.inputmethod.InputConnection
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.annotation.Keep
@@ -68,6 +72,7 @@ import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.manager.wrapToUniqueComponent
 import org.mechdancer.dependency.plusAssign
 import splitties.dimensions.dp
+import timber.log.Timber
 import splitties.views.dsl.constraintlayout.above
 import splitties.views.dsl.constraintlayout.below
 import splitties.views.dsl.constraintlayout.bottomOfParent
@@ -860,7 +865,9 @@ class InputView(
      *
      * 取跨编辑器兼容面最广的路径：全选/复制/剪切/粘贴走编辑器上下文菜单
      * （[InputConnection.performContextMenuAction]，TextView 支持，WebView/Compose 参差）；
-     * 光标与选区走 DPAD keyevent（选区附加 Shift meta）；撤销发 Ctrl+Z
+     * 光标移动走 DPAD keyevent；**选区四向**：左右手工 setSelection（微信的输入框这类自定义
+     * 编辑器不响应 Shift+DPAD 合成按键），上下先 keyevent（视觉行，最准）探测失败再退回手工
+     * 硬换行扩选，见 [extendSelection] / [extendSelectionVertical]；撤销发 Ctrl+Z
      * （android.R.id 没有 undo 常量，keyevent 是唯一通用入口）。
      */
     private fun runEditorAction(action: ShortcutAction) {
@@ -881,12 +888,193 @@ class InputView(
             ShortcutAction.CursorRight -> sendKey(KeyEvent.KEYCODE_DPAD_RIGHT, 0)
             ShortcutAction.CursorUp -> sendKey(KeyEvent.KEYCODE_DPAD_UP, 0)
             ShortcutAction.CursorDown -> sendKey(KeyEvent.KEYCODE_DPAD_DOWN, 0)
-            ShortcutAction.SelectLeft -> sendKey(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.META_SHIFT_ON)
-            ShortcutAction.SelectRight -> sendKey(KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.META_SHIFT_ON)
-            ShortcutAction.SelectUp -> sendKey(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.META_SHIFT_ON)
-            ShortcutAction.SelectDown -> sendKey(KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.META_SHIFT_ON)
+            ShortcutAction.SelectLeft -> extendSelection(ic, -1)
+            ShortcutAction.SelectRight -> extendSelection(ic, +1)
+            ShortcutAction.SelectUp -> extendSelectionVertical(ic, true)
+            ShortcutAction.SelectDown -> extendSelectionVertical(ic, false)
             else -> Unit
         }
+    }
+
+    /** 扩选区的固定锚点（不动的那个端点）；null = 没有进行中的连续扩选。见 [extendSelection]。 */
+    private var selAnchor: Int? = null
+
+    // —— 上/下选中的实现方式探测（每个编辑器只探一次，结论跟着 InputConnection 走）——
+    // true  = 编辑器自己吃 Shift+DPAD（标准 TextView，视觉行语义，最准）；
+    // false = 编辑器忽略合成按键（微信），直接走手工 \n 扩选；
+    // null  = 还没探过。InputConnection 换了（切到别的输入框）就重新探。
+    private var verticalByKey: Boolean? = null
+    private var verticalProbeIc: InputConnection? = null
+    private var verticalProbeSeq = 0L
+
+    private companion object {
+        /** Shift+DPAD 发出后等编辑器消化，再核对选区是否移动的延迟，ms。 */
+        const val VERTICAL_PROBE_DELAY_MS = 80L
+    }
+
+    /**
+     * 探测回调的投递通道。**必须用独立 Handler 而不是 View.postDelayed**：物理键盘模式下
+     * InputView 常是隐藏/游离态，detached view 的 postDelayed 只进 RunQueue、等 re-attach 才执行
+     * ——回调永远不跑，上/下选中的探测就死在半路（微信里上/下全废的根因）。主线程 Handler
+     * 不依赖视图挂载状态；token 序号已防陈旧回调乱入。
+     */
+    private val probeHandler = Handler(Looper.getMainLooper())
+
+    /** 锚点解析：返回 (锚点, 活动端)。规则见 [extendSelection] KDoc。 */
+    private fun resolveAnchor(start: Int, end: Int): Pair<Int, Int> = when {
+        start == end -> start to start
+        selAnchor != null && (selAnchor == start || selAnchor == end) ->
+            selAnchor!!.let { a -> a to (if (a == start) end else start) }
+        else -> end to start
+    }
+
+    private fun applySelection(ic: InputConnection, anchor: Int, moving: Int, lo: Int, hi: Int) {
+        selAnchor = anchor
+        ic.setSelection(
+            minOf(anchor, moving).coerceIn(lo, hi),
+            maxOf(anchor, moving).coerceIn(lo, hi)
+        )
+    }
+
+    /** getExtractedText 拿不到绝对坐标时的老路：Shift+DPAD keyevent（标准 TextView 自己会处理）。 */
+    private fun sendShiftDpad(ic: InputConnection, code: Int) {
+        ic.sendKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, code, 0, KeyEvent.META_SHIFT_ON))
+    }
+
+    /**
+     * 扩选区一格（[delta] = -1 向左 / +1 向右）。
+     *
+     * 首选**手工 [InputConnection.setSelection]**：Shift+DPAD keyevent 只在标准 TextView 上有效，
+     * 微信的输入框这类自定义编辑器不响应它（「Fn+H 在微信无效」的根因）。绝对坐标从
+     * [InputConnection.getExtractedText] 拿；编辑器不支持（返回 null / 无文本）时退回
+     * Shift+DPAD keyevent —— 标准 TextView（笔记类 App）走老路不受影响。
+     *
+     * 锚点由我们自己记，语义与编辑器 Shift+方向键一致：连按时锚点固定、活动端每次 ±1；
+     * 选区被编辑器收起（用户点了别处）→ 锚点重置为光标；锚点不在当前选区端点上（选区是
+     * 用户长按等外部操作选的）→ 锚点取选区右端、活动端从左端动，与「光标在右端」的惯例一致。
+     */
+    private fun extendSelection(ic: InputConnection, delta: Int) {
+        val et = ic.getExtractedText(ExtractedTextRequest(), 0)
+        val text = et?.text
+        if (et == null || text == null) {
+            sendShiftDpad(ic, if (delta < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT)
+            return
+        }
+        val base = et.startOffset
+        var start = base + et.selectionStart
+        var end = base + et.selectionEnd
+        if (start > end) { val t = start; start = end; end = t }
+        val (anchor, moving0) = resolveAnchor(start, end)
+        val lo = base
+        val hi = base + text.length
+        var m = moving0 - base + delta
+        // 代理对（emoji 等）不拆半：落点若落在一对代理的中间，朝原方向多让一步
+        if (delta < 0 && m in 1 until text.length && Character.isLowSurrogate(text[m])) m -= 1
+        if (delta > 0 && m in 1..text.length && Character.isHighSurrogate(text[m - 1])) m += 1
+        applySelection(ic, anchor, base + m, lo, hi)
+    }
+
+    /**
+     * 扩选区一行（[up] = 向上 / 向下）。
+     *
+     * **先发 Shift+DPAD keyevent**：支持它的编辑器（标准 TextView）会做**视觉行**移动
+     * （软换行感知，一行太长自动折行的每一「显示行」都算一行），这是最正确的语义。
+     * 微信的输入框这类自定义编辑器不响应合成按键（或只挪光标不做选区）→ 延迟 80ms 核对：
+     * 判定标准是「选区变化 **且** 非折叠」，不满足就退回 [extendSelectionVerticalManual]
+     * （按硬换行 `\n` 扩选，长段落里「上一行」= 上一段，是 IC 模型的天花板）。
+     * 探测结论按编辑器缓存（[verticalByKey]），每个编辑器只探一次，之后的按压零延迟直达正确路径。
+     */
+    private fun extendSelectionVertical(ic: InputConnection, up: Boolean) {
+        val mode = verticalByKey?.takeIf { verticalProbeIc === ic }
+        if (mode == true) {
+            sendShiftDpad(ic, if (up) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN)
+            return
+        }
+        if (mode == false) {
+            extendSelectionVerticalManual(ic, up)
+            return
+        }
+        // —— 未探测：发 keyevent，延迟核对 ——
+        val code = if (up) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN
+        val snap = ic.getExtractedText(ExtractedTextRequest(), 0)?.let {
+            Triple(it.startOffset, it.selectionStart, it.selectionEnd)
+        }
+        sendShiftDpad(ic, code)
+        if (snap == null) {
+            // 连 getExtractedText 都不支持，无从核对：直接手工（跟微信同级的最差情况）
+            extendSelectionVerticalManual(ic, up)
+            return
+        }
+        verticalProbeIc = ic
+        verticalByKey = null
+        val token = ++verticalProbeSeq
+        probeHandler.postDelayed({
+            if (token != verticalProbeSeq || verticalByKey != null) return@postDelayed
+            val et = ic.getExtractedText(ExtractedTextRequest(), 0) ?: return@postDelayed
+            val (b, s0, e0) = Triple(et.startOffset, et.selectionStart, et.selectionEnd)
+            val moved = b != snap.first || s0 != snap.second || e0 != snap.third
+            val collapsed = s0 == e0
+            // 判定标准是「编辑器做了**扩选**」（选区变了 **且** 非折叠）：
+            //  - 完全没动 = 忽略合成按键（微信之一）；
+            //  - 动了但选区仍折叠 = 吃了方向键却忽略 Shift（微信之形：光标跳了一行、没有选区）——
+            //    只查「变没变」会把它误判成支持，之后永远只发 keyevent，一次选区都做不出来。
+            val handled = moved && !collapsed
+            verticalByKey = handled
+            Timber.d("vertical selection probe: moved=%s collapsed=%s -> byKey=%s", moved, collapsed, verticalByKey)
+            if (!handled) {
+                // 光标可能被 keyevent 挪走了（变了但折叠）：先恢复到探测前的光标，再从那里手工扩选
+                if (moved) ic.setSelection(snap.first + snap.second, snap.first + snap.third)
+                extendSelectionVerticalManual(ic, up)
+            }
+        }, VERTICAL_PROBE_DELAY_MS)
+    }
+
+    /**
+     * 手工扩选一行（[up] = 向上 / 向下）—— [extendSelectionVertical] 的兜底路径。
+     *
+     * 行结构只能按**硬换行（\n）**算：InputConnection 拿不到软换行（自动折行）的行信息，
+     * 长段落里的「上一行」实际会跳到上一段 —— 这是 IC 模型的天花板，但对聊天输入框这类
+     * 短文本够用。列保持（目标行同列截断到行尾）；首行再上移 → 文档头，末行再下移 → 文档尾。
+     * 行界落在提取窗口外（无法定位）时放弃本次（不发 keyevent：探测已证明编辑器不认它）。
+     */
+    private fun extendSelectionVerticalManual(ic: InputConnection, up: Boolean) {
+        val et = ic.getExtractedText(ExtractedTextRequest(), 0)
+        val text = et?.text
+        if (et == null || text == null) return
+        val base = et.startOffset
+        var start = base + et.selectionStart
+        var end = base + et.selectionEnd
+        if (start > end) { val t = start; start = end; end = t }
+        val (anchor, moving0) = resolveAnchor(start, end)
+        val lm = moving0 - base
+        if (lm < 0 || lm > text.length) return
+        val lineStart = text.lastIndexOf('\n', lm - 1) + 1
+        val col = lm - lineStart
+        val target: Int? = if (up) {
+            when {
+                // 上一行：起点 = 再往前一个换行之后；列保持，行尾（'\n' 处）截断
+                lineStart > 0 ->
+                    minOf(text.lastIndexOf('\n', lineStart - 2) + 1 + col, lineStart - 1)
+                base == 0 -> 0     // 已在文档第一行 → 顶到文档头
+                else -> null       // 窗口前可能还有行，定位不了 → 放弃
+            }
+        } else {
+            val nlAfter = text.indexOf('\n', lm)
+            when {
+                nlAfter >= 0 -> {
+                    val nextStart = nlAfter + 1
+                    val nextEnd = text.indexOf('\n', nextStart).let { if (it < 0) text.length else it }
+                    minOf(nextStart + col, nextEnd)
+                }
+                base == 0 -> text.length   // 已在文档末行 → 移到文档尾
+                else -> null               // 下一行可能在窗口外 → 放弃
+            }
+        }
+        val t0 = target ?: return
+        var t = t0
+        // 代理对不拆半：落点若是低代理（对的后半），往行首方向退一格
+        if (t in 1 until text.length && Character.isLowSurrogate(text[t])) t -= 1
+        applySelection(ic, anchor, base + t, base, base + text.length)
     }
 
     private fun toast(@StringRes resId: Int) = toast(context.getString(resId))
