@@ -166,8 +166,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private fun replaceInputView(theme: Theme): InputView {
         val newInputView = InputView(this, fcitx, theme)
-        setInputView(newInputView)
+        // Register with InputDeviceManager BEFORE handing the view to the framework: the manager
+        // pushes handleEvents and starts the fcitx-event collector, neither of which needs the
+        // view to be attached. This ordering guarantees that when attach fires (inside
+        // setInputView below) the manager already points at THIS instance, so the attach-side
+        // reconcile in BaseInputView.onAttachedToWindow cannot resurrect the outgoing instance.
         inputDeviceMgr.setInputView(newInputView)
+        setInputView(newInputView)
         inputView = newInputView
         newInputView.onAltLatchChanged(altLatched)
         return newInputView
@@ -177,12 +182,27 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         val newCandidatesView = CandidatesView(this, fcitx, theme)
         // replace CandidatesView manually
         contentView.removeView(candidatesView)
+        // Register with InputDeviceManager before adding to the window — same reasoning as in
+        // [replaceInputView]: attach must find the manager already pointing at this instance.
+        inputDeviceMgr.setCandidatesView(newCandidatesView)
         // put CandidatesView directly under content view
         contentView.addView(newCandidatesView)
-        inputDeviceMgr.setCandidatesView(newCandidatesView)
         candidatesView = newCandidatesView
         effectsOverlay?.setCandidatesView(newCandidatesView)
         return newCandidatesView
+    }
+
+    /**
+     * Idempotent re-push of the current device mode onto InputView / CandidatesView.
+     *
+     * The attach-side counterpart to the detach that kills the fcitx-event collector
+     * ([BaseInputView.onDetachedFromWindow] → `handleEvents = false`): when the mode itself never
+     * changed, nothing else re-arms the view, and it stays deaf — preedit keeps flowing through
+     * InputConnection while the candidate bar freezes. Called from attach, window-show and
+     * input-session-start; safe to call any time.
+     */
+    internal fun reconcileInputViewEvents() {
+        inputDeviceMgr.reapplyMode()
     }
 
     private fun replaceInputViews(theme: Theme) {
@@ -709,6 +729,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // the window was hidden (reinitializeAfterConfigChange covers the change itself; this
         // catches any other detach path). Idempotent.
         ensureEffectsOverlayAttached()
+        // Same "detached while hidden, then nobody re-armed it" class of bug applies to the fcitx
+        // event channel: BaseInputView.onDetachedFromWindow cancels the collector job, and the
+        // mode setter short-circuits on an unchanged value, so a re-attached InputView stayed deaf
+        // — preedit kept updating while the candidate bar froze on its last page. Re-push the mode
+        // unconditionally; idempotent.
+        inputDeviceMgr.reapplyMode()
     }
 
     /**
@@ -2010,6 +2036,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             showStatusIcon(StatusIconMapping.fromEntry(fcitx.runImmediately { inputMethodEntryCached }))
         }
+        // Re-starting an input session is another chance for the event channel to have been lost
+        // while the mode itself never changed (nothing else re-pushes it in that case).
+        inputDeviceMgr.reapplyMode()
         // Re-apply the keyboard-surface state now that the IME is up: arm fly-text if candidates are
         // already on screen, and install the decor motion channel.
         refreshFlyTextState()

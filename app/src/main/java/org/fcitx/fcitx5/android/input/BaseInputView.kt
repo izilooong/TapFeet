@@ -28,6 +28,7 @@ import org.fcitx.fcitx5.android.utils.item
 import org.fcitx.fcitx5.android.utils.navbarFrameHeight
 import splitties.resources.styledColor
 import splitties.views.dsl.core.withTheme
+import timber.log.Timber
 import kotlin.math.max
 
 abstract class BaseInputView(
@@ -57,11 +58,20 @@ abstract class BaseInputView(
         set(value) {
             field = value
             if (field) {
+                Timber.d(
+                    "CandSync: %s.handleEvents -> true (jobActive=%b)",
+                    this::class.java.simpleName, eventHandlerJob?.isActive == true
+                )
                 onStartHandleFcitxEvent()
-                if (eventHandlerJob == null) {
+                // `eventHandlerJob != null` is NOT enough: the job can be dead (cancelled together
+                // with its owning scope) while the field still holds it, and then the view would
+                // stay deaf forever — no candidate event, frozen bar, while preedit keeps flowing
+                // through InputConnection. Re-arm whenever the job is missing OR no longer active.
+                if (eventHandlerJob?.isActive != true) {
                     setupFcitxEventHandler()
                 }
             } else {
+                Timber.d("CandSync: %s.handleEvents -> false", this::class.java.simpleName)
                 eventHandlerJob?.cancel()
                 eventHandlerJob = null
             }
@@ -140,6 +150,15 @@ abstract class BaseInputView(
             // otherwise View#onApplyWindowInsets won't be called. ¯\_(ツ)_/¯
             requestApplyInsets()
         }
+        // Attach-side self-heal, the direct counterpart of onDetachedFromWindow below: detach
+        // cancels the fcitx-event collector and nothing re-arms it when the device mode never
+        // changed (InputDeviceManager short-circuits on an unchanged value) — the view would stay
+        // deaf forever, freezing the candidate bar while preedit keeps updating via
+        // InputConnection. Reconcile here and the subscription survives any detach/attach cycle.
+        // Safe by ordering: replaceInput{,Candidate}View registers with InputDeviceManager BEFORE
+        // the framework attaches the view, so this always reconciles THIS instance, never a stale
+        // outgoing one. Idempotent — it just re-pushes the current mode.
+        service.reconcileInputViewEvents()
     }
 
     override fun onDetachedFromWindow() {

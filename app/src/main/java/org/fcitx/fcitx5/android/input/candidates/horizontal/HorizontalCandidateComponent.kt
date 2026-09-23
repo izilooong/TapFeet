@@ -451,6 +451,10 @@ class HorizontalCandidateComponent :
         val slice =
                 if (pageCandidates.isEmpty()) emptyArray()
                 else pageCandidates.copyOfRange(localPageStart, end)
+        Timber.d(
+            "CandSync: renderPage start=%d pageSize=%d slice=%d pool=%d",
+            localPageStart, pageSize, slice.size, pageCandidates.size
+        )
         adapter.updateCandidates(slice, sourceTotal, localPageStart)
         // Page turn? Only when the user asked for one AND the page actually moved: fresh queries,
         // width changes and the 5→3→1 overflow fallback all re-render through here and must not
@@ -556,6 +560,10 @@ class HorizontalCandidateComponent :
                                 if (nextSize < localPageSize) {
                                     // 先藏住这一帧过宽的候选，避免「先画出 5/4 个、再回退成 3 个」
                                     // 的闪一下；下一帧渲染到正确档位（3/1）后由下方稳定分支恢复可见。
+                                    Timber.d(
+                                        "CandSync: overflow fallback pageSize %d->%d",
+                                        localPageSize, nextSize
+                                    )
                                     view.visibility = View.INVISIBLE
                                     applyLocalPageSize(nextSize)
                                     view.post { renderCurrentPage() }
@@ -651,6 +659,13 @@ class HorizontalCandidateComponent :
     override fun onCandidateUpdate(data: FcitxEvent.CandidateListEvent.Data) {
         val candidates = data.candidates
         val total = data.total
+        // Liveness probe for the "candidate bar frozen" report: if this line keeps coming while the
+        // bar visibly does not change, the fault is downstream (rendering); if it stops while
+        // preedit keeps updating, the event channel died (see InputDeviceManager.reapplyMode).
+        Timber.d(
+            "CandSync: bar onCandidateUpdate n=%d total=%d first=%s",
+            candidates.size, total, candidates.firstOrNull()?.text ?: "-"
+        )
         pageCandidates = candidates
         sourceTotal = total
         candidatePagingMode = 0

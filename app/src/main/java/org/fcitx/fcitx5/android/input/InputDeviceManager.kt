@@ -12,6 +12,7 @@ import android.view.inputmethod.EditorInfo
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.utils.isTypeNull
+import timber.log.Timber
 
 class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
 
@@ -35,8 +36,28 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
     }
 
     private fun setupViewEvents(isVirtual: Boolean) {
+        Timber.d(
+            "CandSync: setupViewEvents isVirtual=%b (iv=%b cv=%b)",
+            isVirtual, inputView != null, candidatesView != null
+        )
         setupInputViewEvents(isVirtual)
         setupCandidatesViewEvents(isVirtual)
+    }
+
+    /**
+     * Re-push the current mode onto both input views **even when the mode itself has not changed**.
+     *
+     * [isVirtualKeyboard]'s setter short-circuits on an unchanged value, so when a view loses its
+     * fcitx-event subscription on its own, nothing ever re-arms it. The known path is
+     * [BaseInputView.onDetachedFromWindow] → `handleEvents = false`: after the view is re-attached
+     * (window/frame rebuild that happens without a Configuration diff, e.g. an IME window being
+     * recreated) it stays deaf forever. Symptoms: preedit keeps updating (it travels through
+     * InputConnection, not through the event flow) while the candidate bar stays frozen on its last
+     * rendered page until the IME is restarted. Call this whenever the IME window is (re)shown or a
+     * new input session starts — it is idempotent.
+     */
+    fun reapplyMode() {
+        setupViewEvents(isVirtualKeyboard)
     }
 
     var isVirtualKeyboard = true
