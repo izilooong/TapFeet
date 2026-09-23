@@ -6,6 +6,7 @@ import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import com.android.build.api.variant.FilterConfiguration.FilterType
 import org.gradle.api.Project
+import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.kotlin.dsl.configure
 
 @Suppress("unused")
@@ -29,12 +30,27 @@ class NativeAppConventionPlugin : NativeBaseConventionPlugin() {
 
         target.extensions.configure<ApplicationAndroidComponentsExtension> {
             onVariants { variant ->
+                val outputs = variant.outputs
                 // different version code based on abi
-                variant.outputs.forEach { output ->
+                outputs.forEach { output ->
                     val abi = output.filters.find { it.filterType == FilterType.ABI }
                     if (abi != null) {
-                        output.versionCode.set(Versions.calculateVersionCode(abi.identifier))
+                        output.versionCode.set(
+                            Versions.calculateVersionCode(abi.identifier, target.buildVersionName)
+                        )
                     }
+                }
+                // Carry the release version in the APK file name (tapfeet.ime-v1.0.13.apk) — the
+                // same name the online-update download URL template expects, so the built file can
+                // be uploaded without a manual rename. Only when the build produces exactly one
+                // output (the single-ABI flow, buildABI override): a multi-ABI build keeps the
+                // default per-ABI names so the outputs cannot collide on disk.
+                if (outputs.size == 1) {
+                    val baseName = target.extensions
+                        .getByType(BasePluginExtension::class.java).archivesName.get()
+                    outputs.single().outputFileName.set(
+                        "$baseName-${target.buildVersionName}.apk"
+                    )
                 }
             }
         }

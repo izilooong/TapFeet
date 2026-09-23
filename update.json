@@ -1,8 +1,8 @@
 {
-    "versionCode": 232,
-    "versionName": "v1.0.12",
-    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.12/tapfeet.ime-v1.0.12.apk",
-    "releaseNotes": "- 增加快捷键方案, 如: Fn+x,c,v = 剪切,复制,粘贴...等\n- 快捷键适配 Q25, 快捷使用 Shift_R+x,c,v...等\n- 符号/表情窗口增加键位标识, 对应26字母键位",
+    "versionCode": 1001302,
+    "versionName": "v1.0.13",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.13/tapfeet.ime-v1.0.13.apk",
+    "releaseNotes": "- 键盘飞字新增手势: 右上角起手左滑 = 退格\n- 没有候选字时, 键盘上下左右滑 = 移动光标\n- 双击 Alt 锁定后滑动 = 扩选文字\n- 符号/表情/颜文字窗口打开时, 左右滑直接翻动该窗口\n- 飞字手势音效与物理按键音效一致\n- 新增手势独立开关: 选项 - 物理键盘 - 飞字 (右上角左滑删除 / 滑动移动光标 / 滑动扩选文字)\n- 增加音效: 机械键盘",
     "minVersionCode": 0,
-    "publishDate": "2026-09-22"
+    "publishDate": "2026-09-23"
 }

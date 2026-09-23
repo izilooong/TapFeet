@@ -577,12 +577,9 @@ class InputMethodTestFragment : Fragment() {
 
     private fun handleKeyEvent(keyCode: Int, event: KeyEvent) {
         val keyCodeName = KeyEvent.keyCodeToString(keyCode)
-        val actionName = when (event.action) {
-            KeyEvent.ACTION_DOWN -> "ACTION_DOWN"
-            KeyEvent.ACTION_UP -> "ACTION_UP"
-            KeyEvent.ACTION_MULTIPLE -> "ACTION_MULTIPLE"
-            else -> "UNKNOWN(${event.action})"
-        }
+        // actionToString covers every action (incl. the deprecated ACTION_MULTIPLE) with the
+        // canonical names, so the probe page can't go stale as new actions appear.
+        val actionName = KeyEvent.actionToString(event.action)
 
         // Build modifiers string
         val modifiers = buildModifiersString(event)

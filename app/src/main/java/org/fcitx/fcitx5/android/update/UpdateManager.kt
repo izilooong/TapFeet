@@ -146,17 +146,21 @@ object UpdateManager {
             openInstallSettings(context)
             return
         }
+        // ACTION_INSTALL_PACKAGE is deprecated; ACTION_VIEW + the package-archive mime is the
+        // standard sideload intent on every supported API level (the system installer handles it),
+        // so both branches share the same action and differ only in how the URI is produced.
         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             val uri = FileProvider.getUriForFile(
                 context,
                 context.packageName + AUTHORITY_SUFFIX,
                 apkFile
             )
-            Intent(Intent.ACTION_INSTALL_PACKAGE, uri).apply {
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         } else {
-            // Pre-N: FileProvider + ACTION_INSTALL_PACKAGE are unavailable; use a file URI.
+            // Pre-N: FileProvider is unavailable; use a file URI.
             Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(
                     Uri.fromFile(apkFile),
@@ -165,7 +169,6 @@ object UpdateManager {
             }
         }.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra(Intent.EXTRA_RETURN_RESULT, true)
         }
         runCatching { context.startActivity(intent) }
     }

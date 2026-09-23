@@ -42,9 +42,43 @@ val Project.buildToolsVersion
     get() = ep("BUILD_TOOLS_VERSION", "buildTools") { Versions.defaultBuildTools }
 
 val Project.buildVersionName
-    get() = ep("BUILD_VERSION_NAME", "buildVersionName") {
-        runCmd("git describe --tags --long --always", Versions.baseVersionName)
+    get() = epn("BUILD_VERSION_NAME", "buildVersionName")
+        ?: releaseVersionFromChangelog
+        ?: runCmd("git describe --tags --long --always", Versions.baseVersionName)
+
+/**
+ * The single release source of truth: the LAST `# vX.Y.Z` heading in `docs/更新内容.txt`,
+ * normalized to a leading "v" (old headings like `# 更新内容 1.0.1` normalize to `v1.0.1`).
+ * Bumping a release means adding a section there — versionName / versionCode / downloadUrl /
+ * releaseNotes all derive from it. Null when the file is missing or has no parsable heading, in
+ * which case the build falls back to git describe / [Versions.baseVersionName].
+ */
+val Project.releaseVersionFromChangelog: String?
+    get() = runCatching { rootProject.file("docs/更新内容.txt").readText() }
+        .getOrNull()
+        ?.let { text -> changelogVersionRegex.findAll(text).lastOrNull()?.groupValues?.get(1) }
+        ?.let { if (it.startsWith("v")) it else "v$it" }
+
+/**
+ * The body (non-empty lines) of the last section in `docs/更新内容.txt`, joined with "\n" —
+ * the release notes shown by the in-app updater. Null when nothing usable is found.
+ */
+val Project.releaseNotesFromChangelog: String?
+    get() {
+        val text = runCatching { rootProject.file("docs/更新内容.txt").readText() }.getOrNull()
+            ?: return null
+        val last = changelogVersionRegex.findAll(text).lastOrNull() ?: return null
+        return text.substring(last.range.last + 1)
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .joinToString("\n")
+            .takeIf { it.isNotEmpty() }
     }
+
+/** Matches `# 更新内容 v1.0.13`, `# v1.0.13`, `# 1.0.13-01` … and captures the version string. */
+private val changelogVersionRegex =
+    Regex("^#\\s*(?:更新内容\\s*)?[vV]?(\\d+(?:\\.\\d+){1,3}(?:-\\d+)?)\\s*$", RegexOption.MULTILINE)
 
 val Project.buildCommitHash
     get() = ep("BUILD_COMMIT_HASH", "buildCommitHash") {
