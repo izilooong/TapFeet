@@ -55,6 +55,7 @@ object InputFeedbacks {
         Telegraph(R.string.sound_scheme_telegraph, 0.9f),
         Woodfish(R.string.sound_scheme_woodfish, 0.95f),
         Abacus(R.string.sound_scheme_abacus, 0.92f),
+        Mechanical(R.string.sound_scheme_mechanical, 0.95f),
         Silent(R.string.sound_scheme_silent, 0f);
     }
 
@@ -167,7 +168,8 @@ object InputFeedbacks {
         SoundScheme.Piano to R.raw.keypress_piano,
         SoundScheme.Telegraph to R.raw.keypress_telegraph,
         SoundScheme.Woodfish to R.raw.keypress_woodfish,
-        SoundScheme.Abacus to R.raw.keypress_abacus
+        SoundScheme.Abacus to R.raw.keypress_abacus,
+        SoundScheme.Mechanical to R.raw.keypress_mechanical
     )
 
     // Small pitch offsets so Space/Delete/Return don't all sound the same (1.0 = original).

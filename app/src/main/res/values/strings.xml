@@ -407,6 +407,7 @@
     <string name="sound_scheme_telegraph">Telegraph</string>
     <string name="sound_scheme_woodfish">Woodfish</string>
     <string name="sound_scheme_abacus">Abacus</string>
+    <string name="sound_scheme_mechanical">Mechanical</string>
     <string name="sound_scheme_silent">Silent</string>
     <string name="clipboard_return_after_paste">Return after pasting</string>
     <string name="theme_message_follow_system_day_night_mode_enabled">Cannot switch theme manually while \"Follow system day/night mode\" is enabled.</string>

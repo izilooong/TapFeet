@@ -299,6 +299,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 getString(R.string.sound_scheme_telegraph),
                 getString(R.string.sound_scheme_woodfish),
                 getString(R.string.sound_scheme_abacus),
+                getString(R.string.sound_scheme_mechanical),
                 getString(R.string.sound_scheme_silent)
             )
             entryValues = arrayOf(
@@ -310,6 +311,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 SoundScheme.Telegraph.name,
                 SoundScheme.Woodfish.name,
                 SoundScheme.Abacus.name,
+                SoundScheme.Mechanical.name,
                 SoundScheme.Silent.name
             )
             // MUST be the enum's NAME, not the enum instance: ListPreference.onSetInitialValue
