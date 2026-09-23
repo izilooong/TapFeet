@@ -80,6 +80,10 @@
     <string name="hw_flytext_swap_page_summary">左滑上一页、右滑下一页（默认相反）。</string>
     <string name="hw_flytext_corner_delete">右上角左滑删除</string>
     <string name="hw_flytext_corner_delete_summary">从键盘右上角往左滑即退格。仅在右上角起手，避免误删。</string>
+    <string name="hw_flytext_cursor_move">滑动移动光标</string>
+    <string name="hw_flytext_cursor_move_summary">没有候选字时，在键盘上滑动即可移动光标。</string>
+    <string name="hw_flytext_shift_select">滑动扩选文字</string>
+    <string name="hw_flytext_shift_select_summary">按住 Alt 或双击锁定 Alt 后滑动，选中文字而不是移动光标。</string>
     <string name="hw_flytext_sensitivity">飞字灵敏度</string>
     <string name="hw_flytext_guard_ms">防误触时长</string>
     <string name="hw_key_sound">物理按键音</string>

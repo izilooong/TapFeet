@@ -34,6 +34,15 @@ const val SWIPE_UP_SLOP_DP = 40f
 const val SWIPE_PAGE_SLOP_DP = 32f
 
 /**
+ * Cursor-move mode (no candidates on screen): a four-way swipe drives the caret. Deliberately the
+ * LONGEST threshold of the three — well above [SWIPE_UP_SLOP_DP] and [SWIPE_PAGE_SLOP_DP] — because
+ * with no candidate strip the swipe has no "safe" target and a stray brush across the keyboard
+ * surface would otherwise shove the caret. The longer travel forces a deliberate flick, which is the
+ * mode's only mis-touch guard (it has no corner reservation and no select-target to fall back on).
+ */
+const val SWIPE_CURSOR_SLOP_DP = 56f
+
+/**
  * A swipe only commits to a direction when that axis clearly outweighs the other (≈34° off-axis).
  * Inside the deadzone between [SWIPE_AXIS_RATIO] and its reciprocal the gesture is "ambiguous" and
  * ignored — this is what stops a sloppy horizontal swipe from being hijacked into an up-select (and

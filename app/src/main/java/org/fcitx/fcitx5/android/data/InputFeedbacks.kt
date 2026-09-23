@@ -139,15 +139,7 @@ object InputFeedbacks {
     }
 
     enum class SoundEffect {
-        Standard, SpaceBar, Delete, Return,
-
-        /**
-         * A keyboard-surface paging swipe (left/right): navigation, not a pick. Sits slightly
-         * brighter than [Standard] so a page turn and a candidate pick stay distinguishable by ear —
-         * during a surface swipe the finger is on the keyboard rather than the screen, so the sound
-         * is the confirmation the user actually gets.
-         */
-        Page
+        Standard, SpaceBar, Delete, Return
     }
 
     private val audioManager = appContext.audioManager
@@ -173,14 +165,11 @@ object InputFeedbacks {
     )
 
     // Small pitch offsets so Space/Delete/Return don't all sound the same (1.0 = original).
-    // [SoundEffect.Page] sits a touch above [SoundEffect.Standard] (1.08 vs 1.0) so a paging swipe
-    // and a candidate pick are still told apart by ear when both fire from the same scheme.
     private val effectRateOffset = mapOf(
         SoundEffect.Standard to 1.0f,
         SoundEffect.SpaceBar to 0.92f,
         SoundEffect.Delete to 1.12f,
-        SoundEffect.Return to 0.96f,
-        SoundEffect.Page to 1.08f
+        SoundEffect.Return to 0.96f
     )
 
     // Only ever touched from the IME main thread (onCreate + key/touch handling).
@@ -323,8 +312,6 @@ object InputFeedbacks {
             SoundEffect.SpaceBar -> AudioManager.FX_KEYPRESS_SPACEBAR
             SoundEffect.Delete -> AudioManager.FX_KEYPRESS_DELETE
             SoundEffect.Return -> AudioManager.FX_KEYPRESS_RETURN
-            // The platform has no paging click; the plain key click is the closest neutral stand-in.
-            SoundEffect.Page -> AudioManager.FX_KEYPRESS_STANDARD
         }
         audioManager.playSoundEffect(fx, if (volume <= 0) -1f else (volume * scheme.volumeScale) / 100f)
     }

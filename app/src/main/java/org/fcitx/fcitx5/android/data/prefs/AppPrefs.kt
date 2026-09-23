@@ -640,6 +640,18 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         // keep it from firing on a graze. Only meaningful while fly-text is on.
         val keyboardFlyTextCornerDelete = bool("hw_keyboard_flytext_corner_delete", true)
 
+        // Keyboard fly-text cursor move: with no candidates on screen (and no open panel), a
+        // four-way swipe drives the text caret — left/right one character, up/down one line. The
+        // cursor commit slop is the longest of the three gestures, so a graze can't shove the caret.
+        // Only meaningful while fly-text is on.
+        val keyboardFlyTextCursorMove = bool("hw_keyboard_flytext_cursor_move", true)
+
+        // Keyboard fly-text alt select: with Alt active (physically held, or double-tap latched),
+        // swiping in cursor mode extends the text selection instead of moving the caret. Sub-toggle
+        // of cursor move — no effect while that is off. Deliberately scoped to the swipe path only;
+        // the Fn cursor/selection chords keep their own bindings.
+        val keyboardFlyTextAltSelect = bool("hw_keyboard_flytext_alt_select", true)
+
         // Keyboard fly-text sensitivity (percent). Scales every swipe travel threshold: lower =
         // the finger must travel farther before a gesture fires (fewer accidental triggers while
         // typing fast), higher = more responsive. Applied via [flyTextSensitivityScale] so the

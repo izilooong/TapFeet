@@ -15,7 +15,7 @@ import timber.log.Timber
  * the keyboard surface's motion samples as the IME receives them on its own window
  * (`FcitxInputMethodService.installDecorMotionListener`).
  *
- * Three gestures:
+ * Three (or four) gestures:
  *  - **Up-swipe** (vertical-dominant, upward): pick the candidate whose on-screen column the finger
  *    is over — resolved by [candidateIndexAtX] against live [candidateRectsProvider] rects.
  *  - **Left / right swipe** (horizontal-dominant): page candidates. Left = next page, right = previous.
@@ -24,6 +24,10 @@ import timber.log.Timber
  *    is reserved — a contact that begins there never pages or picks a candidate, so a graze near the
  *    physical backspace key cannot mangle the candidate strip. This is the gesture's primary mis-touch
  *    filter; the typing guard and the commit slop below are additional belt-and-braces.
+ *  - **Cursor-move** (only when there are no candidates, [cursorModeProvider]): the four-way swipe
+ *    drives the text caret — [onCursor] with the dominant [SwipeDirection]. Uses the longest commit
+ *    slop ([SWIPE_CURSOR_SLOP_DP]) so a graze can't shove the caret; the corner reservation still
+ *    applies, so a corner-left swipe deletes rather than moving left.
  *
  * Coordinates: candidate rects are absolute screen coordinates ([android.view.View.getLocationOnScreen]),
  * so the incoming [MotionEvent] must be tested against [MotionEvent.getRawX] / [MotionEvent.getRawY]
@@ -66,7 +70,15 @@ class KeyboardFlyTextSelector(
      */
     private val typingGuard: () -> Boolean = { false },
     /** Fly-text sensitivity in percent (50–150, from AppPrefs); 100 = untouched thresholds. */
-    private val sensitivityProvider: () -> Int = { 100 }
+    private val sensitivityProvider: () -> Int = { 100 },
+    /**
+     * True while the selector should drive the caret instead of paging/selecting: there are no
+     * candidates on screen (and no open panel), so the four-way swipe moves the text cursor. The
+     * caller arms this on the same master pref as the other gestures.
+     */
+    private val cursorModeProvider: () -> Boolean = { false },
+    /** Fired when a four-way swipe clears the longer cursor commit slop ([SWIPE_CURSOR_SLOP_DP]). */
+    private val onCursor: (SwipeDirection) -> Unit = {}
 ) {
     private var downX = 0f
     private var downY = 0f
@@ -173,6 +185,23 @@ class KeyboardFlyTextSelector(
                     if (swipeDirection(dx, dy, d) == SwipeDirection.LEFT) {
                         Timber.i("FlyText: corner-delete (rawX=${event.rawX})")
                         onDelete()
+                        classified = true
+                    }
+                    return
+                }
+                // Cursor-move mode: no candidates on screen → the four-way swipe drives the caret
+                // (UP/DOWN/LEFT/RIGHT). Uses the LONGEST commit slop ([SWIPE_CURSOR_SLOP_DP]) so a
+                // graze across the bare keyboard surface can't shove the caret — the only mis-touch
+                // guard this mode has, since it has no corner reservation and no select target.
+                if (cursorModeProvider()) {
+                    val cursorSlopPx = SWIPE_CURSOR_SLOP_DP * d
+                    val travel = when (dir) {
+                        SwipeDirection.UP, SwipeDirection.DOWN -> kotlin.math.abs(dy)
+                        SwipeDirection.LEFT, SwipeDirection.RIGHT -> kotlin.math.abs(dx)
+                    }
+                    if (travel >= cursorSlopPx) {
+                        Timber.i("FlyText: cursor dir=$dir (rawX=${event.rawX} rawY=${event.rawY})")
+                        onCursor(dir)
                         classified = true
                     }
                     return

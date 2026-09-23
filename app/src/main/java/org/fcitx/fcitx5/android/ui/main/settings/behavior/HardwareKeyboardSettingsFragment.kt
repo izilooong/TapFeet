@@ -34,6 +34,8 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
     private lateinit var flyTextSwitch: SwitchPreference
     private lateinit var flyTextSwapSwitch: SwitchPreference
     private lateinit var flyTextCornerDeleteSwitch: SwitchPreference
+    private lateinit var flyTextCursorMoveSwitch: SwitchPreference
+    private lateinit var flyTextShiftSelectSwitch: SwitchPreference
 
     /**
      * References to the candidate2-5 [KeyCapturePreference] views. Their visibility is driven by
@@ -153,6 +155,30 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isEnabled = hw.keyboardFlyText.getValue()
         }
         flyTextScreen.addPreference(flyTextCornerDeleteSwitch)
+        // Cursor-move: with no candidates shown, a four-way swipe moves the text caret. Sub-toggle
+        // of fly-text; on by default (moving the caret is reversible).
+        flyTextCursorMoveSwitch = SwitchPreference(context).apply {
+            key = hw.keyboardFlyTextCursorMove.key
+            title = getString(R.string.hw_flytext_cursor_move)
+            summary = getString(R.string.hw_flytext_cursor_move_summary)
+            setDefaultValue(hw.keyboardFlyTextCursorMove.getValue())
+            isChecked = hw.keyboardFlyTextCursorMove.getValue()
+            isIconSpaceReserved = false
+            isEnabled = hw.keyboardFlyText.getValue()
+        }
+        flyTextScreen.addPreference(flyTextCursorMoveSwitch)
+        // Alt-select: with Alt held or double-tap latched, swiping in cursor mode extends the
+        // selection instead of moving the caret. Sub-toggle of cursor move.
+        flyTextShiftSelectSwitch = SwitchPreference(context).apply {
+            key = hw.keyboardFlyTextAltSelect.key
+            title = getString(R.string.hw_flytext_shift_select)
+            summary = getString(R.string.hw_flytext_shift_select_summary)
+            setDefaultValue(hw.keyboardFlyTextAltSelect.getValue())
+            isChecked = hw.keyboardFlyTextAltSelect.getValue()
+            isIconSpaceReserved = false
+            isEnabled = hw.keyboardFlyText.getValue() && hw.keyboardFlyTextCursorMove.getValue()
+        }
+        flyTextScreen.addPreference(flyTextShiftSelectSwitch)
         flyTextScreen.addPreference(flyTextSensitivityPref)
 
         // Typing-guard window: how long after a hardware key event a surface contact is treated
@@ -176,8 +202,16 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             val on = newValue as Boolean
             flyTextSwapSwitch.isEnabled = on
             flyTextCornerDeleteSwitch.isEnabled = on
+            flyTextCursorMoveSwitch.isEnabled = on
+            flyTextShiftSelectSwitch.isEnabled = on && flyTextCursorMoveSwitch.isChecked
             flyTextSensitivityPref.isEnabled = on
             flyTextGuardPref.isEnabled = on
+            true
+        }
+        // Shift-select is a sub-toggle of cursor-move: switching cursor-move off must grey it out.
+        flyTextCursorMoveSwitch.setOnPreferenceChangeListener { _, newValue ->
+            flyTextShiftSelectSwitch.isEnabled =
+                hw.keyboardFlyText.getValue() && newValue as Boolean
             true
         }
 

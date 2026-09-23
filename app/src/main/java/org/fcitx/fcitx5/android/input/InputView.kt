@@ -62,6 +62,7 @@ import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
 import org.fcitx.fcitx5.android.input.picker.symbolPicker
+import org.fcitx.fcitx5.android.input.swipe.SwipeDirection
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.preedit.PreeditComponent
 import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
@@ -652,6 +653,26 @@ class InputView(
 
     /** True while any symbol/emoji/emoticon panel is the active input window (for fly-text arming). */
     internal fun isPickerWindowOpen(): Boolean = currentPickerWindow() != null
+
+    /**
+     * 飞字光标模式专用：Shift 按住时滑动 → 扩选文字而不是挪光标。方向语义与选字簇一致：
+     * 左/右手工扩一格（[extendSelection]），上/下走 [extendSelectionVertical]（视觉行优先，
+     * 微信这类自定义编辑器退回手工扩行）。连续滑动沿用同一个锚点（[selAnchor]），松开 Shift
+     * 或选区被编辑器收起后锚点自动重置。
+     *
+     * 只服务键盘面滑动的光标模式 —— 用户拍板的边界：不参与 Fn+S/F/E/D 那套光标/选字和弦，
+     * 那些快捷键的行为保持原样。
+     */
+    internal fun flyExtendSelection(dir: SwipeDirection): Boolean {
+        val ic = service.currentInputConnection ?: return false
+        when (dir) {
+            SwipeDirection.LEFT -> extendSelection(ic, -1)
+            SwipeDirection.RIGHT -> extendSelection(ic, +1)
+            SwipeDirection.UP -> extendSelectionVertical(ic, true)
+            SwipeDirection.DOWN -> extendSelectionVertical(ic, false)
+        }
+        return true
+    }
 
     // 单条物理键 → 可见位置 的映射规则（键用 fcitx5 portableString 标识，见下方 preciseShortcuts()）。
     private data class ShortcutRule(val parsedKey: ParsedKey?, val position: Int)

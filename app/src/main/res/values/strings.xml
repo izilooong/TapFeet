@@ -80,6 +80,10 @@
     <string name="hw_flytext_swap_page_summary">Swipe left = previous, right = next (default is reversed).</string>
     <string name="hw_flytext_corner_delete">Corner swipe deletes</string>
     <string name="hw_flytext_corner_delete_summary">Swipe left from the keyboard\'s top-right corner to backspace. Gesture starts there only, to avoid mis-deletes.</string>
+    <string name="hw_flytext_cursor_move">Swipe moves cursor</string>
+    <string name="hw_flytext_cursor_move_summary">With no candidates shown, swipe on the keyboard to move the cursor.</string>
+    <string name="hw_flytext_shift_select">Swipe selects text</string>
+    <string name="hw_flytext_shift_select_summary">Hold Alt (or double-tap to latch it) and swipe to select text instead of moving the cursor.</string>
     <string name="hw_flytext_sensitivity">Fly-text sensitivity</string>
     <string name="hw_flytext_guard_ms">Mis-touch guard duration</string>
     <string name="hw_key_sound">Physical key sound</string>

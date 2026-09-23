@@ -26,6 +26,7 @@ import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
 import org.fcitx.fcitx5.android.input.swipe.KeyboardFlyTextSelector
+import org.fcitx.fcitx5.android.input.swipe.SwipeDirection
 import org.fcitx.fcitx5.android.input.swipe.cornerDeleteRegion
 import org.fcitx.fcitx5.android.utils.DeviceInfo
 import android.view.View
@@ -512,6 +513,42 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         currentInputConnection.setSelection(target, target)
     }
 
+    /**
+     * Move the text cursor by one step in the swiped direction (fly-text cursor-move mode, active
+     * only when there are no candidates). Left/right reuse [handleArrowKey] (which does a precise
+     * `setSelection` for the collapsing caret); up/down have no layout-free equivalent, so they fall
+     * back to a DPAD key event that the editor turns into a line move. A click confirms the flick
+     * landed — the finger is on the keyboard surface, not the screen.
+     *
+     * Alt active (held, or double-tap latched) → extend the selection instead of moving the caret
+     * ([InputView.flyExtendSelection], which reuses the selection-cluster machinery). Deliberately
+     * scoped to THIS swipe path only: the Fn+S/F/E/D cursor/selection chords keep their own
+     * bindings untouched.
+     */
+    private fun flyMoveCursor(dir: SwipeDirection) {
+        playHardwareSound(InputFeedbacks.SoundEffect.Standard)
+        // Alt active (held, or double-tap latched) → extend the selection instead of moving the
+        // caret. Same "Alt is meant to be active" pair [withInjectedModifiers] trusts
+        // ([physicalAltDown] / [altLatched]); [systemAltSticky] is ROM residue and deliberately
+        // excluded. The latch is left untouched — latch, swipe-select as many times as needed,
+        // then unlock with Alt/Space/Enter as usual.
+        if ((physicalAltDown || altLatched) &&
+            AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextAltSelect.getValue() &&
+            inputView?.flyExtendSelection(dir) == true
+        ) return
+        val code = when (dir) {
+            SwipeDirection.UP -> KeyEvent.KEYCODE_DPAD_UP
+            SwipeDirection.DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
+            SwipeDirection.LEFT -> KeyEvent.KEYCODE_DPAD_LEFT
+            SwipeDirection.RIGHT -> KeyEvent.KEYCODE_DPAD_RIGHT
+        }
+        if (dir == SwipeDirection.LEFT || dir == SwipeDirection.RIGHT) {
+            handleArrowKey(code)
+        } else {
+            sendDownUpKeyEvents(code)
+        }
+    }
+
     fun commitText(text: String, cursor: Int = -1) {
         val ic = currentInputConnection ?: return
         inputView?.onCommitText(text)
@@ -801,7 +838,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 // to see its own UP/CANCEL — a latched `gestureActive` would misread the next gesture.
                 if (flyTextSelectorInitialized &&
                     (flyTextOn || flyTextCornerDeleteOn || flyTextSelector.gestureActive
-                            || flyTextPickerPagingOn)
+                            || flyTextPickerPagingOn || flyTextCursorOn)
                 ) {
                     flyTextSelector.onTouchEvent(event)
                 }
@@ -890,6 +927,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      */
     private val flyTextPickerPagingOn: Boolean
         get() = flyTextPrefOn && inputView?.isPickerWindowOpen() == true
+    /**
+     * Cursor-move mode armed: the fly-text master pref is on AND there are no candidates on screen
+     * AND no symbol/emoji/emoticon panel is open. The four-way keyboard-surface swipe then drives
+     * the text caret (so a flick still does something useful with nothing to page/select). Suppressed
+     * whenever a panel is open (that case pages the panel instead) or candidates are showing (that
+     * case pages/selects).
+     */
+    private val flyTextCursorOn: Boolean
+        get() = flyTextPrefOn &&
+                AppPrefs.getInstance().hardwareKeyboard
+                    .keyboardFlyTextCursorMove.getValue() &&
+                !(lastPagedCandidateData.candidates.isNotEmpty() ||
+                        lastCandidateListData.candidates.isNotEmpty()) &&
+                inputView?.isPickerWindowOpen() != true
     /** Tracks the last logged [flyTextOn] value; arm/disarm transitions are logged once each. */
     private var lastFlyTextLogged = false
 
@@ -1066,7 +1117,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // first/last page and therefore moves nothing: the swipe itself was understood,
                     // and silence there reads as "the gesture was ignored". Both directions share
                     // one sound — the page visibly moves, so the direction needs no audio cue.
-                    playHardwareSound(InputFeedbacks.SoundEffect.Page)
+                    // Same key click as a physical key press (SoundEffect.Standard), not a distinct
+                    // paging tone — the swipe should feel like a hardware-keyboard action.
+                    playHardwareSound(InputFeedbacks.SoundEffect.Standard)
                     // Honours the user's "swap page swipe direction" toggle, then pages the
                     // candidate bar locally for bulk lists (engine paging has nothing to move
                     // there); only falls back to engine paging for the floating window.
@@ -1114,7 +1167,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 },
                 sensitivityProvider = {
                     AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextSensitivity.getValue()
-                }
+                },
+                cursorModeProvider = { flyTextCursorOn },
+                onCursor = { flyMoveCursor(it) }
             )
             flyTextSelectorInitialized = true
         }
@@ -1268,7 +1323,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     /**
      * The single funnel for every sound the HARDWARE keyboard makes: physical key presses
      * ([playHardwareKeySound]) and keyboard-surface gestures (up-swipe pick → [SoundEffect.Standard],
-     * left/right paging swipes → [SoundEffect.Page]).
+     * left/right paging swipes → [SoundEffect.Standard]).
      *
      * They share one pipeline — switch, volume and sound scheme — because to the user the surface
      * and the physical keys are the same "hardware keyboard". The gate itself lives in
@@ -1935,7 +1990,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // from other devices must keep falling through to super, per the "==" source rule.
         if (flyTextSelectorInitialized &&
             (flyTextOn || flyTextCornerDeleteOn || flyTextSelector.gestureActive
-                    || flyTextPickerPagingOn) &&
+                    || flyTextPickerPagingOn || flyTextCursorOn) &&
             event.source == InputDevice.SOURCE_TOUCHPAD
         ) {
             flyTextSelector.onTouchEvent(event)
