@@ -124,6 +124,24 @@ value class KeyStates(val states: UInt) {
             return KeyStates(states)
         }
 
+        /**
+         * Raw modifier state of [event]: Alt/Ctrl/Shift/Meta exactly as pressed, WITHOUT the
+         * number/symbol-key stripping that [fromKeyEvent] applies. Used when capturing and matching
+         * combo key bindings (e.g. `Alt+grave`) so the held modifier is preserved and can be matched
+         * exactly later.
+         */
+        fun rawModifierStates(event: KeyEvent): KeyStates {
+            var s = KeyState.NoState.state
+            if (event.isAltPressed) s = s or KeyState.Alt.state
+            if (event.isCtrlPressed) s = s or KeyState.Ctrl.state
+            if (event.isShiftPressed) s = s or KeyState.Shift.state
+            if (event.isMetaPressed) s = s or KeyState.Meta.state
+            return KeyStates(s and KeyState.SimpleMask.state)
+        }
+
+        /** Whether [sym] is a pure modifier keysym (X11 0xffe1–0xffee: Shift_L/R, Alt_L/R, …). */
+        fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
+
         fun mergeStates(arr: Array<out KeyState>): UInt =
             arr.fold(KeyState.NoState.state) { acc, it -> acc or it.state }
     }

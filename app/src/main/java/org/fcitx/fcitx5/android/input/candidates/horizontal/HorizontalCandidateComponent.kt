@@ -30,6 +30,7 @@ import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.input.effects.EffectMode
+import org.fcitx.fcitx5.android.input.effects.EffectTrigger
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.BooleanKey.ExpandedCandidatesEmpty
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.TransitionEvent.ExpandedCandidatesUpdated
@@ -740,30 +741,30 @@ class HorizontalCandidateComponent :
         pendingFlyText = null
 
         val effects = AppPrefs.getInstance().effects
-        if (!effects.enabled.getValue()) {
-            Timber.d("effects: fly SKIPPED master-switch off (text=%s)", text)
-            return
-        }
-        // Same gate as CommitEffectsOverlay.onCommit: "disable animation" must stop every
-        // effect alike. Fly/Bubble skipping this check while Particles honoured it was why
-        // particles alone vanished whenever the toggle was on.
-        if (AppPrefs.getInstance().advanced.disableAnimation.getValue()) {
-            Timber.d("effects: fly SKIPPED disableAnimation (text=%s)", text)
-            return
-        }
-        if (picked == null) {
-            Timber.d("effects: fly SKIPPED nothing armed (text=%s)", text)
-            return
-        }
-        if (picked != text) {
-            Timber.d("effects: fly SKIPPED armed='%s' != committed='%s'", picked, text)
+        val disableAnimation = AppPrefs.getInstance().advanced.disableAnimation.getValue()
+        // Single source of the effect decision, shared with CommitEffectsOverlay.onCommit.
+        // Returns null when the master switch is off, animation is disabled, or the armed
+        // candidate text doesn't match this commit; Particles is never returned here because
+        // its burst is driven by the master commit path, not the bar-pick handshake.
+        val armMatched = picked != null && picked == text
+        val effect = EffectTrigger.decide(
+            effects.mode.getValue(),
+            effects.enabled.getValue(),
+            disableAnimation,
+            armMatched
+        )
+        if (effect == null) {
+            if (!effects.enabled.getValue()) Timber.d("effects: fly SKIPPED master-switch off (text=%s)", text)
+            else if (disableAnimation) Timber.d("effects: fly SKIPPED disableAnimation (text=%s)", text)
+            else if (picked == null) Timber.d("effects: fly SKIPPED nothing armed (text=%s)", text)
+            else if (picked != text) Timber.d("effects: fly SKIPPED armed='%s' != committed='%s'", picked, text)
             return
         }
         Timber.d(
             "effects: fly mode=%s text=%s at=(%.0f,%.0f)",
-            effects.mode.getValue(), text, pendingFlyX, pendingFlyY
+            effect, text, pendingFlyX, pendingFlyY
         )
-        when (effects.mode.getValue()) {
+        when (effect) {
             EffectMode.Fly ->
                 service.effectsOverlay?.flyTextAtScreen(pendingFlyX, pendingFlyY, text)
             EffectMode.Bubble ->

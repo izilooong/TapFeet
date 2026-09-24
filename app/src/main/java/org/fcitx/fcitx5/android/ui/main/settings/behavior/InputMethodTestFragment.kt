@@ -575,11 +575,20 @@ class InputMethodTestFragment : Fragment() {
         }
     }
 
+    // ACTION_MULTIPLE is deprecated but some ROMs still emit it; the probe must report it honestly.
+    @Suppress("DEPRECATION")
+    private fun actionToString(action: Int): String = when (action) {
+        KeyEvent.ACTION_DOWN -> "ACTION_DOWN"
+        KeyEvent.ACTION_UP -> "ACTION_UP"
+        KeyEvent.ACTION_MULTIPLE -> "ACTION_MULTIPLE"
+        else -> "UNKNOWN($action)"
+    }
+
     private fun handleKeyEvent(keyCode: Int, event: KeyEvent) {
         val keyCodeName = KeyEvent.keyCodeToString(keyCode)
         // actionToString covers every action (incl. the deprecated ACTION_MULTIPLE) with the
         // canonical names, so the probe page can't go stale as new actions appear.
-        val actionName = KeyEvent.actionToString(event.action)
+        val actionName = actionToString(event.action)
 
         // Build modifiers string
         val modifiers = buildModifiersString(event)

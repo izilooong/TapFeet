@@ -177,7 +177,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         inputDeviceMgr.setInputView(newInputView)
         setInputView(newInputView)
         inputView = newInputView
-        newInputView.onAltLatchChanged(altLatched)
+        newInputView.onAltLatchChanged(hardwareKeyDispatch.altLatched)
         return newInputView
     }
 
@@ -532,7 +532,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // ([physicalAltDown] / [altLatched]); [systemAltSticky] is ROM residue and deliberately
         // excluded. The latch is left untouched — latch, swipe-select as many times as needed,
         // then unlock with Alt/Space/Enter as usual.
-        if ((physicalAltDown || altLatched) &&
+        if ((physicalAltDown || hardwareKeyDispatch.altLatched) &&
             AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextAltSelect.getValue() &&
             inputView?.flyExtendSelection(dir) == true
         ) return
@@ -1191,9 +1191,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onEvaluateFullscreenMode() = false
 
-    private var altLatched = false
-    private var lastAltTapEventTime = 0L
-    private val altDoubleTapTimeoutMs = 300L
+    // 物理键盘按键「自带状态」子策略的持有者：Alt-latch 双击锁 + 长按键帽符号。
+    private val hardwareKeyDispatch = HardwareKeyDispatch()
 
     /**
      * 框架/编辑器层 Alt sticky 状态（独立于应用层 [altLatched]）。
@@ -1205,14 +1204,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * 但 [physicalAltDown] 为 false，则说明系统处于 sticky 状态。
      */
     private var systemAltSticky = false
-
-    /**
-     * Alt 按下时的事件时间，用于判断一次 Alt 按压是否为长按（>= [altLongPressThresholdMs]），
-     * 以便在抬起时清掉框架层 sticky meta。[systemAltSticky] 不再由框架锁置位（见
-     * [withInjectedModifiers]），这里仅服务于长按 Alt 的 meta 清理。
-     */
-    private var altDownStartTime = 0L
-    private val altLongPressThresholdMs = 500L
 
     /**
      * Physical modifier state tracked from the raw key-down/key-up stream.
@@ -1247,22 +1238,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private fun longPressSymbolThresholdMs(): Long =
         AppPrefs.getInstance().hardwareKeyboard.longPressSymbolThreshold.getValue().toLong()
 
-    // Per-key tracking of an in-flight long-press-to-symbol gesture. A Map keyed by keyCode (not a
-    // single slot) is required because fast typing can have several letter keys down inside the
-    // 400ms window at once; one shared slot would let the second key overwrite the first, dropping
-    // the first key's character (its key-down was consumed and never replayed on key-up).
-    // Tracks an in-flight long-press-to-symbol gesture for a single physical key.
-    // `textLenBefore` snapshots the length of the text before the cursor (INCLUDING any preedit) right
-    // before this key's down is forwarded, so the long-press handler can measure how many characters
-    // the keystroke added — needed to retract them (whether committed or still in preedit) when the
-    // long-press fires.
-    private data class PendingSymbolPress(
-        var runnable: Runnable,
-        var fired: Boolean,
-        var textLenBefore: Int = 0
-    )
-    private val symbolLongPressPending = mutableMapOf<Int, PendingSymbolPress>()
-
     private fun longPressSymbolEnabled(): Boolean =
         AppPrefs.getInstance().hardwareKeyboard.longPressSymbolEnabled.getValue()
 
@@ -1278,11 +1253,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         val ic = currentInputConnection ?: return 0
         val before = ic.getTextBeforeCursor(1024, 0) ?: return 0
         return before.toString().codePointCount(0, before.length)
-    }
-
-    private fun cancelSymbolLongPress() {
-        symbolLongPressPending.values.forEach { mainHandler.removeCallbacks(it.runnable) }
-        symbolLongPressPending.clear()
     }
 
     // Table-engine input methods (wubi / ziranma / cangjie / erbi / …) commit the pending preedit
@@ -1338,18 +1308,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         )
     }
 
-    // True when THIS key gesture was consumed by latching (pure latch key, double-tap latch, or
-    // unlock). Used so onKeyUp only swallows the key-up for gestures latching actually handled,
-    // letting a colliding selection key's own key-up handling run.
-    private var altLatchConsumedThisGesture = false
-
-    fun isAltLatched(): Boolean = altLatched
+    fun isAltLatched(): Boolean = hardwareKeyDispatch.altLatched
 
     /** 框架/编辑器层是否处于 Alt sticky 状态（独立于应用层 latch）。 */
     fun isSystemAltSticky(): Boolean = systemAltSticky
 
     /** 应用层 latch 或框架层 sticky 任意一个为 true 都算 Alt 处于"锁定"展示态。 */
-    fun isAltLockedOrSticky(): Boolean = altLatched || systemAltSticky
+    fun isAltLockedOrSticky(): Boolean = hardwareKeyDispatch.altLatched || systemAltSticky
 
     /**
      * 手动覆盖 sticky 状态显示。系统层 sticky 无法可靠自动检测（不同 ROM 行为差异大），
@@ -1381,7 +1346,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         AppPrefs.getInstance().hardwareKeyboard.altDeleteLineEnabled.getValue()
 
     fun toggleAltLatch() {
-        setAltLatched(!altLatched)
+        setAltLatched(!hardwareKeyDispatch.altLatched)
     }
 
     /**
@@ -1396,8 +1361,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun setAltLatched(locked: Boolean) {
-        if (altLatched == locked) return
-        altLatched = locked
+        if (hardwareKeyDispatch.altLatched == locked) return
+        hardwareKeyDispatch.altLatched = locked
         inputView?.onAltLatchChanged(locked)
     }
 
@@ -1428,7 +1393,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private fun clearAltLatchAndMetaState() {
         setAltLatched(false)
         clearSystemAltSticky()
-        lastAltTapEventTime = 0L
+        hardwareKeyDispatch.lastAltTapEventTime = 0L
     }
 
     private fun isAnyAltKeyCode(keyCode: Int): Boolean {
@@ -1494,7 +1459,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             meta = meta and (KeyEvent.META_ALT_ON or
                     KeyEvent.META_ALT_LEFT_ON or
                     KeyEvent.META_ALT_RIGHT_ON).inv()
-        } else if (physicalAltDown || altLatched) {
+        } else if (physicalAltDown || hardwareKeyDispatch.altLatched) {
             // Alt is genuinely intended (physically held, or app-level latched via double-tap
             // Alt): (re)inject it so combos like Alt+grave carry Alt even when the OS failed to.
             meta = meta or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
@@ -1554,9 +1519,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * 让字母先正常上屏）。因此任何消费掉 DOWN 事件的快捷键，如果不主动取消它，用户按住这个键
      * 超过阈值时定时器仍会去替换正文、把键帽符号打出来 —— 表现为「绑了快捷键的字母键，长按会冒符号」。
      */
-    private fun cancelSymbolLongPress(keyCode: Int) {
-        symbolLongPressPending.remove(keyCode)?.let { mainHandler.removeCallbacks(it.runnable) }
-    }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // Typing guard clock: any hardware key (consumed or not) marks the surface stream as
@@ -1623,14 +1585,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // movement/action and must keep receiving every repeat — the long-press feature isn't active
         // there anyway, so swallowing repeats would just make held keys dead.
         if (event.repeatCount > 0 && !inputDeviceMgr.isNullInputType() &&
-            symbolLongPressPending.containsKey(keyCode)
+            hardwareKeyDispatch.isLongPressPending(keyCode)
         ) {
             return true
-        }
-
-        // Track Alt press start time (used by the long-press Alt release logic in onKeyUp).
-        if (isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
-            altDownStartTime = event.eventTime
         }
 
         // System-level Alt sticky detection (deprecated):
@@ -1641,61 +1598,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // lock. The Alt-lock button is now driven solely by the app-level [altLatched] (double-tap
         // Alt), which is genuine user intent.
 
-        // When Alt latch is disabled, clear any latched state and let Alt behave as a normal modifier.
-        if (!altLatchEnabled() && altLatched) {
-            setAltLatched(false)
-        }
-
-        if (altLatchEnabled() && isAltLatchKey(event)) {
-            if (event.repeatCount == 0 && !wasAltDown) {
-                val now = event.eventTime
-                if (altLatched) {
-                    // Already latched: pressing the latch key again unlocks it (pure unlock, consume).
-                    setAltLatched(false)
-                    lastAltTapEventTime = 0L
-                    // 同步清掉框架层 sticky meta，防止长按后系统残留的 locked 状态卡住
-                    clearSystemAltSticky()
-                    Timber.d("Alt latch disabled")
-                    altLatchConsumedThisGesture = true
-                    return true
-                } else if (lastAltTapEventTime > 0L && now - lastAltTapEventTime <= altDoubleTapTimeoutMs) {
-                    // Second tap within the window: latch on. Consume so it does not also select.
-                    setAltLatched(true)
-                    lastAltTapEventTime = 0L
-                    Timber.d("Alt latch enabled")
-                    altLatchConsumedThisGesture = true
-                    return true
-                } else {
-                    // First tap: start the double-tap timer.
-                    lastAltTapEventTime = now
-                    // If this physical key is ALSO a configured selection / symbol / paging shortcut,
-                    // let the single press fall through to selection instead of being swallowed by
-                    // latching (otherwise the selection key stops working). A pure latch key (e.g. the
-                    // default Alt_L) is consumed here so a lone Alt press never leaks the Alt modifier
-                    // into fcitx5.
-                    if (inputView?.isHardwareShortcutKey(event) != true) {
-                        altLatchConsumedThisGesture = true
-                        // 关键：消费单次 Alt 键时主动清掉框架可能残留的 sticky meta。
-                        // 长按 Alt 后系统可能进入 locked，单按 Alt 命中 first-tap 分支消费
-                        // 掉后框架 locked 状态仍卡住，必须显式清掉。
-                        clearSystemAltSticky()
-                        return true
-                    }
-                    // Otherwise fall through; downstream selection logic handles this press.
-                }
-            }
-            // Long-press repeats (repeatCount > 0) and colliding selection keys: let them through.
-        }
-
-        if (altLatchEnabled() && event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
-            setAltLatched(false)
-            lastAltTapEventTime = 0L
-            // Alt/Space/Enter 解锁时也清掉框架层 sticky meta
-            clearSystemAltSticky()
-            Timber.d("Alt latch disabled by keyCode=$keyCode")
-            // Alt key itself acts as a pure unlock action.
-            if (isAnyAltKeyCode(keyCode)) return true
-        }
+        // Alt-latch 双击锁状态机 → HardwareKeyDispatch（持有 altLatched / lastAltTapEventTime /
+        // altLatchConsumedThisGesture / altDownStartTime 等内部状态）。命中消费返回 true，否则继续下行。
+        hardwareKeyDispatch.dispatchAltLatchDown(keyCode, event, wasAltDown)?.let { return it }
 
         // ===== 符号窗口打开时：物理键盘直接选符号（BlackBerry SYM 面板） =====
         // 必须在下方长按键帽符号检测之前拦截：符号窗口打开时按字母键应选符号，
@@ -1706,101 +1611,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             return true
         }
 
-        // Long-press a physical key to input its keycap symbol (BlackBerry-style).
-        // Skip only when Alt is *physically held* (physicalAltDown) or *app-level latched*
-        // (altLatched, double-tap Alt) so Alt+number keeps selecting candidates and intentional
-        // Alt mode is preserved. We deliberately do NOT check systemAltSticky here: that flag is
-        // the framework's own Alt-lock artifact (e.g. Q25 locks Alt on a long-press of the Alt
-        // key itself), not a deliberate Alt+key combo — the user still expects keycap symbols when
-        // they long-press a letter after such a lock, so it must not block symbol input.
-        // Keys bound to other jobs (0, Shift, SYM/Alt_R, Space) are absent from the map and fall
-        // through naturally.
-        // Skip in non-text apps (TYPE_NULL: games / emulators) — they hold keys for movement or
-        // action and must keep receiving every event; hijacking their physical keys would make
-        // held buttons dead (e.g. GBA emulator). The feature is meaningless there anyway.
-        if (event.repeatCount == 0 &&
-            longPressSymbolEnabled() &&
-            !inputDeviceMgr.isNullInputType() &&
-            !physicalAltDown && !altLatched &&
-            HardwareKeySymbolMap.contains(keyCode)
-        ) {
-            // 按下即上屏（下方 fall-through forwardKeyEvent 处理），消除"抬起才上屏"的慢半拍；
-            // 这里只登记 pending 并启动长按定时器，到阈值仍按住才把刚上屏的字母替换为键帽符号。
-            val runnable = Runnable {
-                symbolLongPressPending[keyCode]?.let { pending ->
-                    if (!pending.fired) {
-                        pending.fired = true
-                        HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { sym ->
-                            mainHandler.post {
-                                // ① 英文/纯文本直上屏(composing 空):字母已 commit 进正文,
-                                //    按按下前后的正文长度差删除。
-                                val delta = if (composing.isEmpty()) {
-                                    val text = currentInputConnection?.getTextBeforeCursor(1024, 0)
-                                    val now = text?.let { it.toString().codePointCount(0, it.length) }
-                                        ?: pending.textLenBefore
-                                    (now - pending.textLenBefore).coerceIn(0, 8)
-                                } else {
-                                    0
-                                }
-                                
-                                if (delta > 0) {
-                                    currentInputConnection?.deleteSurroundingText(delta, 0)
-                                }
-                                // ② 长按替换的引擎清理,按输入法分流:
-                                //    - table 引擎(五笔/自然码/仓颉等):reset() 会把 preedit commit 上屏
-                                //      (TableEngine::reset + commitWhenDeactivate),必须先 BackSpace
-                                //      清空 preedit(数量=clientPreeditCached 长度,该缓存是引擎在
-                                //      客户端声明 CapabilityFlag::Preedit 时写入的 clientPreedit),
-                                //      再 reset、再 commit。
-                                //    - 非 table(拼音/英文/纯文本):引擎 reset 只清面板不 commit
-                                //      (PinyinEngine::doReset 只 reset panel + updatePreedit),直接
-                                //      reset + commit 即可。**绝不能用 BackSpace**——数量不准会转发
-                                //      客户端吞掉正文(拼音吞符号回归的根因)。
-                                if (isTableIme()) {
-                                    val (clientPre, panelPre) = fcitx.runImmediately {
-                                        clientPreeditCached.toString() to
-                                                inputPanelCached.preedit.toString()
-                                    }
-                                    val clientLen =
-                                        clientPre.codePointCount(0, clientPre.length)
-                                    val panelLen =
-                                        panelPre.codePointCount(0, panelPre.length)
-                                    val preeditStr =
-                                        if (clientLen >= panelLen) clientPre else panelPre
-                                    val preeditLen =
-                                        preeditStr.codePointCount(0, preeditStr.length)
-                                    
-                                    postFcitxJob {
-                                        repeat(preeditLen.coerceIn(0, 8)) {
-                                            sendKey(
-                                                KeySym(FcitxKeyMapping.FcitxKey_BackSpace),
-                                                KeyStates.Virtual,
-                                                0
-                                            )
-                                        }
-                                        if (!isEmpty()) reset()
-                                        withContext(Dispatchers.Main) { commitText(sym) }
-                                    }
-                                } else {
-                                    
-                                    postFcitxJob {
-                                        if (!isEmpty()) reset()
-                                        withContext(Dispatchers.Main) { commitText(sym) }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            symbolLongPressPending[keyCode] = PendingSymbolPress(
-                runnable,
-                false,
-                textLengthBeforeCursor()
-            )
-            mainHandler.postDelayed(runnable, longPressSymbolThresholdMs())
-            // fall through → 正常 forwardKeyEvent(down) 上屏字母
-        }
+        // 长按键帽符号（BlackBerry 风格）→ HardwareKeyDispatch 登记 pending，总是 fall-through
+        // 让按键的普通字符照常上屏，到阈值仍按住才由 dispatch 内的定时器替换。
+        hardwareKeyDispatch.armLongPressSymbol(keyCode, event)
 
         val isEditKey = event.keyCode == KeyEvent.KEYCODE_DEL ||
                 event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
@@ -1835,7 +1648,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             //  - 物理键盘模式下 InputView 已不是候选面，动作键仍必须可达。
             // 消费后记入 consumedHardwareCandidateShortcutKeys，交给 onKeyUp 一并吞掉。
             if (inputView?.handleHardwareActionShortcut(effectiveEvent) == true) {
-                cancelSymbolLongPress(keyCode)
+                hardwareKeyDispatch.cancelLongPressSymbol(keyCode)
                 consumedHardwareCandidateShortcutKeys.add(keyCode)
                 return true
             }
@@ -1874,7 +1687,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             if (handled) {
                 // 同上：被候选 / 符号 / 翻页快捷键消费掉的键也不能再变成键帽符号
                 // （把候选键绑到字母键时，长按同样会冒符号 —— 同一个洞，两处一起堵）。
-                cancelSymbolLongPress(keyCode)
+                hardwareKeyDispatch.cancelLongPressSymbol(keyCode)
                 consumedHardwareCandidateShortcutKeys.add(keyCode)
                 return true
             }
@@ -1903,15 +1716,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // 之后每个字母都会被判成和弦（按 E 就切特效），比单纯不生效危险得多。
         HardwareChord.onKeyUp(keyCode)
 
-        // 长按符号 pending 解析：取出并清理本键的 pending。
-        // - 已长按（fired）：符号已发出（替换完成），吞掉 up 避免字母再上屏一次。
-        // - 短按（未 fired）：down 已在 onKeyDown 上屏，这里 fall through 让 up 正常发出即可。
-        symbolLongPressPending.remove(keyCode)?.let { pending ->
-            mainHandler.removeCallbacks(pending.runnable)
-            if (pending.fired) {
-                return true
-            }
-        }
+        // 长按符号 pending 解析 → HardwareKeyDispatch（已长按 fired 则吞掉 up，否则 fall through）。
+        if (hardwareKeyDispatch.resolveLongPressSymbolUp(keyCode)) return true
 
         // Long-press Alt → clear the framework's native sticky/locked Alt meta.
         // On the Q25 / some ROMs, holding Alt past a threshold makes the framework enter a native
@@ -1922,8 +1728,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Alt-lock can't leak onto following keys (it strips META_ALT_ON unless Alt is physically
         // held or app-latched), so this clear is belt-and-suspenders.
         if (isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
-            val duration = event.eventTime - altDownStartTime
-            if (duration >= altLongPressThresholdMs) {
+            val duration = event.eventTime - hardwareKeyDispatch.altDownStartTime
+            if (duration >= hardwareKeyDispatch.altLongPressThresholdMs) {
                 currentInputConnection?.clearMetaKeyStates(
                     KeyEvent.META_ALT_ON or
                             KeyEvent.META_ALT_LEFT_ON or
@@ -1933,16 +1739,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
         }
 
-        if (altLatchEnabled() && isAltLatchKey(event)) {
-            // Only swallow the key-up when THIS gesture was consumed by latching (pure latch key,
-            // double-tap latch, or unlock). Otherwise let it through so the selection key's own
-            // key-up handling (consumedHardwareCandidateShortcutKeys) applies.
-            if (altLatchConsumedThisGesture) {
-                altLatchConsumedThisGesture = false
-                return true
-            }
-            return false
-        }
+        // Alt-latch key-up 处理 → HardwareKeyDispatch（命中消费返回 true/false 结束 onKeyUp，
+        // 非 latch 键返回 null 让主函数继续）。
+        hardwareKeyDispatch.dispatchAltLatchUp(keyCode, event)?.let { return it }
         // tap-hold 收尾：符号键按下时被 [HardwareChord.armSymbolTap] 挂起（物理模式的调用点在
         // onKeyDown 的派发链最前，虚拟模式在 InputView 的两个符号键入口），若这次手势没被任何和弦
         // 用掉，就在这里补上「轻按」那一下。**必须放在下面 consumedHardwareCandidateShortcutKeys
@@ -1971,6 +1770,259 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         val effectiveEvent = withInjectedModifiers(event)
         return forwardKeyEvent(effectiveEvent) || super.onKeyUp(keyCode, effectiveEvent)
+    }
+
+    // 长按键帽符号的 pending 数据。inner class 内禁止再嵌套 class（Kotlin 限制），故放在服务层；
+    // HardwareKeyDispatch 作为内部类可直接访问这个 private 嵌套类。
+    private data class PendingSymbolPress(
+        var runnable: Runnable,
+        var fired: Boolean,
+        var textLenBefore: Int = 0
+    )
+
+    // ===== HardwareKeyDispatch：物理键盘按键「自带状态」子策略 =====
+    // onKeyDown/onKeyUp 里仅有的两块有内部时序状态的逻辑（Alt-latch 双击锁 + 长按键帽符号）收口于此；
+    // 路由 / 探查 / early-return / forwardKeyEvent 仍由服务主函数编排。作为内部类直接复用服务的
+    // 私有成员（inputView / fcitx / mainHandler / currentInputConnection …），不引入额外接口。
+    private inner class HardwareKeyDispatch {
+
+        // ===== Alt-latch 双击锁状态 =====
+        // altLatched / lastAltTapEventTime / altDownStartTime / altLongPressThresholdMs 被服务侧
+        // （isAltLatched / isAltLockedOrSticky / withInjectedModifiers / clearAltLatchAndMetaState /
+        // onKeyUp 长按 Alt 清 meta）直接读写，故不做 private；其余状态只在本类内流转。
+        var altLatched = false
+        var lastAltTapEventTime = 0L
+        var altDownStartTime = 0L
+        val altLongPressThresholdMs = 500L
+        private val altDoubleTapTimeoutMs = 300L
+
+        // True when THIS key gesture was consumed by latching (pure latch key, double-tap latch, or
+        // unlock). Used so onKeyUp only swallows the key-up for gestures latching actually handled,
+        // letting a colliding selection key's own key-up handling run.
+        private var altLatchConsumedThisGesture = false
+
+        // ===== 长按键帽符号（BlackBerry 风格）状态 =====
+        // Per-key tracking of an in-flight long-press-to-symbol gesture. A Map keyed by keyCode (not a
+        // single slot) is required because fast typing can have several letter keys down inside the
+        // 400ms window at once; one shared slot would let the second key overwrite the first, dropping
+        // the first key's character (its key-down was consumed and never replayed on key-up).
+        // `textLenBefore` snapshots the length of the text before the cursor (INCLUDING any preedit) right
+        // before this key's down is forwarded, so the long-press handler can measure how many characters
+        // the keystroke added — needed to retract them (whether committed or still in preedit) when the
+        // long-press fires.
+        private val symbolLongPressPending = mutableMapOf<Int, PendingSymbolPress>()
+
+        /**
+         * Alt-latch 双击锁 key-down 状态机。
+         * @return true = 本次按下被 latch 逻辑消费（调用方 return true）；null = 未消费，继续下行派发。
+         */
+        fun dispatchAltLatchDown(keyCode: Int, event: KeyEvent, wasAltDown: Boolean): Boolean? {
+            // Track Alt press start time (used by the long-press Alt release logic in onKeyUp).
+            if (isAnyAltKeyCode(keyCode) && event.repeatCount == 0) {
+                altDownStartTime = event.eventTime
+            }
+
+            // When Alt latch is disabled, clear any latched state and let Alt behave as a normal modifier.
+            if (!altLatchEnabled() && altLatched) {
+                setAltLatched(false)
+            }
+
+            if (altLatchEnabled() && isAltLatchKey(event)) {
+                if (event.repeatCount == 0 && !wasAltDown) {
+                    val now = event.eventTime
+                    if (altLatched) {
+                        // Already latched: pressing the latch key again unlocks it (pure unlock, consume).
+                        setAltLatched(false)
+                        lastAltTapEventTime = 0L
+                        // 同步清掉框架层 sticky meta，防止长按后系统残留的 locked 状态卡住
+                        clearSystemAltSticky()
+                        Timber.d("Alt latch disabled")
+                        altLatchConsumedThisGesture = true
+                        return true
+                    } else if (lastAltTapEventTime > 0L && now - lastAltTapEventTime <= altDoubleTapTimeoutMs) {
+                        // Second tap within the window: latch on. Consume so it does not also select.
+                        setAltLatched(true)
+                        lastAltTapEventTime = 0L
+                        Timber.d("Alt latch enabled")
+                        altLatchConsumedThisGesture = true
+                        return true
+                    } else {
+                        // First tap: start the double-tap timer.
+                        lastAltTapEventTime = now
+                        // If this physical key is ALSO a configured selection / symbol / paging shortcut,
+                        // let the single press fall through to selection instead of being swallowed by
+                        // latching (otherwise the selection key stops working). A pure latch key (e.g. the
+                        // default Alt_L) is consumed here so a lone Alt press never leaks the Alt modifier
+                        // into fcitx5.
+                        if (inputView?.isHardwareShortcutKey(event) != true) {
+                            altLatchConsumedThisGesture = true
+                            // 关键：消费单次 Alt 键时主动清掉框架可能残留的 sticky meta。
+                            // 长按 Alt 后系统可能进入 locked，单按 Alt 命中 first-tap 分支消费
+                            // 掉后框架 locked 状态仍卡住，必须显式清掉。
+                            clearSystemAltSticky()
+                            return true
+                        }
+                        // Otherwise fall through; downstream selection logic handles this press.
+                    }
+                }
+                // Long-press repeats (repeatCount > 0) and colliding selection keys: let them through.
+            }
+
+            if (altLatchEnabled() && event.repeatCount == 0 && altLatched && isAltUnlockKeyCode(keyCode)) {
+                setAltLatched(false)
+                lastAltTapEventTime = 0L
+                // Alt/Space/Enter 解锁时也清掉框架层 sticky meta
+                clearSystemAltSticky()
+                Timber.d("Alt latch disabled by keyCode=$keyCode")
+                // Alt key itself acts as a pure unlock action.
+                if (isAnyAltKeyCode(keyCode)) return true
+            }
+            return null
+        }
+
+        /**
+         * Alt-latch key-up。
+         * @return true/false = 结束 onKeyUp（latch 键的 up 不再下发）；null = 非 latch 键，继续下行。
+         */
+        fun dispatchAltLatchUp(keyCode: Int, event: KeyEvent): Boolean? {
+            if (altLatchEnabled() && isAltLatchKey(event)) {
+                // Only swallow the key-up when THIS gesture was consumed by latching (pure latch key,
+                // double-tap latch, or unlock). Otherwise let it through so the selection key's own
+                // key-up handling (consumedHardwareCandidateShortcutKeys) applies.
+                if (altLatchConsumedThisGesture) {
+                    altLatchConsumedThisGesture = false
+                    return true
+                }
+                return false
+            }
+            return null
+        }
+
+        /**
+         * 长按键帽符号（BlackBerry 风格）key-down：合格键登记 pending 并启动长按定时器。
+         * 总是 fall-through —— 按键的普通字符照常上屏，到阈值仍按住才由定时器替换为键帽符号。
+         */
+        fun armLongPressSymbol(keyCode: Int, event: KeyEvent) {
+            // Skip only when Alt is *physically held* (physicalAltDown) or *app-level latched*
+            // (altLatched, double-tap Alt) so Alt+number keeps selecting candidates and intentional
+            // Alt mode is preserved. We deliberately do NOT check systemAltSticky here: that flag is
+            // the framework's own Alt-lock artifact (e.g. Q25 locks Alt on a long-press of the Alt
+            // key itself), not a deliberate Alt+key combo — the user still expects keycap symbols when
+            // they long-press a letter after such a lock, so it must not block symbol input.
+            // Keys bound to other jobs (0, Shift, SYM/Alt_R, Space) are absent from the map and fall
+            // through naturally.
+            // Skip in non-text apps (TYPE_NULL: games / emulators) — they hold keys for movement or
+            // action and must keep receiving every event; hijacking their physical keys would make
+            // held buttons dead (e.g. GBA emulator). The feature is meaningless there anyway.
+            if (event.repeatCount == 0 &&
+                longPressSymbolEnabled() &&
+                !inputDeviceMgr.isNullInputType() &&
+                !physicalAltDown && !altLatched &&
+                HardwareKeySymbolMap.contains(keyCode)
+            ) {
+                // 按下即上屏（下方 fall-through forwardKeyEvent 处理），消除"抬起才上屏"的慢半拍；
+                // 这里只登记 pending 并启动长按定时器，到阈值仍按住才把刚上屏的字母替换为键帽符号。
+                val runnable = Runnable {
+                    symbolLongPressPending[keyCode]?.let { pending ->
+                        if (!pending.fired) {
+                            pending.fired = true
+                            HardwareKeySymbolMap.symbolForKeyCode(keyCode)?.let { sym ->
+                                mainHandler.post {
+                                    // ① 英文/纯文本直上屏(composing 空):字母已 commit 进正文,
+                                    //    按按下前后的正文长度差删除。
+                                    val delta = if (composing.isEmpty()) {
+                                        val text = currentInputConnection?.getTextBeforeCursor(1024, 0)
+                                        val now = text?.let { it.toString().codePointCount(0, it.length) }
+                                            ?: pending.textLenBefore
+                                        (now - pending.textLenBefore).coerceIn(0, 8)
+                                    } else {
+                                        0
+                                    }
+
+                                    if (delta > 0) {
+                                        currentInputConnection?.deleteSurroundingText(delta, 0)
+                                    }
+                                    // ② 长按替换的引擎清理,按输入法分流:
+                                    //    - table 引擎(五笔/自然码/仓颉等):reset() 会把 preedit commit 上屏
+                                    //      (TableEngine::reset + commitWhenDeactivate),必须先 BackSpace
+                                    //      清空 preedit(数量=clientPreeditCached 长度,该缓存是引擎在
+                                    //      客户端声明 CapabilityFlag::Preedit 时写入的 clientPreedit),
+                                    //      再 reset、再 commit。
+                                    //    - 非 table(拼音/英文/纯文本):引擎 reset 只清面板不 commit
+                                    //      (PinyinEngine::doReset 只 reset panel + updatePreedit),直接
+                                    //      reset + commit 即可。**绝不能用 BackSpace**——数量不准会转发
+                                    //      客户端吞掉正文(拼音吞符号回归的根因)。
+                                    if (isTableIme()) {
+                                        val (clientPre, panelPre) = fcitx.runImmediately {
+                                            clientPreeditCached.toString() to
+                                                    inputPanelCached.preedit.toString()
+                                        }
+                                        val clientLen =
+                                            clientPre.codePointCount(0, clientPre.length)
+                                        val panelLen =
+                                            panelPre.codePointCount(0, panelPre.length)
+                                        val preeditStr =
+                                            if (clientLen >= panelLen) clientPre else panelPre
+                                        val preeditLen =
+                                            preeditStr.codePointCount(0, preeditStr.length)
+
+                                        postFcitxJob {
+                                            repeat(preeditLen.coerceIn(0, 8)) {
+                                                sendKey(
+                                                    KeySym(FcitxKeyMapping.FcitxKey_BackSpace),
+                                                    KeyStates.Virtual,
+                                                    0
+                                                )
+                                            }
+                                            if (!isEmpty()) reset()
+                                            withContext(Dispatchers.Main) { commitText(sym) }
+                                        }
+                                    } else {
+                                        postFcitxJob {
+                                            if (!isEmpty()) reset()
+                                            withContext(Dispatchers.Main) { commitText(sym) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                symbolLongPressPending[keyCode] = PendingSymbolPress(
+                    runnable,
+                    false,
+                    textLengthBeforeCursor()
+                )
+                mainHandler.postDelayed(runnable, longPressSymbolThresholdMs())
+            }
+        }
+
+        /**
+         * 长按键帽符号 key-up 消解：移除并取消本键 pending。
+         * @return true = 已长按 fired（符号已发出，调用方吞掉 up 避免字母再上屏一次）；false = 短按，继续下行。
+         */
+        fun resolveLongPressSymbolUp(keyCode: Int): Boolean {
+            symbolLongPressPending.remove(keyCode)?.let { pending ->
+                mainHandler.removeCallbacks(pending.runnable)
+                if (pending.fired) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        fun isLongPressPending(keyCode: Int): Boolean =
+            symbolLongPressPending.containsKey(keyCode)
+
+        /** 丢弃某个 keyCode 上待定的「长按键帽符号」（快捷键消费 DOWN 时必须调用，否则长按会冒符号）。 */
+        fun cancelLongPressSymbol(keyCode: Int) {
+            symbolLongPressPending.remove(keyCode)?.let { mainHandler.removeCallbacks(it.runnable) }
+        }
+
+        fun cancelAllLongPressSymbols() {
+            symbolLongPressPending.values.forEach { mainHandler.removeCallbacks(it.runnable) }
+            symbolLongPressPending.clear()
+        }
     }
 
     /**
@@ -2459,7 +2511,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     override fun onFinishInput() {
         Timber.d("onFinishInput: currentInputStarted=$currentInputStarted isInputViewShown=$isInputViewShown")
         clearAltLatchAndMetaState()
-        cancelSymbolLongPress()
+        hardwareKeyDispatch.cancelAllLongPressSymbols()
         // 会话结束：Fn/Sym 按住状态与 tap-hold 挂起都作废，避免跨会话僵死。
         HardwareChord.reset()
         postFcitxJob {
@@ -2470,7 +2522,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onUnbindInput() {
         cachedKeyEvents.evictAll()
-        cancelSymbolLongPress()
+        hardwareKeyDispatch.cancelAllLongPressSymbols()
         // 同上：解绑输入也要清伪修饰键状态（跨会话僵死会把普通字母全判成和弦）。
         HardwareChord.reset()
         cachedKeyEventIndex = 0

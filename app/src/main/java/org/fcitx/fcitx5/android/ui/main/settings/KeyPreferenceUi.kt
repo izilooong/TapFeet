@@ -93,8 +93,8 @@ class KeyPreferenceUi(override val ctx: Context) : Ui {
         requestFocus()
         setOnKeyListener l@{ _, _, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@l false
-            val states = KeyStates.fromKeyEvent(event)
             var sym = KeySym.fromKeyEvent(event) ?: return@l false
+            val states = if (KeyStates.isModifierKeySym(sym.sym)) KeyStates.Empty else KeyStates.rawModifierStates(event)
             // convert lowercase latin to uppercase to make it look better
             if (sym.sym in 0x61..0x7a) {
                 sym = KeySym(sym.sym - 0x20)

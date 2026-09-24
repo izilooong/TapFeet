@@ -7,7 +7,6 @@ package org.fcitx.fcitx5.android.input.candidates
 import android.view.KeyEvent
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.Key
-import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareChord
@@ -38,7 +37,7 @@ import org.fcitx.fcitx5.android.utils.normalizeKeyString
  */
 object HardwareShortcutResolver {
 
-    private sealed interface ParsedKey {
+    internal sealed interface ParsedKey {
         /** A pseudo key with no fcitx5 KeySym — see [HardwareSpecialKeys]. */
         data class Special(val entry: HardwareSpecialKeys.Entry) : ParsedKey
         data class Ref(val key: Key) : ParsedKey
@@ -81,7 +80,7 @@ object HardwareShortcutResolver {
         actionParsedKeysCache = null
     }
 
-    private fun parseKeyString(keyString: String): ParsedKey? {
+    internal fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
         // 和弦先拆前缀，再按原来的路解析内层键。刻意放在 memoize 之前：内层键自己去缓存命中，
         // 这里多一层包装不值得进缓存（而且 getOrPut 的 value 类型非空，裂成两条路更好写）。
@@ -98,7 +97,7 @@ object HardwareShortcutResolver {
         }
     }
 
-    private fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean = when (parsed) {
+    internal fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean = when (parsed) {
         null -> false
         is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
         is ParsedKey.Ref -> matchesKey(event, parsed.key)
@@ -108,18 +107,7 @@ object HardwareShortcutResolver {
                 matchesParsedKey(event, parsed.inner)
     }
 
-    private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
-
-    private fun rawModifierStates(event: KeyEvent): KeyStates {
-        var s = KeyState.NoState.state
-        if (event.isAltPressed) s = s or KeyState.Alt.state
-        if (event.isCtrlPressed) s = s or KeyState.Ctrl.state
-        if (event.isShiftPressed) s = s or KeyState.Shift.state
-        if (event.isMetaPressed) s = s or KeyState.Meta.state
-        return KeyStates(s and KeyState.SimpleMask.state)
-    }
-
-    private fun matchesKey(event: KeyEvent, key: Key): Boolean {
+    internal fun matchesKey(event: KeyEvent, key: Key): Boolean {
         if (key.sym == 0) return false
         // Match by the physical key's keysym OR the character it produces. We must also accept the
         // keyCode-derived keysym because holding a modifier (e.g. Alt) can change event.unicodeChar
@@ -130,7 +118,7 @@ object HardwareShortcutResolver {
         val symMatches = symFromKeyCode == key.sym ||
             (event.unicodeChar != 0 && event.unicodeChar == key.sym)
         if (!symMatches) return false
-        if (isModifierKeySym(key.sym)) return true
+        if (KeyStates.isModifierKeySym(key.sym)) return true
         // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so use
         // raw states (no stripping). A plain key (no modifier) keeps [KeyStates.fromKeyEvent]'s
         // tolerant stripping, so an Alt-latched press of a number/symbol key still selects the
@@ -143,17 +131,17 @@ object HardwareShortcutResolver {
         // which is exactly why the first-pick (Space) candidate shortcut failed in some editors while
         // candidate keys 2-5 kept working. Use an empty state directly so any plain key, Space
         // included, matches regardless of leftover Alt.
-        val states = if (key.states != 0) rawModifierStates(event) else KeyStates.Empty
+        val states = if (key.states != 0) KeyStates.rawModifierStates(event) else KeyStates.Empty
         return states.toInt() == key.states
     }
 
-    private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
+    internal fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
         val parsed = parseKeyString(keyString) ?: return false
         return matchesKeySymOnly(event, parsed)
     }
 
     /** 只比 KeySym / 伪键名，不管修饰键状态（和弦则额外要求修饰键按住）。 */
-    private fun matchesKeySymOnly(event: KeyEvent, parsed: ParsedKey): Boolean = when (parsed) {
+    internal fun matchesKeySymOnly(event: KeyEvent, parsed: ParsedKey): Boolean = when (parsed) {
         is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
         is ParsedKey.Ref -> FcitxKeyMapping.keyCodeToSym(event.keyCode) == parsed.key.sym ||
                 (event.unicodeChar != 0 && event.unicodeChar == parsed.key.sym)

@@ -180,7 +180,7 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
             val sym = KeySym.fromKeyEvent(event) ?: return@l false
             // For modifier keys (Shift_L, Alt_R, etc.), strip their own modifier state
             // so that pressing Shift_L stores "Shift_L" rather than "Shift+Shift_L"
-            val states = if (isModifierKeySym(sym.sym)) KeyStates.Empty else rawModifierStates(event)
+            val states = if (KeyStates.isModifierKeySym(sym.sym)) KeyStates.Empty else KeyStates.rawModifierStates(event)
             setKey(Key.create(sym, states))
             return@l true
         }
@@ -333,24 +333,6 @@ class KeyCaptureUi(override val ctx: Context, initialValue: String) : Ui {
     fun getValue(): String = currentValue
 
     companion object {
-        /** fcitx5 modifier keysym range: Shift_L (0xffe1) through Hyper_R (0xffee). */
-        private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
-
-        /**
-         * Extract the modifier state directly from the event's pressed modifiers, WITHOUT the
-         * number/symbol-key stripping that [KeyStates.fromKeyEvent] applies. Used when capturing a
-         * combo (e.g. `Alt+grave` / `Alt+$`) so the held modifier is preserved in the stored string
-         * and can be matched exactly later.
-         */
-        private fun rawModifierStates(event: KeyEvent): KeyStates {
-            var s = KeyState.NoState.state
-            if (event.isAltPressed) s = s or KeyState.Alt.state
-            if (event.isCtrlPressed) s = s or KeyState.Ctrl.state
-            if (event.isShiftPressed) s = s or KeyState.Shift.state
-            if (event.isMetaPressed) s = s or KeyState.Meta.state
-            return KeyStates(s and KeyState.SimpleMask.state)
-        }
-
         /** Format a stored key string for display in preference summary. */
         fun formatKey(ctx: Context, keyString: String): String {
             if (keyString.isEmpty()) return ctx.getString(R.string.none)

@@ -207,14 +207,16 @@ class CommitEffectsOverlay(context: Context) : View(context) {
     fun onCommit(text: String) {
         if (!onMainThread("onCommit") { onCommit(text) }) return
         val prefs = AppPrefs.getInstance()
-        if (prefs.advanced.disableAnimation.getValue()) {
+        val disableAnimation = prefs.advanced.disableAnimation.getValue()
+        if (disableAnimation) {
             Timber.d("effects: skipped by disableAnimation")
             return
         }
         // Pull the live duration setting up front so comboVisibleUntil below uses the fresh value.
         durationScale = (prefs.effects.duration.getValue() / 100f).coerceAtLeast(0.1f)
         val effects = prefs.effects
-        if (!effects.enabled.getValue()) {
+        val enabled = effects.enabled.getValue()
+        if (!enabled) {
             Timber.d("effects: skipped master-switch off (text=%s)", text)
             return
         }
@@ -222,20 +224,25 @@ class CommitEffectsOverlay(context: Context) : View(context) {
         // contract as the horizontal bar's pendingFlyText handshake. Fly/Bubble must spawn here
         // because selection surfaces without a handshake of their own (the floating
         // CandidatesView) rely on this arm; without it those modes never fire on a floating pick.
+        // A mismatched arm (armed for a different candidate) must not taint the Particles burst,
+        // so burstFresh is cleared here; the pick decision itself is delegated to EffectTrigger.
         // No arm pending ⇒ burstFresh untouched (the horizontal bar's setBurstAtScreen owns it).
         val pickedText = pendingPickText
         pendingPickText = null
-        if (pickedText != null) {
-            if (pickedText != text) {
-                burstFresh = false
-            } else if (effects.mode.getValue() != EffectMode.Particles) {
-                when (effects.mode.getValue()) {
-                    EffectMode.Fly -> flyTextAtScreen(pendingPickX, pendingPickY, text)
-                    EffectMode.Bubble -> burstBubbleAtScreen(pendingPickX, pendingPickY, text)
-                    else -> {}
-                }
+        if (pickedText != null && pickedText != text) {
+            burstFresh = false
+        }
+        val armMatched = pickedText != null && pickedText == text
+        when (val effect = EffectTrigger.decide(effects.mode.getValue(), enabled, disableAnimation, armMatched)) {
+            EffectMode.Fly -> {
+                flyTextAtScreen(pendingPickX, pendingPickY, text)
                 return
             }
+            EffectMode.Bubble -> {
+                burstBubbleAtScreen(pendingPickX, pendingPickY, text)
+                return
+            }
+            else -> {} // no pick effect (null, or Particles which drives its own burst below); fall through
         }
         if (effects.mode.getValue() != EffectMode.Particles) {
             Timber.d(

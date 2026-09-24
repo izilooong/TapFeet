@@ -222,53 +222,18 @@ class InputView(
         }
     }
 
-    // ---- Hardware shortcut key caching ----------------------------------------
-    // Configured shortcut strings (e.g. "Alt+space", "Shift_L", "Sym", "NavBack") only change when
-    // the user edits settings, yet `handleHardwareCandidateShortcut` runs on EVERY physical
-    // key down. Parsing them via `Key.parse(normalizeKeyString(...))` on each keystroke is
-    // wasted work, so we memoize the parsed `Key` and invalidate the cache on pref change.
-    private sealed interface ParsedKey {
-        /** A pseudo key with no fcitx5 KeySym — see [HardwareSpecialKeys]. */
-        data class Special(val entry: HardwareSpecialKeys.Entry) : ParsedKey
-        data class Ref(val key: Key) : ParsedKey
-        /** 伪修饰键和弦（`Fn+字母` / `Sym+字母`）—— 见 [HardwareChord]。 */
-        data class Chord(val modifier: String, val inner: ParsedKey) : ParsedKey
-    }
+    // ---- Hardware shortcut key resolution -------------------------------------
+    // Parsing / matching now lives in [HardwareShortcutResolver]; the two helpers below are thin
+    // adapters so the rest of InputView keeps calling by the same names.
 
-    private val parsedKeyCache = mutableMapOf<String, ParsedKey>()
-    private var preciseShortcutsCache = mutableMapOf<Pair<Int, CandidateArrangementMode>, List<ShortcutRule>>()
-    private var wideShortcutsCache = mutableMapOf<CandidateArrangementMode, List<ShortcutRule>>()
+    private fun parseKeyString(keyString: String): HardwareShortcutResolver.ParsedKey? =
+        HardwareShortcutResolver.parseKeyString(keyString)
 
-    private fun parseKeyString(keyString: String): ParsedKey? {
-        if (keyString.isEmpty()) return null
-        // 和弦先拆前缀再解析内层键（同 HardwareShortcutResolver 那份拷贝，改匹配必须两处同改）。
-        val (modifier, inner) = HardwareChord.split(keyString)
-        if (modifier.isNotEmpty()) {
-            return parseKeyString(inner)?.let { ParsedKey.Chord(modifier, it) }
-        }
-        return parsedKeyCache.getOrPut(keyString) {
-            // Pseudo keys MUST be looked up before Key.parse: their names deliberately avoid the
-            // fcitx5 native key names that "Back" / "Home" / "Fn" would otherwise collide with.
-            HardwareSpecialKeys.entryForName(keyString)?.let { return@getOrPut ParsedKey.Special(it) }
-            ParsedKey.Ref(Key.parse(normalizeKeyString(keyString)))
-        }
-    }
+    private fun matchesParsedKey(
+        event: KeyEvent,
+        parsed: HardwareShortcutResolver.ParsedKey?
+    ): Boolean = HardwareShortcutResolver.matchesParsedKey(event, parsed)
 
-    private fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean = when (parsed) {
-        null -> false
-        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
-        is ParsedKey.Ref -> matchesKey(event, parsed.key)
-        // 和弦：修饰键按住 **且** 内层键命中（内层键不带 modifier，会被「纯键」分支命中，故顺序要紧）。
-        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
-                matchesParsedKey(event, parsed.inner)
-    }
-
-    @Keep
-    private val onHardwareKeyChangeListener = ManagedPreferenceProvider.OnChangeListener { _ ->
-        parsedKeyCache.clear()
-        preciseShortcutsCache.clear()
-        wideShortcutsCache.clear()
-    }
 
     private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
 
@@ -390,7 +355,6 @@ class InputView(
         })
 
         keyboardPrefs.registerOnChangeListener(onKeyboardSizeChangeListener)
-        hardwareKeyboardPrefs.registerOnChangeListener(onHardwareKeyChangeListener)
     }
 
     private fun updateKeyboardSize() {
@@ -507,78 +471,9 @@ class InputView(
         kawaiiBar.onSystemAltStickyChanged(sticky)
     }
 
-    // fcitx5 modifier keysym range: Shift_L (0xffe1) through Hyper_R (0xffee).
-    // A modifier key sets its own state when pressed, so it must be matched by keysym only.
-    private fun isModifierKeySym(sym: Int): Boolean = sym in 0xffe1..0xffee
-
-    /**
-     * Match a [KeyEvent] against a stored key string (fcitx5 portableString, e.g. "Alt+space",
-     * "dollar", "Shift_L", or a [HardwareSpecialKeys] pseudo-key name such as "Sym" / "NavBack").
-     *
-     * Uses [KeySym.fromKeyEvent] (character identity) so symbol keys like `$` are matched by the
-     * character they produce, not by an unreliable Android keyCode. Combos (keys with a modifier,
-     * e.g. "Alt+grave") match the modifier exactly via [rawModifierStates]; plain keys keep the
-     * tolerant stripping of [KeyStates.fromKeyEvent].
-     */
-    /**
-     * Extract the modifier state directly from the event's pressed modifiers, WITHOUT the
-     * number/symbol-key stripping that [KeyStates.fromKeyEvent] applies. Needed so that combos like
-     * `Alt+grave` or `Alt+$` match exactly — [KeyStates.fromKeyEvent] would otherwise drop the Alt
-     * modifier for symbol keys and the combo could never fire. CapsLock/NumLock are masked out so
-     * they don't cause spurious mismatches.
-     */
-    private fun rawModifierStates(event: KeyEvent): KeyStates {
-        var s = KeyState.NoState.state
-        if (event.isAltPressed) s = s or KeyState.Alt.state
-        if (event.isCtrlPressed) s = s or KeyState.Ctrl.state
-        if (event.isShiftPressed) s = s or KeyState.Shift.state
-        if (event.isMetaPressed) s = s or KeyState.Meta.state
-        return KeyStates(s and KeyState.SimpleMask.state)
-    }
-
-    private fun matchesKey(event: KeyEvent, key: Key): Boolean {
-        if (key.sym == 0) return false
-        // Match by the physical key's keysym OR the character it produces. We must also accept the
-        // keyCode-derived keysym because holding a modifier (e.g. Alt) can change event.unicodeChar
-        // into a composed character, which would otherwise make the sym comparison fail for symbol
-        // keys like grave (`) and break combos such as "Alt+grave". Character keys whose keyCode is
-        // unreliable across layouts (e.g. `$`) still match via event.unicodeChar.
-        val symFromKeyCode = FcitxKeyMapping.keyCodeToSym(event.keyCode)
-        val symMatches = symFromKeyCode == key.sym ||
-                (event.unicodeChar != 0 && event.unicodeChar == key.sym)
-        if (!symMatches) return false
-        if (isModifierKeySym(key.sym)) return true
-        // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so
-        // use raw states (no stripping). A plain key (no modifier) must ignore the system's residual
-        // modifier state — notably Alt sticky/locked left by some ROMs after an Alt tap — so the
-        // shortcut still works in editors where that happens. This mirrors
-        // [HardwareShortcutResolver.matchesKey]: [KeyStates.fromKeyEvent] does that clearing for
-        // number/symbol keys but *special-cases* the space key (unicode == ' '), which is exactly why
-        // a plain Space first-pick kept failing there. Use empty states directly so any plain key,
-        // Space included, matches regardless of leftover Alt.
-        val states = if (key.states != 0) rawModifierStates(event) else KeyStates.Empty
-        return states.toInt() == key.states
-    }
-
     /** Match by KeySym only (any modifiers) — used to detect a physical key regardless of modifiers. */
-    private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
-        val parsed = parseKeyString(keyString) ?: return false
-        return matchesKeySymOnly(event, parsed)
-    }
-
-    /** 只比 KeySym / 伪键名，不管修饰键状态（和弦则额外要求修饰键按住）。 */
-    private fun matchesKeySymOnly(event: KeyEvent, parsed: ParsedKey): Boolean = when (parsed) {
-        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
-        is ParsedKey.Ref -> isSameKeySym(event, parsed.key)
-        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
-                matchesKeySymOnly(event, parsed.inner)
-    }
-
-    private fun isSameKeySym(event: KeyEvent, key: Key): Boolean {
-        if (key.sym == 0) return false
-        val sym = KeySym.fromKeyEvent(event) ?: return false
-        return sym.sym == key.sym
-    }
+    private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean =
+        HardwareShortcutResolver.isSameKeySymString(event, keyString)
 
     private fun selectCandidateAtVisiblePosition(position: Int): Boolean {
         val count = horizontalCandidate.visibleCandidateCount()
@@ -674,89 +569,8 @@ class InputView(
         return true
     }
 
-    // 单条物理键 → 可见位置 的映射规则（键用 fcitx5 portableString 标识，见下方 preciseShortcuts()）。
-    private data class ShortcutRule(val parsedKey: ParsedKey?, val position: Int)
-
-    private fun matchesShortcutKey(event: KeyEvent, rule: ShortcutRule): Boolean =
-        matchesParsedKey(event, rule.parsedKey)
-
-    // 1~5 候选的精细映射：物理键 → 可见位置。映射取决于候选栏排列模式（巨硬居中展开 / 普通线性），
-    // 必须与 CandidateArrangementMode 保持一致，否则物理键会选到错误的候选。
-    // candidate1(k1) 始终由 handleHardwareCandidateShortcut 处理为"首选字"，不在此表内。
-    private fun preciseShortcuts(count: Int): List<ShortcutRule>? {
-        if (count <= 0 || count > 5) return null
-        val arrangement = candidateArrangementModePref.getValue()
-        preciseShortcutsCache[count to arrangement]?.let { return it }
-        val hw = hardwareKeyboardPrefs
-        val rules = when (arrangement) {
-            CandidateArrangementMode.Macrohard -> {
-                // 巨硬：以"居中候选"为基准，左右物理键按相对偏移定位（候选数 2/3/4 时两侧键也能选到对应候选）
-                val center = (count - 1) / 2
-                mutableListOf<ShortcutRule>().apply {
-                    (center - 1).takeIf { it in 0 until count }
-                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), it)) }
-                    (center + 1).takeIf { it in 0 until count }
-                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), it)) }
-                    (center - 2).takeIf { it in 0 until count }
-                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), it)) }
-                    (center + 2).takeIf { it in 0 until count }
-                        ?.let { add(ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), it)) }
-                }
-            }
-            CandidateArrangementMode.Linear -> {
-                // 普通：候选按 [1,2,3,4,5] 线性排布，物理键直接映射到顺序位置（candidate N → 位置 N-1）
-                val keyFor = listOf(
-                    hw.candidate2Key to 2,
-                    hw.candidate3Key to 3,
-                    hw.candidate4Key to 4,
-                    hw.candidate5Key to 5
-                )
-                mutableListOf<ShortcutRule>().apply {
-                    keyFor.forEach { (pref, n) ->
-                        val pos = n - 1
-                        if (pos < count) add(ShortcutRule(parseKeyString(pref.getValue()), pos))
-                    }
-                }
-            }
-        }
-        preciseShortcutsCache[count to arrangement] = rules
-        return rules
-    }
-
-    // >5 候选（wide layout）：物理键 → 可见位置，取决于排列模式。
-    private fun wideShortcuts(): List<ShortcutRule> {
-        val arrangement = candidateArrangementModePref.getValue()
-        wideShortcutsCache[arrangement]?.let { return it }
-        val hw = hardwareKeyboardPrefs
-        val rules = when (arrangement) {
-            CandidateArrangementMode.Macrohard -> listOf(
-                ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), CandidateUi.BlackBerryLeftSlot),
-                ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), CandidateUi.BlackBerryInnerLeftSlot),
-                ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), CandidateUi.BlackBerryInnerRightSlot),
-                ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), CandidateUi.BlackBerryRightSlot),
-            )
-            CandidateArrangementMode.Linear -> listOf(
-                ShortcutRule(parseKeyString(hw.candidate2Key.getValue()), 1),
-                ShortcutRule(parseKeyString(hw.candidate3Key.getValue()), 2),
-                ShortcutRule(parseKeyString(hw.candidate4Key.getValue()), 3),
-                ShortcutRule(parseKeyString(hw.candidate5Key.getValue()), 4),
-            )
-        }
-        wideShortcutsCache[arrangement] = rules
-        return rules
-    }
-
-    private fun resolveShortcutPosition(event: KeyEvent, count: Int): Int? {
-        preciseShortcuts(count)?.let { rules ->
-            for (r in rules) if (matchesShortcutKey(event, r)) return r.position
-        }
-        if (count > CandidateUi.BlackBerryBottomRowKeyCount) {
-            for (r in wideShortcuts()) {
-                if (matchesShortcutKey(event, r) && r.position < count) return r.position
-            }
-        }
-        return null
-    }
+    private fun resolveShortcutPosition(event: KeyEvent, count: Int): Int? =
+        HardwareShortcutResolver.resolveShortcutPosition(event, count)
 
     /**
      * Side-effect-free check: does [event] match any configured hardware shortcut key
@@ -1138,7 +952,7 @@ class InputView(
         val hw = hardwareKeyboardPrefs
         val c1 = hw.candidate1Key.getValue()
         val c1Parsed = parseKeyString(c1)
-        val candidate1HasModifier = (c1Parsed as? ParsedKey.Ref)?.key?.states != 0
+        val candidate1HasModifier = (c1Parsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
 
         // candidate1 组合键（配置带 modifier）：精确匹配后直接选居中候选（优先于符号切换）
         if (candidate1HasModifier && matchesParsedKey(event, c1Parsed)) {
@@ -1467,8 +1281,8 @@ class InputView(
         val nextMatches = matchesParsedKey(event, nextParsed)
         val prevMatches = matchesParsedKey(event, prevParsed)
         if (nextMatches || prevMatches) {
-            val prevHasModifier = (prevParsed as? ParsedKey.Ref)?.key?.states != 0
-            val nextHasModifier = (nextParsed as? ParsedKey.Ref)?.key?.states != 0
+            val prevHasModifier = (prevParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
+            val nextHasModifier = (nextParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
             val direction = when {
                 prevMatches && prevHasModifier -> -1
                 nextMatches && nextHasModifier -> 1
@@ -1507,8 +1321,8 @@ class InputView(
         if (!nextMatches && !prevMatches) return false
         // A combo (modifier) binding takes precedence over a plain binding on the same physical key,
         // so e.g. "Alt+grave" (prev) is not stolen by a plain "grave" (next) binding.
-        val prevHasModifier = (prevParsed as? ParsedKey.Ref)?.key?.states != 0
-        val nextHasModifier = (nextParsed as? ParsedKey.Ref)?.key?.states != 0
+        val prevHasModifier = (prevParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
+        val nextHasModifier = (nextParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
         val direction = when {
             prevMatches && prevHasModifier -> -1
             nextMatches && nextHasModifier -> 1
@@ -1552,7 +1366,6 @@ class InputView(
 
     override fun onDetachedFromWindow() {
         keyboardPrefs.unregisterOnChangeListener(onKeyboardSizeChangeListener)
-        hardwareKeyboardPrefs.unregisterOnChangeListener(onHardwareKeyChangeListener)
         // clear DynamicScope, implies that InputView should not be attached again after detached.
         scope.clear()
         super.onDetachedFromWindow()
