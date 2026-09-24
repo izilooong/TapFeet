@@ -336,8 +336,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                             )
                             return@event
                         }
-                        currentInputConnection?.sendKeyEvent(keyEvent)
+                        // 裸修饰键不回吐给 app。Q25 的 Shift_R 是真修饰键：fcitx 拒收后原事件带
+                        // META_SHIFT 回吐，编辑器自己的修饰键跟踪态随即置位 —— 之后 IME 为移动光标
+                        // 合成的 DPAD（meta=0）会被编辑器按自身 shift 态处理成 Shift+方向键，
+                        // 即「移动光标变成选中文字」。修饰键对编辑器没有独立用途（大写由字母键
+                        // 自带的 meta 完成），只保留下面的 meta 清理，不再回吐事件本身。
                         if (KeyEvent.isModifierKey(keyEvent.keyCode)) {
+                            Timber.i(
+                                "[DEBUG-shsel2] modifier re-forward suppressed: code=${keyEvent.keyCode} " +
+                                        "meta=0x${keyEvent.metaState.toString(16)} action=${keyEvent.action}"
+                            )
                             when (keyEvent.action) {
                                 KeyEvent.ACTION_DOWN -> {
                                     // save current metaState when modifier key down
@@ -349,7 +357,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                                     lastMetaState = keyEvent.metaState
                                 }
                             }
+                            return@event
                         }
+                        currentInputConnection?.sendKeyEvent(keyEvent)
                         return@event
                     }
                     // simulate key event
