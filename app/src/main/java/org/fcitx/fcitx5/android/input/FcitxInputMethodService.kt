@@ -520,13 +520,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * back to a DPAD key event that the editor turns into a line move. A click confirms the flick
      * landed — the finger is on the keyboard surface, not the screen.
      *
+     * Called repeatedly during a continuous cursor drag (the selector tracks the finger per
+     * [org.fcitx.fcitx5.android.input.swipe.SWIPE_CURSOR_STEP_SLOP_DP] after the entry swipe), so
+     * drag steps fire silently: the moving caret is the feedback, and a click per step at drag rate
+     * is noise. [isDragStep] is false only for the entry swipe, which keeps its confirmation click.
+     *
      * Alt active (held, or double-tap latched) → extend the selection instead of moving the caret
      * ([InputView.flyExtendSelection], which reuses the selection-cluster machinery). Deliberately
      * scoped to THIS swipe path only: the Fn+S/F/E/D cursor/selection chords keep their own
      * bindings untouched.
      */
-    private fun flyMoveCursor(dir: SwipeDirection) {
-        playHardwareSound(InputFeedbacks.SoundEffect.Standard)
+    private fun flyMoveCursor(dir: SwipeDirection, isDragStep: Boolean) {
+        if (!isDragStep) {
+            playHardwareSound(InputFeedbacks.SoundEffect.Standard)
+        }
         // Alt active (held, or double-tap latched) → extend the selection instead of moving the
         // caret. Same "Alt is meant to be active" pair [withInjectedModifiers] trusts
         // ([physicalAltDown] / [altLatched]); [systemAltSticky] is ROM residue and deliberately
@@ -1191,7 +1198,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextSensitivity.getValue()
                 },
                 cursorModeProvider = { flyTextCursorOn },
-                onCursor = { flyMoveCursor(it) }
+                onCursor = { dir, isDragStep -> flyMoveCursor(dir, isDragStep) }
             )
             flyTextSelectorInitialized = true
         }

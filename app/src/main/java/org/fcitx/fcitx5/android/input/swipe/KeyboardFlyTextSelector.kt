@@ -27,7 +27,10 @@ import timber.log.Timber
  *  - **Cursor-move** (only when there are no candidates, [cursorModeProvider]): the four-way swipe
  *    drives the text caret — [onCursor] with the dominant [SwipeDirection]. Uses the longest commit
  *    slop ([SWIPE_CURSOR_SLOP_DP]) so a graze can't shove the caret; the corner reservation still
- *    applies, so a corner-left swipe deletes rather than moving left.
+ *    applies, so a corner-left swipe deletes rather than moving left. Once the entry swipe fires,
+ *    the gesture switches to CONTINUOUS DRAG: every [SWIPE_CURSOR_STEP_SLOP_DP] of travel from the
+ *    last fire point advances the caret again (with `isDragStep=true`), live, until the finger
+ *    lifts — trackpad semantics, not one flick per gesture.
  *
  * Coordinates: candidate rects are absolute screen coordinates ([android.view.View.getLocationOnScreen]),
  * so the incoming [MotionEvent] must be tested against [MotionEvent.getRawX] / [MotionEvent.getRawY]
@@ -77,8 +80,14 @@ class KeyboardFlyTextSelector(
      * caller arms this on the same master pref as the other gestures.
      */
     private val cursorModeProvider: () -> Boolean = { false },
-    /** Fired when a four-way swipe clears the longer cursor commit slop ([SWIPE_CURSOR_SLOP_DP]). */
-    private val onCursor: (SwipeDirection) -> Unit = {}
+    /**
+     * Fired when the four-way cursor swipe clears the longer cursor commit slop
+     * ([SWIPE_CURSOR_SLOP_DP]) — and then once per [SWIPE_CURSOR_STEP_SLOP_DP] of travel while the
+     * finger stays down (continuous drag). The second parameter is true for drag steps (the caller
+     * plays no click for those: the moving caret is the feedback, and a click per step at drag
+     * rate is noise).
+     */
+    private val onCursor: (SwipeDirection, Boolean) -> Unit = { _, _ -> }
 ) {
     private var downX = 0f
     private var downY = 0f
@@ -92,6 +101,17 @@ class KeyboardFlyTextSelector(
      * per-direction commit slop (the hysteresis that separates a deliberate swipe from a graze).
      */
     private var pendingDir: SwipeDirection? = null
+    /**
+     * Continuous cursor drag: once the entry swipe fired (travel ≥ [SWIPE_CURSOR_SLOP_DP] from the
+     * DOWN point), the gesture bypasses the one-shot classification machine and tracks the finger
+     * — every [SWIPE_CURSOR_STEP_SLOP_DP] of travel from ([cursorOriginX], [cursorOriginY]) fires
+     * [onCursor] again with the dominant axis, re-originating at the fire point, until UP/CANCEL.
+     * No direction lock and no reversal guard in drag: a trackpad follows the finger, including
+     * back. Cleared by [reset].
+     */
+    private var cursorDragging = false
+    private var cursorOriginX = 0f
+    private var cursorOriginY = 0f
     /**
      * Set on a fresh DOWN whose coordinates fall inside the top-right corner zone (and only while
      * [cornerDeleteEnabled]). While true the in-flight gesture is reserved for Backspace: only a
@@ -120,7 +140,10 @@ class KeyboardFlyTextSelector(
     fun onTouchEvent(event: MotionEvent) {
         val t = event.eventTime
         // A long silence between events means the previous gesture was abandoned (no UP seen).
-        if (classified && (t - lastEventTime) > EXPIRE_MS) reset()
+        // Cursor drags latch too (dragging holds state between MOVEs), so they expire the same way:
+        // a finger resting still past the quiet window ends the drag, and the next move needs a
+        // fresh DOWN.
+        if ((classified || cursorDragging) && (t - lastEventTime) > EXPIRE_MS) reset()
         lastEventTime = t
 
         when (event.actionMasked) {
@@ -161,6 +184,36 @@ class KeyboardFlyTextSelector(
                     reset()
                     return
                 }
+                // Continuous cursor drag: handled BEFORE the one-shot classification machinery —
+                // no direction lock, no reversal guard, no classified latch. The caret follows the
+                // finger per step, re-originating at every fire, until the finger lifts.
+                if (cursorDragging) {
+                    if (!cursorModeProvider()) {
+                        // Candidates appeared mid-drag: the caret is no longer this gesture's
+                        // target. End the drag silently; the gesture still sees its own UP/CANCEL
+                        // via gestureActive, so nothing latches.
+                        cursorDragging = false
+                        return
+                    }
+                    val dragD = density * flyTextSensitivityScale(sensitivityProvider())
+                    val dragDx = event.rawX - cursorOriginX
+                    val dragDy = event.rawY - cursorOriginY
+                    val stepPx = SWIPE_CURSOR_STEP_SLOP_DP * dragD
+                    if (kotlin.math.abs(dragDx) >= stepPx || kotlin.math.abs(dragDy) >= stepPx) {
+                        // Dominant axis wins the step; ties lean horizontal (matches the entry
+                        // swipe's left/right emphasis for caret movement).
+                        val dir = if (kotlin.math.abs(dragDx) >= kotlin.math.abs(dragDy)) {
+                            if (dragDx < 0f) SwipeDirection.LEFT else SwipeDirection.RIGHT
+                        } else {
+                            if (dragDy < 0f) SwipeDirection.UP else SwipeDirection.DOWN
+                        }
+                        Timber.d("FlyText: cursor step dir=$dir (rawX=${event.rawX} rawY=${event.rawY})")
+                        onCursor(dir, true)
+                        cursorOriginX = event.rawX
+                        cursorOriginY = event.rawY
+                    }
+                    return
+                }
                 // Sensitivity scales every slop uniformly: all thresholds are linear in density,
                 // so scaling density scales base/up/page together (single mapping in SwipeGeometry).
                 val d = density * flyTextSensitivityScale(sensitivityProvider())
@@ -193,6 +246,8 @@ class KeyboardFlyTextSelector(
                 // (UP/DOWN/LEFT/RIGHT). Uses the LONGEST commit slop ([SWIPE_CURSOR_SLOP_DP]) so a
                 // graze across the bare keyboard surface can't shove the caret — the only mis-touch
                 // guard this mode has, since it has no corner reservation and no select target.
+                // Clearing it is also the DRAG-ENTRY gate: the first fire starts continuous
+                // tracking, and the gesture stops being one-shot from here.
                 if (cursorModeProvider()) {
                     val cursorSlopPx = SWIPE_CURSOR_SLOP_DP * d
                     val travel = when (dir) {
@@ -200,9 +255,14 @@ class KeyboardFlyTextSelector(
                         SwipeDirection.LEFT, SwipeDirection.RIGHT -> kotlin.math.abs(dx)
                     }
                     if (travel >= cursorSlopPx) {
-                        Timber.i("FlyText: cursor dir=$dir (rawX=${event.rawX} rawY=${event.rawY})")
-                        onCursor(dir)
-                        classified = true
+                        Timber.i("FlyText: cursor drag start dir=$dir (rawX=${event.rawX} rawY=${event.rawY})")
+                        onCursor(dir, false)
+                        // Enter drag: per-step advances from this point (handled at the top of the
+                        // MOVE branch). classified stays false — the one-shot machine is bypassed
+                        // for the rest of the gesture; reset() on UP/CANCEL clears the drag state.
+                        cursorDragging = true
+                        cursorOriginX = event.rawX
+                        cursorOriginY = event.rawY
                     }
                     return
                 }
@@ -248,5 +308,8 @@ class KeyboardFlyTextSelector(
         classified = false
         pendingDir = null
         cornerDeleteArmed = false
+        cursorDragging = false
+        cursorOriginX = 0f
+        cursorOriginY = 0f
     }
 }

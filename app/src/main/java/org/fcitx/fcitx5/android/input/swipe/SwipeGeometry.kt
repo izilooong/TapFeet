@@ -37,10 +37,20 @@ const val SWIPE_PAGE_SLOP_DP = 32f
  * Cursor-move mode (no candidates on screen): a four-way swipe drives the caret. Deliberately the
  * LONGEST threshold of the three — well above [SWIPE_UP_SLOP_DP] and [SWIPE_PAGE_SLOP_DP] — because
  * with no candidate strip the swipe has no "safe" target and a stray brush across the keyboard
- * surface would otherwise shove the caret. The longer travel forces a deliberate flick, which is the
- * mode's only mis-touch guard (it has no corner reservation and no select-target to fall back on).
+ * surface would otherwise shove the caret. This is the DRAG-ENTRY threshold: clearing it fires the
+ * first caret step and opens continuous tracking ([SWIPE_CURSOR_STEP_SLOP_DP] takes over), so the
+ * longer travel stays the mode's mis-touch guard without making every step feel heavy.
  */
 const val SWIPE_CURSOR_SLOP_DP = 56f
+
+/**
+ * Cursor DRAG step: after the entry swipe ([SWIPE_CURSOR_SLOP_DP]) opened continuous tracking, the
+ * caret advances again for every [SWIPE_CURSOR_STEP_SLOP_DP] of travel from the last fire point —
+ * trackpad semantics, the caret follows the finger in real time until UP/CANCEL. Much smaller than
+ * the entry slop on purpose; each step re-origins at the fire point, and a direction change
+ * mid-drag takes effect on the next step (no direction lock in drag).
+ */
+const val SWIPE_CURSOR_STEP_SLOP_DP = 24f
 
 /**
  * A swipe only commits to a direction when that axis clearly outweighs the other (≈34° off-axis).
