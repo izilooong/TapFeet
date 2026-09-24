@@ -823,8 +823,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      *
      * Returning true consumes the event so it neither falls through to [onGenericMotionEvent]
      * (double feed) nor reaches the app window underneath, which would read a surface swipe as a
-     * scroll. Only the surface's own source is consumed; every other device's motion falls through
-     * untouched, per the "compare sources with `==`" rule (all pointer classes share the 0x2 bit).
+     * scroll — but only while [flyTextChannelArmed] holds. An unarmed stream (no candidates, no
+     * panel, and corner-delete/cursor-move gated off in a window without an editable focus) falls
+     * through with false: the gestures would be no-ops there, and swallowing them killed the
+     * system's own touchpad behavior (scroll / pointer) for the whole window. Only the surface's
+     * own source is ever considered; every other device's motion falls through untouched, per the
+     * "compare sources with `==`" rule (all pointer classes share the 0x2 bit).
      */
     private fun installDecorMotionListener() {
         if (decorMotionListenerInstalled || !::decorView.isInitialized) return
@@ -834,15 +838,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 false
             } else {
                 TouchProbeLog.record(TouchProbeLog.PATH_IME_MOTION, event)
-                // Fed while armed (either gesture), and also while a gesture already in flight has
-                // to see its own UP/CANCEL — a latched `gestureActive` would misread the next gesture.
-                if (flyTextSelectorInitialized &&
-                    (flyTextOn || flyTextCornerDeleteOn || flyTextSelector.gestureActive
-                            || flyTextPickerPagingOn || flyTextCursorOn)
-                ) {
+                // Consume only while the gesture stream actually belongs to fly-text (armed, or a
+                // gesture already in flight that still needs its UP/CANCEL — a latched
+                // `gestureActive` would misread the next gesture). Unarmed events fall through so
+                // the app window / system keeps its touchpad behavior.
+                if (flyTextChannelArmed) {
                     flyTextSelector.onTouchEvent(event)
+                    true
+                } else {
+                    false
                 }
-                true
             }
         }
     }
@@ -941,6 +946,23 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 !(lastPagedCandidateData.candidates.isNotEmpty() ||
                         lastCandidateListData.candidates.isNotEmpty()) &&
                 inputView?.isPickerWindowOpen() != true
+
+    /**
+     * Whether the keyboard-surface motion channels (decor listener + service fallback) should feed
+     * the selector and consume the stream. Corner-delete and cursor-move can never do anything
+     * without an editable focus (Backspace / caret have no target), so both are gated on
+     * [InputDeviceManager.isNullInputType]: in windows with no text field (browser page, launcher)
+     * the touchpad stream falls through to the system instead of being swallowed as a gesture.
+     * Select ([flyTextOn]) and picker paging need no gate — visible candidates/panels already prove
+     * the IME owns the gesture. [flyTextSelector.gestureActive] keeps an in-flight stream fed after
+     * a mid-gesture disarm so its UP/CANCEL still lands.
+     */
+    private val flyTextChannelArmed: Boolean
+        get() = flyTextSelectorInitialized &&
+                (flyTextOn || flyTextPickerPagingOn ||
+                        ((flyTextCornerDeleteOn || flyTextCursorOn) &&
+                                !inputDeviceMgr.isNullInputType()) ||
+                        flyTextSelector.gestureActive)
     /** Tracks the last logged [flyTextOn] value; arm/disarm transitions are logged once each. */
     private var lastFlyTextLogged = false
 
@@ -2040,11 +2062,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Only the keyboard-surface touch stream (SOURCE_TOUCHPAD == 0x100008, the source the
         // device reports for dev=6 while the IME is active) belongs to fly-text; hover / scroll
         // from other devices must keep falling through to super, per the "==" source rule.
-        if (flyTextSelectorInitialized &&
-            (flyTextOn || flyTextCornerDeleteOn || flyTextSelector.gestureActive
-                    || flyTextPickerPagingOn || flyTextCursorOn) &&
-            event.source == InputDevice.SOURCE_TOUCHPAD
-        ) {
+        // Same consume-only-when-armed terms as the decor listener: an unarmed stream falls
+        // through to super so the system keeps its touchpad behavior in non-editable windows.
+        if (flyTextChannelArmed && event.source == InputDevice.SOURCE_TOUCHPAD) {
             flyTextSelector.onTouchEvent(event)
             return true
         }
