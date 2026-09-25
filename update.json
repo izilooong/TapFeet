@@ -1,8 +1,8 @@
 {
-    "versionCode": 1001302,
-    "versionName": "v1.0.13",
-    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.13/tapfeet.ime-v1.0.13.apk",
-    "releaseNotes": "- 键盘飞字新增手势: 右上角起手左滑 = 退格\n- 没有候选字时, 键盘上下左右滑 = 移动光标\n- 双击 Alt 锁定后滑动 = 扩选文字\n- 符号/表情/颜文字窗口打开时, 左右滑直接翻动该窗口\n- 飞字手势音效与物理按键音效一致\n- 新增手势独立开关: 选项 - 物理键盘 - 飞字 (右上角左滑删除 / 滑动移动光标 / 滑动扩选文字)\n- 增加音效: 机械键盘",
+    "versionCode": 1001402,
+    "versionName": "v1.0.14",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.14/tapfeet.ime-v1.0.14.apk",
+    "releaseNotes": "- 移动光标改为拖动实时跟手: 按住不松手连续移动, 中途可反向\n- 上下滑移光标拆分为独立开关 (上下易误触, 默认关), 与左右滑分开控制\n- 修复部分窗口键盘触摸被误吃手势, 导致系统触摸失灵\n- 修复 Q25 移动光标变扩选问题",
     "minVersionCode": 0,
-    "publishDate": "2026-09-23"
+    "publishDate": "2026-09-25"
 }
