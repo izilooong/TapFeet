@@ -69,25 +69,27 @@
     <string name="hw_alt_latch_summary">Double-tap the lock key to latch Alt.</string>
     <string name="hw_alt_latch_key">Alt lock key (double-tap)</string>
     <string name="hw_alt_delete_line">Alt + Del deletes line</string>
-    <string name="hw_alt_delete_line_summary">Alt + Delete / Backspace deletes the whole line (terminal kill-line).</string>
+    <string name="hw_alt_delete_line_summary">Alt + Delete / Backspace deletes the whole line.</string>
     <string name="hw_long_press_symbol">Long-press key for symbol</string>
     <string name="hw_long_press_symbol_summary">Hold a letter or number key to input its keycap symbol.</string>
     <string name="hw_long_press_symbol_threshold">Long-press symbol duration</string>
     <string name="hw_long_press_symbol_threshold_summary">Hold time before the keycap symbol is input.</string>
     <string name="hw_keyboard_flytext">Keyboard fly-text</string>
-    <string name="hw_keyboard_flytext_summary">Swipe up the keyboard surface to pick the candidate in your finger\'s column; left/right to page.</string>
+    <string name="hw_keyboard_flytext_summary">Swipe up to pick a candidate, left/right to page.</string>
     <string name="hw_flytext_swap_page">Swap page swipe direction</string>
     <string name="hw_flytext_swap_page_summary">Swipe left = previous, right = next (default is reversed).</string>
     <string name="hw_flytext_corner_delete">Corner swipe deletes</string>
-    <string name="hw_flytext_corner_delete_summary">Swipe left from the keyboard\'s top-right corner to backspace. Gesture starts there only, to avoid mis-deletes.</string>
-    <string name="hw_flytext_cursor_move">Swipe moves cursor</string>
-    <string name="hw_flytext_cursor_move_summary">With no candidates shown, swipe on the keyboard to move the cursor.</string>
+    <string name="hw_flytext_corner_delete_summary">Swipe left from the keyboard\'s top-right corner to backspace.</string>
+    <string name="hw_flytext_cursor_move">Horizontal swipe moves cursor</string>
+    <string name="hw_flytext_cursor_move_summary">With no candidates, swipe left/right to move the cursor.</string>
+    <string name="hw_flytext_cursor_move_updn">Vertical swipe moves cursor</string>
+    <string name="hw_flytext_cursor_move_updn_summary">With no candidates, swipe up/down to move the cursor. Off by default.</string>
     <string name="hw_flytext_shift_select">Swipe selects text</string>
-    <string name="hw_flytext_shift_select_summary">Hold Alt (or double-tap to latch it) and swipe to select text instead of moving the cursor.</string>
+    <string name="hw_flytext_shift_select_summary">Hold Alt (or double-tap to latch) and swipe to select text.</string>
     <string name="hw_flytext_sensitivity">Fly-text sensitivity</string>
     <string name="hw_flytext_guard_ms">Mis-touch guard duration</string>
     <string name="hw_key_sound">Physical key sound</string>
-    <string name="hw_key_sound_summary">Sounds on physical key presses and keyboard-surface swipes (up = pick, left/right = page); picking by number key or bar tap stays silent.</string>
+    <string name="hw_key_sound_summary">Click sounds for physical keys and keyboard swipes.</string>
     <string name="hw_key_sound_volume">Physical key sound volume</string>
     <string name="hw_toggle_ime">Toggle IME</string>
     <string name="hw_show_picker">Show input method picker</string>

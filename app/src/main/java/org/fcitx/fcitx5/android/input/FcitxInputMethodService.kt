@@ -541,6 +541,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * bindings untouched.
      */
     private fun flyMoveCursor(dir: SwipeDirection, isDragStep: Boolean) {
+        // Direction-level gate: horizontal and vertical caret moves have SEPARATE switches
+        // (vertical is the easiest gesture to graze by accident, so it defaults off). A disabled
+        // direction stays completely silent — no click, no movement.
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        val enabled = if (dir == SwipeDirection.UP || dir == SwipeDirection.DOWN) {
+            hw.keyboardFlyTextCursorMoveUpDn.getValue()
+        } else {
+            hw.keyboardFlyTextCursorMove.getValue()
+        }
+        if (!enabled) return
         if (!isDragStep) {
             playHardwareSound(InputFeedbacks.SoundEffect.Standard)
         }
@@ -958,8 +968,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      */
     private val flyTextCursorOn: Boolean
         get() = flyTextPrefOn &&
-                AppPrefs.getInstance().hardwareKeyboard
-                    .keyboardFlyTextCursorMove.getValue() &&
+                (AppPrefs.getInstance().hardwareKeyboard.run {
+                    keyboardFlyTextCursorMove.getValue() ||
+                            keyboardFlyTextCursorMoveUpDn.getValue()
+                }) &&
                 !(lastPagedCandidateData.candidates.isNotEmpty() ||
                         lastCandidateListData.candidates.isNotEmpty()) &&
                 inputView?.isPickerWindowOpen() != true

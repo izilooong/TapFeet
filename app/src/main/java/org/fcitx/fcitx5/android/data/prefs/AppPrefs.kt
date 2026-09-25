@@ -641,10 +641,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val keyboardFlyTextCornerDelete = bool("hw_keyboard_flytext_corner_delete", true)
 
         // Keyboard fly-text cursor move: with no candidates on screen (and no open panel), a
-        // four-way swipe drives the text caret — left/right one character, up/down one line. The
-        // cursor commit slop is the longest of the three gestures, so a graze can't shove the caret.
-        // Only meaningful while fly-text is on.
+        // horizontal swipe drives the text caret. The cursor commit slop is the longest of the
+        // three gestures, so a graze can't shove the caret. Only meaningful while fly-text is on.
         val keyboardFlyTextCursorMove = bool("hw_keyboard_flytext_cursor_move", true)
+
+        // Keyboard fly-text vertical cursor move: same as above but for up/down swipes (one line).
+        // Off by default — a vertical flick across the bare keyboard surface is the easiest gesture
+        // to graze by accident, so the user opts in.
+        val keyboardFlyTextCursorMoveUpDn = bool("hw_keyboard_flytext_cursor_move_updn", false)
 
         // Keyboard fly-text alt select: with Alt active (physically held, or double-tap latched),
         // swiping in cursor mode extends the text selection instead of moving the caret. Sub-toggle

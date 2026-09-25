@@ -35,6 +35,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
     private lateinit var flyTextSwapSwitch: SwitchPreference
     private lateinit var flyTextCornerDeleteSwitch: SwitchPreference
     private lateinit var flyTextCursorMoveSwitch: SwitchPreference
+    private lateinit var flyTextCursorMoveUpDnSwitch: SwitchPreference
     private lateinit var flyTextShiftSelectSwitch: SwitchPreference
 
     /**
@@ -155,7 +156,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isEnabled = hw.keyboardFlyText.getValue()
         }
         flyTextScreen.addPreference(flyTextCornerDeleteSwitch)
-        // Cursor-move: with no candidates shown, a four-way swipe moves the text caret. Sub-toggle
+        // Cursor-move: with no candidates shown, a horizontal swipe moves the text caret. Sub-toggle
         // of fly-text; on by default (moving the caret is reversible).
         flyTextCursorMoveSwitch = SwitchPreference(context).apply {
             key = hw.keyboardFlyTextCursorMove.key
@@ -167,8 +168,22 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isEnabled = hw.keyboardFlyText.getValue()
         }
         flyTextScreen.addPreference(flyTextCursorMoveSwitch)
+        // Vertical cursor-move: same, but up/down (one line per swipe). Independent switch from
+        // the horizontal one — a vertical flick is the easiest gesture to graze by accident, so it
+        // defaults off and the user opts in.
+        flyTextCursorMoveUpDnSwitch = SwitchPreference(context).apply {
+            key = hw.keyboardFlyTextCursorMoveUpDn.key
+            title = getString(R.string.hw_flytext_cursor_move_updn)
+            summary = getString(R.string.hw_flytext_cursor_move_updn_summary)
+            setDefaultValue(hw.keyboardFlyTextCursorMoveUpDn.getValue())
+            isChecked = hw.keyboardFlyTextCursorMoveUpDn.getValue()
+            isIconSpaceReserved = false
+            isEnabled = hw.keyboardFlyText.getValue()
+        }
+        flyTextScreen.addPreference(flyTextCursorMoveUpDnSwitch)
         // Alt-select: with Alt held or double-tap latched, swiping in cursor mode extends the
-        // selection instead of moving the caret. Sub-toggle of cursor move.
+        // selection instead of moving the caret. Gated by the master switch only — which
+        // directions actually respond follows the two cursor-move switches.
         flyTextShiftSelectSwitch = SwitchPreference(context).apply {
             key = hw.keyboardFlyTextAltSelect.key
             title = getString(R.string.hw_flytext_shift_select)
@@ -176,7 +191,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             setDefaultValue(hw.keyboardFlyTextAltSelect.getValue())
             isChecked = hw.keyboardFlyTextAltSelect.getValue()
             isIconSpaceReserved = false
-            isEnabled = hw.keyboardFlyText.getValue() && hw.keyboardFlyTextCursorMove.getValue()
+            isEnabled = hw.keyboardFlyText.getValue()
         }
         flyTextScreen.addPreference(flyTextShiftSelectSwitch)
         flyTextScreen.addPreference(flyTextSensitivityPref)
@@ -203,15 +218,10 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             flyTextSwapSwitch.isEnabled = on
             flyTextCornerDeleteSwitch.isEnabled = on
             flyTextCursorMoveSwitch.isEnabled = on
-            flyTextShiftSelectSwitch.isEnabled = on && flyTextCursorMoveSwitch.isChecked
+            flyTextCursorMoveUpDnSwitch.isEnabled = on
+            flyTextShiftSelectSwitch.isEnabled = on
             flyTextSensitivityPref.isEnabled = on
             flyTextGuardPref.isEnabled = on
-            true
-        }
-        // Shift-select is a sub-toggle of cursor-move: switching cursor-move off must grey it out.
-        flyTextCursorMoveSwitch.setOnPreferenceChangeListener { _, newValue ->
-            flyTextShiftSelectSwitch.isEnabled =
-                hw.keyboardFlyText.getValue() && newValue as Boolean
             true
         }
 

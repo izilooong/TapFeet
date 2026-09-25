@@ -69,7 +69,7 @@
     <string name="hw_alt_latch_summary">双击锁定键可保持 Alt 按下状态。</string>
     <string name="hw_alt_latch_key">Alt 锁定键（双击）</string>
     <string name="hw_alt_delete_line">Alt + Del 删除整行</string>
-    <string name="hw_alt_delete_line_summary">Alt + Del / 退格 删除整行（终端 kill-line）。</string>
+    <string name="hw_alt_delete_line_summary">Alt + Del / 退格删除整行。</string>
     <string name="hw_long_press_symbol">长按按键输入符号</string>
     <string name="hw_long_press_symbol_summary">长按字母或数字键，输入键帽上的符号。</string>
     <string name="hw_long_press_symbol_threshold">长按输入符号时长</string>
@@ -79,11 +79,13 @@
     <string name="hw_flytext_swap_page">翻页方向互换</string>
     <string name="hw_flytext_swap_page_summary">左滑上一页、右滑下一页（默认相反）。</string>
     <string name="hw_flytext_corner_delete">右上角左滑删除</string>
-    <string name="hw_flytext_corner_delete_summary">从键盘右上角往左滑即退格。仅在右上角起手，避免误删。</string>
-    <string name="hw_flytext_cursor_move">滑动移动光标</string>
-    <string name="hw_flytext_cursor_move_summary">没有候选字时，在键盘上滑动即可移动光标。</string>
+    <string name="hw_flytext_corner_delete_summary">右上角起手左滑，即退格。</string>
+    <string name="hw_flytext_cursor_move">滑动左右移光标</string>
+    <string name="hw_flytext_cursor_move_summary">没有候选字时，左右滑移动光标。</string>
+    <string name="hw_flytext_cursor_move_updn">滑动上下移光标</string>
+    <string name="hw_flytext_cursor_move_updn_summary">没有候选字时，上下滑移动光标。默认关闭。</string>
     <string name="hw_flytext_shift_select">滑动扩选文字</string>
-    <string name="hw_flytext_shift_select_summary">按住 Alt 或双击锁定 Alt 后滑动，选中文字而不是移动光标。</string>
+    <string name="hw_flytext_shift_select_summary">双击锁定 Alt 后滑动，选中文字。</string>
     <string name="hw_flytext_sensitivity">飞字灵敏度</string>
     <string name="hw_flytext_guard_ms">防误触时长</string>
     <string name="hw_key_sound">物理按键音</string>
