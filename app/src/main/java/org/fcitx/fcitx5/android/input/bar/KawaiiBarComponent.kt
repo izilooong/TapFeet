@@ -129,6 +129,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val showVoiceInputButton by prefs.keyboard.showVoiceInputButton
     private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
     private val builtInVoiceInput by prefs.keyboard.builtInVoiceInput
+    private val autoShowKeyboard by prefs.keyboard.autoShowKeyboardWeChat
     /** 「隐藏状态栏」：空闲时把整条 40dp 横条收起，只收这一行，键盘本体不动。 */
     private val hideStatusBar by prefs.candidateBar.hideStatusBar
 
@@ -357,12 +358,18 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         InputMethodUtil.switchInputMethod(service, id, subtype)
     }
 
-    /** 本地语音输入（SenseVoice）：录音 → VAD 断句 → 识别 → commitText 上屏。 */
+    /** 本地语音输入（SenseVoice）：录音 → VAD 断句 → 识别 → composing 准流式预览 → 上屏。 */
     private val voiceInputController by lazy {
         VoiceInputController(
             context = context,
-            onTextCommit = { service.commitText(it) },
+            onPartialText = { service.currentInputConnection?.setComposingText(it, 1) },
+            onSessionEnd = { text ->
+                // 空串 = 取消（密码框/销毁），清掉 composing；否则整段上屏（commitText 会收走 composing）
+                if (text.isEmpty()) service.currentInputConnection?.setComposingText("", 0)
+                else service.commitText(text)
+            },
             onStateChanged = { updateVoiceInputButton(it) },
+            onAudioLevel = { idleUi.voiceWaveView.level = it },
             onError = { context.toast(R.string.voice_input_unavailable) }
         )
     }
@@ -421,22 +428,26 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     }
 
     private fun updateVoiceInputButton(state: VoiceInputController.State) {
+        val slot = idleUi.voiceInputSlot
         when (state) {
             VoiceInputController.State.Idle -> {
-                idleUi.voiceInputButton.setIcon(R.drawable.ic_baseline_mic_24)
-                idleUi.voiceInputButton.contentDescription = context.getString(R.string.voice_input)
+                idleUi.voiceInputButton.visibility = View.VISIBLE
+                idleUi.voiceWaveView.visibility = View.GONE
+                slot.contentDescription = context.getString(R.string.voice_input)
             }
 
             VoiceInputController.State.Recording -> {
-                idleUi.voiceInputButton.setIcon(R.drawable.ic_baseline_stop_24)
-                idleUi.voiceInputButton.contentDescription =
-                    context.getString(R.string.voice_input_listening)
+                idleUi.voiceInputButton.visibility = View.GONE
+                idleUi.voiceWaveView.visibility = View.VISIBLE
+                idleUi.voiceWaveView.indeterminate = false
+                slot.contentDescription = context.getString(R.string.voice_input_listening)
             }
 
             VoiceInputController.State.Recognizing -> {
-                idleUi.voiceInputButton.setIcon(R.drawable.ic_baseline_stop_24)
-                idleUi.voiceInputButton.contentDescription =
-                    context.getString(R.string.voice_input_recognizing)
+                idleUi.voiceInputButton.visibility = View.GONE
+                idleUi.voiceWaveView.visibility = View.VISIBLE
+                idleUi.voiceWaveView.indeterminate = true
+                slot.contentDescription = context.getString(R.string.voice_input_recognizing)
             }
         }
     }
@@ -470,7 +481,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 swipeThresholdX = swipeThresholdY
                 onGestureListener = swipeHideKeyboardCallback
             }
-            voiceInputButton.setOnClickListener {
+            voiceInputSlot.setOnClickListener {
                 toggleVoiceInput()
             }
             keyboardToggleButton.setOnClickListener {
@@ -753,10 +764,16 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         )
         // 本地语音输入：密码框不显示；切换输入框时中止进行中的录音
         val showBuiltInVoice = builtInVoiceInput && !capFlags.has(CapabilityFlag.Password)
-        idleUi.voiceInputButton.visibility = if (showBuiltInVoice) View.VISIBLE else View.GONE
+        idleUi.voiceInputSlot.visibility = if (showBuiltInVoice) View.VISIBLE else View.GONE
         if (voiceInputController.state != VoiceInputController.State.Idle) {
             // 密码框直接丢弃已录内容，普通切换则走正常收尾（剩余语音仍会上屏）
             if (showBuiltInVoice) voiceInputController.stop() else voiceInputController.destroy()
+        }
+        // 微信自动弹键盘（默认关）：聊天页输入框拿到焦点就请求显示输入法
+        if (autoShowKeyboard && !capFlags.has(CapabilityFlag.Password) &&
+            info.packageName == WECHAT_PACKAGE
+        ) {
+            service.requestShowSelf(0)
         }
         updateKeyboardToggleButton()
         // 同步应用层 latch + 框架层 sticky 的合并状态
@@ -876,6 +893,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     companion object {
         const val HEIGHT = 40
+
+        /** 「微信自动弹出键盘」的目标应用包名。 */
+        private const val WECHAT_PACKAGE = "com.tencent.mm"
     }
 
     fun onKeyboardLayoutSwitched(isNumber: Boolean) {

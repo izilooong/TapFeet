@@ -153,6 +153,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         init { category(R.string.cat_keyboard_layout) }
         val focusChangeResetKeyboard =
             switch(R.string.reset_keyboard_on_focus_change, "reset_keyboard_on_focus_change", true)
+        val autoShowKeyboardWeChat = switch(
+            R.string.auto_show_keyboard, "auto_show_keyboard_wechat", false,
+            R.string.auto_show_keyboard_summary
+        )
         val expandToolbarByDefault =
             switch(R.string.expand_toolbar_by_default, "expand_toolbar_by_default", false)
         val inlineSuggestions = switch(R.string.inline_suggestions, "inline_suggestions", true)

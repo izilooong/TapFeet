@@ -399,6 +399,8 @@
     <string name="show_voice_input_button">Show voice input button</string>
     <string name="local_voice_input">Local voice input (SenseVoice)</string>
     <string name="local_voice_input_summary">Show a mic button in the toolbar for offline speech-to-text. The model (~230 MB) is downloaded on first use.</string>
+    <string name="auto_show_keyboard">Auto-show keyboard in WeChat</string>
+    <string name="auto_show_keyboard_summary">Pop up the keyboard automatically when a WeChat input field gains focus (experimental)</string>
     <string name="voice_auto_stop">Auto-stop after silence</string>
     <string name="voice_auto_stop_summary">End the recording automatically after you stop speaking</string>
     <string name="voice_auto_stop_seconds">Silence duration</string>

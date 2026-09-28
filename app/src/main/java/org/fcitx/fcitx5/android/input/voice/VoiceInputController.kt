@@ -22,19 +22,26 @@ import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.voice.VoiceModelManager
 import org.fcitx.fcitx5.android.data.voice.VoiceRecognizer
 import timber.log.Timber
+import kotlin.math.sqrt
 
 /**
  * 本地语音输入会话控制：
- * 录音（16kHz 单声道 PCM）→ silero-vad 静音断句 → SenseVoice 整段识别 → 回调上屏。
+ * 录音（16kHz 单声道 PCM）→ silero-vad 静音断句 → SenseVoice 整段识别。
  *
- * - 点「开始」后持续录音，VAD 每检测到一段完整语音（前后静音）就识别并提交，
- *   边说边停顿也会分句上屏；点「停止」后冲刷剩余语音并结束会话。
- * - 回调均在主线程发出。
+ * **准流式上屏**：每识别完一段（说话中一个停顿）就把**累积文本**通过 [onPartialText] 发出，
+ * 调用方放进编辑器 composing 区 —— 边说边长，用户能看到字在涨；整个会话结束（手动停止 /
+ * 静音自动结束）才通过 [onSessionEnd] 交最终文本一次性上屏，空串表示放弃（取消录入）。
+ * SenseVoice 是整段模型，这是它能做到的最接近流式的体验。
+ *
+ * [onAudioLevel] 每 0.1s 发一次当前音量（0..1），驱动录音动画。
+ * 所有回调均在主线程发出。
  */
 class VoiceInputController(
     context: Context,
-    private val onTextCommit: (String) -> Unit,
+    private val onPartialText: (String) -> Unit,
+    private val onSessionEnd: (String) -> Unit,
     private val onStateChanged: (State) -> Unit,
+    private val onAudioLevel: (Float) -> Unit,
     private val onError: (String) -> Unit,
 ) {
     enum class State {
@@ -45,7 +52,7 @@ class VoiceInputController(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // 识别按提交顺序串行执行，保证多段语音的上屏次序
+    // 识别按提交顺序串行执行，保证多段语音的累积次序
     private val recognizeDispatcher = Dispatchers.Default.limitedParallelism(1)
 
     var state: State = State.Idle
@@ -53,6 +60,10 @@ class VoiceInputController(
 
     @Volatile
     private var recording = false
+
+    /** 本会话累积识别文本（只在 recognizeDispatcher / stop 收尾时写读）。 */
+    @Volatile
+    private var sessionText = ""
 
     /**
      * 最近 0.5s 的音频（VAD 切段点之前的前文）。识别前垫在段首：
@@ -115,6 +126,7 @@ class VoiceInputController(
         recorder = rec
         vad = localVad
         recording = true
+        sessionText = ""
         preroll = FloatArray(0)
         // 预热识别器：与录音并行，用户说完第一句时通常已就绪
         preload()
@@ -125,7 +137,7 @@ class VoiceInputController(
     }
 
     /**
-     * 停止录音并识别剩余语音，全部上屏后回到 [State.Idle]。
+     * 停止录音并识别剩余语音；全部识别完后 [onSessionEnd] 发最终文本，回到 [State.Idle]。
      */
     @Synchronized
     fun stop() {
@@ -159,13 +171,16 @@ class VoiceInputController(
             val pending = synchronized(pendingRecognitions) { pendingRecognitions.toList() }
             pending.forEach { it.join() }
             synchronized(pendingRecognitions) { pendingRecognitions.clear() }
+            val text = sessionText
+            sessionText = ""
+            mainHandler.post { onSessionEnd(text) }
             setState(State.Idle)
         }
     }
 
     /**
-     * 立即终止会话（密码框、输入服务销毁等场景）：丢弃未完成的识别，释放识别器内存。
-     * 不销毁作用域，之后仍可重新 [start]。
+     * 立即终止会话（密码框、输入服务销毁等场景）：丢弃未识别内容，
+     * [onSessionEnd] 发空串让调用方清掉 composing 区。
      */
     @Synchronized
     fun destroy() {
@@ -184,7 +199,9 @@ class VoiceInputController(
         synchronized(pendingRecognitions) { pendingRecognitions.forEach { it.cancel() } }
         synchronized(pendingRecognitions) { pendingRecognitions.clear() }
         preroll = FloatArray(0)
+        sessionText = ""
         VoiceRecognizer.release()
+        mainHandler.post { onSessionEnd("") }
         setState(State.Idle)
     }
 
@@ -229,6 +246,11 @@ class VoiceInputController(
                     break
                 }
                 val samples = FloatArray(n) { buf[it] / 32768f }
+                // 音量动画：RMS 映射到 0..1
+                var sum = 0f
+                for (s in samples) sum += s * s
+                val rms = sqrt(sum / n)
+                mainHandler.post { onAudioLevel((rms * 4f).coerceIn(0f, 1f)) }
                 preroll = (preroll + samples).takeLast(PRE_ROLL_SAMPLES).toFloatArray()
                 localVad.acceptWaveform(samples)
                 if (localVad.isSpeechDetected()) {
@@ -250,7 +272,7 @@ class VoiceInputController(
         }
     }
 
-    /** 取出 VAD 已切出的完整语音段，垫上 0.5s 前文后提交识别。 */
+    /** 取出 VAD 已切出的完整语音段，垫上 0.5s 前文后识别，累积进会话文本并发出预览。 */
     private fun drainVad(localVad: Vad) {
         while (!localVad.empty()) {
             val segment = localVad.front()
@@ -261,7 +283,9 @@ class VoiceInputController(
             val job = scope.launch(recognizeDispatcher) {
                 val text = VoiceRecognizer.recognize(padded)
                 if (!text.isNullOrEmpty()) {
-                    mainHandler.post { onTextCommit(text) }
+                    sessionText += text
+                    val snapshot = sessionText
+                    mainHandler.post { onPartialText(snapshot) }
                 }
             }
             synchronized(pendingRecognitions) { pendingRecognitions.add(job) }
