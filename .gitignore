@@ -25,6 +25,8 @@
 # Built application files
 *.apk
 *.aar
+# 但 sherpa-onnx 是本地语音输入的构建依赖（源码仓库不发布 Maven 制品），必须入库
+!app/libs/sherpa-onnx.aar
 *.ap_
 *.aab
 

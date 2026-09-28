@@ -88,6 +88,9 @@ class IdleUi(
 
     val keyboardToggleButton = ToolButton(ctx, R.drawable.ic_baseline_keyboard_24, theme)
 
+    /** 本地语音输入（SenseVoice）触发按钮，仅在设置开启且非密码框时显示。 */
+    val voiceInputButton = ToolButton(ctx, R.drawable.ic_baseline_mic_24, theme)
+
     val inputMethodButton = ToolButton(ctx, R.drawable.ic_status_pinyin, theme)
 
     val altLockButton = ToolButton(ctx, R.drawable.ic_alt_key_24, theme)
@@ -150,6 +153,10 @@ class IdleUi(
             centerVertically()
         })
         add(keyboardToggleButton, lParams(size, size) {
+            before(voiceInputButton)
+            centerVertically()
+        })
+        add(voiceInputButton, lParams(size, size) {
             before(hideKeyboardButton)
             centerVertically()
         })

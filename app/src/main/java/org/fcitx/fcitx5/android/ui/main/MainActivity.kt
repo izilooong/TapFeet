@@ -250,6 +250,9 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
             Intent.ACTION_RUN -> {
+                if (intent.getBooleanExtra(EXTRA_REQUEST_RECORD_AUDIO, false)) {
+                    requestRecordAudioPermission()
+                }
                 val route = intent.parcelable<SettingsRoute>(EXTRA_SETTINGS_ROUTE) ?: return
                 navController.popBackStack(SettingsRoute.Index, false)
                 navController.navigateWithAnim(route)
@@ -332,6 +335,23 @@ class MainActivity : AppCompatActivity() {
 
     private var needNotifications by AppPrefs.getInstance().internal.needNotifications
 
+    /**
+     * 本地语音输入需要 RECORD_AUDIO。IME 进程无法直接弹系统权限框，
+     * 由键盘栏麦克风按钮跳到这里代为申请。
+     */
+    private fun requestRecordAudioPermission() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return
+        AlertDialog.Builder(this)
+            .setIconAttribute(android.R.attr.alertDialogIcon)
+            .setTitle(R.string.voice_input)
+            .setMessage(R.string.voice_input_permission_required)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> }
+            .setPositiveButton(R.string.grant_permission) { _, _ ->
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+            }
+            .show()
+    }
+
     private fun checkNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
@@ -377,6 +397,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_SETTINGS_ROUTE = "${BuildConfig.APPLICATION_ID}.EXTRA_SETTINGS_ROUTE"
+        const val EXTRA_REQUEST_RECORD_AUDIO = "${BuildConfig.APPLICATION_ID}.EXTRA_REQUEST_RECORD_AUDIO"
     }
 
 }

@@ -20,6 +20,9 @@
     boolean equals(java.lang.Object);
 }
 
+# sherpa-onnx JNI：SpeechSegment 等类型由 native 侧实例化，混淆关闭但仍防 shrink
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+
 # remove kotlin null checks
 -processkotlinnullchecks remove
 

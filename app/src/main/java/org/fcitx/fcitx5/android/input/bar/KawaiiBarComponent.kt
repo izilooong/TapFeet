@@ -4,6 +4,8 @@
  */
 package org.fcitx.fcitx5.android.input.bar
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.util.Size
@@ -19,6 +21,8 @@ import android.widget.ViewAnimator
 import android.widget.inline.InlineContentView
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -38,6 +42,7 @@ import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.voice.VoiceModelManager
 import org.fcitx.fcitx5.android.input.StatusIconMapping
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.State.ClickToAttachWindow
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.State.ClickToDetachWindow
@@ -71,11 +76,13 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
 import org.fcitx.fcitx5.android.input.PanelModule
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
+import org.fcitx.fcitx5.android.input.voice.VoiceInputController
 import org.fcitx.fcitx5.android.input.status.StatusAreaWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
 import org.fcitx.fcitx5.android.utils.AppUtil
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
+import org.fcitx.fcitx5.android.utils.toast
 
 import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.manager.must
@@ -121,6 +128,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val toolbarNumRowOnPassword by prefs.keyboard.toolbarNumRowOnPassword
     private val showVoiceInputButton by prefs.keyboard.showVoiceInputButton
     private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
+    private val builtInVoiceInput by prefs.keyboard.builtInVoiceInput
     /** 「隐藏状态栏」：空闲时把整条 40dp 横条收起，只收这一行，键盘本体不动。 */
     private val hideStatusBar by prefs.candidateBar.hideStatusBar
 
@@ -349,6 +357,90 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         InputMethodUtil.switchInputMethod(service, id, subtype)
     }
 
+    /** 本地语音输入（SenseVoice）：录音 → VAD 断句 → 识别 → commitText 上屏。 */
+    private val voiceInputController by lazy {
+        VoiceInputController(
+            context = context,
+            onTextCommit = { service.commitText(it) },
+            onStateChanged = { updateVoiceInputButton(it) },
+            onError = { context.toast(R.string.voice_input_unavailable) }
+        )
+    }
+
+    /**
+     * 语音输入统一入口：键盘栏麦克风按钮与「语音输入」快捷键都走这里。
+     * 开始录音给一句 Toast 回执——热键触发时按钮可能被「隐藏状态栏」收起，没有回执用户不知道按中没按中。
+     */
+    fun toggleVoiceInput() {
+        // 密码框一律不响应（按钮靠 GONE 隐藏，热键只能在这里拦）
+        if (isCapabilityFlagsPassword) {
+            context.toast(R.string.voice_input_unavailable)
+            return
+        }
+        onVoiceInputButtonClick()
+    }
+
+    private fun onVoiceInputButtonClick() {
+        when (voiceInputController.state) {
+            VoiceInputController.State.Recording -> voiceInputController.stop()
+            VoiceInputController.State.Recognizing -> Unit
+            VoiceInputController.State.Idle -> {
+                if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                    != PackageManager.PERMISSION_GRANTED
+                ) {
+                    context.toast(R.string.voice_input_permission_required)
+                    AppUtil.launchMainToRecordAudioPermission(context)
+                    return
+                }
+                when (VoiceModelManager.state.value) {
+                    is VoiceModelManager.State.Downloading ->
+                        context.toast(R.string.voice_input_model_downloading)
+
+                    VoiceModelManager.State.Ready -> {
+                        voiceInputController.start()
+                        if (voiceInputController.state == VoiceInputController.State.Recording) {
+                            context.toast(R.string.voice_input_listening)
+                        }
+                    }
+
+                    VoiceModelManager.State.NotDownloaded,
+                    is VoiceModelManager.State.Error -> {
+                        context.toast(R.string.voice_input_model_download_start)
+                        VoiceModelManager.ensureDownloaded(
+                            onSuccess = {
+                                context.toast(R.string.voice_input_model_download_done)
+                            },
+                            onFailure = {
+                                context.toast(R.string.voice_input_model_download_error)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateVoiceInputButton(state: VoiceInputController.State) {
+        when (state) {
+            VoiceInputController.State.Idle -> {
+                idleUi.voiceInputButton.setIcon(R.drawable.ic_baseline_mic_24)
+                idleUi.voiceInputButton.contentDescription = context.getString(R.string.voice_input)
+            }
+
+            VoiceInputController.State.Recording -> {
+                idleUi.voiceInputButton.setIcon(R.drawable.ic_baseline_stop_24)
+                idleUi.voiceInputButton.contentDescription =
+                    context.getString(R.string.voice_input_listening)
+            }
+
+            VoiceInputController.State.Recognizing -> {
+                idleUi.voiceInputButton.setIcon(R.drawable.ic_baseline_stop_24)
+                idleUi.voiceInputButton.contentDescription =
+                    context.getString(R.string.voice_input_recognizing)
+            }
+        }
+    }
+
     private val idleUi: IdleUi by lazy {
         IdleUi(context, theme, popup, commonKeyActionListener).apply {
             menuButton.setOnClickListener {
@@ -377,6 +469,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 swipeThresholdY = dp(HEIGHT.toFloat())
                 swipeThresholdX = swipeThresholdY
                 onGestureListener = swipeHideKeyboardCallback
+            }
+            voiceInputButton.setOnClickListener {
+                toggleVoiceInput()
             }
             keyboardToggleButton.setOnClickListener {
                 // 主键盘开关：显示中且是主键盘 → 关闭；否则 → 打开主键盘
@@ -631,6 +726,12 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         clipboardSuggestion.registerOnChangeListener(onClipboardSuggestionUpdateListener)
         clipboardItemTimeout.registerOnChangeListener(onClipboardTimeoutUpdateListener)
         prefs.candidateBar.hideStatusBar.registerOnChangeListener(onHideStatusBarChangeListener)
+        // 输入服务销毁时确保录音与识别器资源释放
+        service.lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                voiceInputController.destroy()
+            }
+        })
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {
@@ -650,6 +751,13 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             shouldShowVoiceInput,
             if (shouldShowVoiceInput) switchToVoiceInputCallback else hideKeyboardCallback
         )
+        // 本地语音输入：密码框不显示；切换输入框时中止进行中的录音
+        val showBuiltInVoice = builtInVoiceInput && !capFlags.has(CapabilityFlag.Password)
+        idleUi.voiceInputButton.visibility = if (showBuiltInVoice) View.VISIBLE else View.GONE
+        if (voiceInputController.state != VoiceInputController.State.Idle) {
+            // 密码框直接丢弃已录内容，普通切换则走正常收尾（剩余语音仍会上屏）
+            if (showBuiltInVoice) voiceInputController.stop() else voiceInputController.destroy()
+        }
         updateKeyboardToggleButton()
         // 同步应用层 latch + 框架层 sticky 的合并状态
         systemAltSticky = service.isSystemAltSticky()

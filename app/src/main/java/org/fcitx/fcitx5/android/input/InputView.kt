@@ -689,6 +689,9 @@ class InputView(
                 )
             }
 
+            // 本地语音输入：与键盘栏麦克风按钮同一入口
+            ShortcutAction.VoiceInput -> kawaiiBar.toggleVoiceInput()
+
             // 文本编辑类：全选 / 复制 / 剪切 / 粘贴 / 全删 / 撤销 / 光标四向；
             // 选字类：选区四向扩（右 Shift + E/D/S/F）
             ShortcutAction.SelectAll,
