@@ -108,6 +108,9 @@ class IdleUi(
 
     val altLockButton = ToolButton(ctx, R.drawable.ic_alt_key_24, theme)
 
+    /** 常驻大写指示按钮（锁定时显示），与 Alt 锁定按钮同一套显示逻辑。 */
+    val capsLockButton = ToolButton(ctx, R.drawable.ic_caps_lock_24, theme)
+
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
 
     /**
@@ -185,6 +188,10 @@ class IdleUi(
             before(inputMethodButton)
             centerVertically()
         })
+        add(capsLockButton, lParams(size, size) {
+            before(altLockButton)
+            centerVertically()
+        })
         add(animator, lParams(matchConstraints, matchParent) {
             after(menuButton)
             before(altLockButton)
@@ -251,6 +258,16 @@ class IdleUi(
         } else {
             altLockButton.visibility = View.GONE
             altLockButton.contentDescription = ctx.getString(R.string.alt_lock_disabled)
+        }
+    }
+
+    fun updateCapsLockButton(locked: Boolean) {
+        if (locked) {
+            capsLockButton.visibility = View.VISIBLE
+            capsLockButton.contentDescription = ctx.getString(R.string.caps_lock_enabled)
+        } else {
+            capsLockButton.visibility = View.GONE
+            capsLockButton.contentDescription = ctx.getString(R.string.caps_lock_disabled)
         }
     }
 

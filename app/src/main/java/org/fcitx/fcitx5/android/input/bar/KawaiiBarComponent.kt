@@ -276,6 +276,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         idleUi.updateAltLockButton(isAltLockedOrSticky)
     }
 
+    fun onCapsLatchChanged(latched: Boolean) {
+        idleUi.updateCapsLockButton(latched)
+    }
+
     fun onSystemAltStickyChanged(sticky: Boolean) {
         systemAltSticky = sticky
         idleUi.updateAltLockButton(isAltLockedOrSticky)

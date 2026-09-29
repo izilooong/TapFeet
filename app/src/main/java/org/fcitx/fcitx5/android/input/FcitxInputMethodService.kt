@@ -1417,6 +1417,24 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         inputView?.onAltLatchChanged(locked)
     }
 
+    // ===== 常驻大写（Caps Lock） =====
+
+    fun isCapsLatched(): Boolean = hardwareKeyDispatch.capsLatched
+
+    fun toggleCapsLatch() {
+        setCapsLatched(!hardwareKeyDispatch.capsLatched)
+    }
+
+    /** 常驻大写开关（设置：hardwareKeyboard.capsLockEnabled）。 */
+    private fun capsLockEnabled(): Boolean =
+        AppPrefs.getInstance().hardwareKeyboard.capsLockEnabled.getValue()
+
+    private fun setCapsLatched(locked: Boolean) {
+        if (hardwareKeyDispatch.capsLatched == locked) return
+        hardwareKeyDispatch.capsLatched = locked
+        inputView?.onCapsLatchChanged(locked)
+    }
+
     private fun setSystemAltSticky(sticky: Boolean) {
         if (systemAltSticky == sticky) return
         systemAltSticky = sticky
@@ -1529,6 +1547,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         if (physicalShiftDown) {
             meta = meta or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+        }
+        if (hardwareKeyDispatch.capsLatched) {
+            // 常驻大写：给后续按键注入 CapsLock 状态，fcitx5 据此输出大写
+            // （与虚拟键盘 CapsAction → switchCapsState 走同一套 KeyState.CapsLock 机制）
+            meta = meta or KeyEvent.META_CAPS_LOCK_ON
         }
         if (meta == event.metaState) return event
         return KeyEvent(
@@ -1652,6 +1675,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Alt-latch 双击锁状态机 → HardwareKeyDispatch（持有 altLatched / lastAltTapEventTime /
         // altLatchConsumedThisGesture / altDownStartTime 等内部状态）。命中消费返回 true，否则继续下行。
         hardwareKeyDispatch.dispatchAltLatchDown(keyCode, event, wasAltDown)?.let { return it }
+
+        // Caps-latch 常驻大写状态机（长按/双击 Shift 锁定、CapsLock 键切换）。命中消费返回 true。
+        hardwareKeyDispatch.dispatchCapsDown(keyCode, event)?.let { return it }
 
         // ===== 符号窗口打开时：物理键盘直接选符号（BlackBerry SYM 面板） =====
         // 必须在下方长按键帽符号检测之前拦截：符号窗口打开时按字母键应选符号，
@@ -1793,6 +1819,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Alt-latch key-up 处理 → HardwareKeyDispatch（命中消费返回 true/false 结束 onKeyUp，
         // 非 latch 键返回 null 让主函数继续）。
         hardwareKeyDispatch.dispatchAltLatchUp(keyCode, event)?.let { return it }
+        // Caps-latch key-up：短按补发 / 长按锁定 / 解锁手势收尾。
+        hardwareKeyDispatch.dispatchCapsUp(keyCode, event)?.let { return it }
         // tap-hold 收尾：符号键按下时被 [HardwareChord.armSymbolTap] 挂起（物理模式的调用点在
         // onKeyDown 的派发链最前，虚拟模式在 InputView 的两个符号键入口），若这次手势没被任何和弦
         // 用掉，就在这里补上「轻按」那一下。**必须放在下面 consumedHardwareCandidateShortcutKeys
@@ -1947,6 +1975,140 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 return false
             }
             return null
+        }
+
+        // ===== Caps-latch 常驻大写状态 =====
+        // capsLatched 被服务侧（withInjectedModifiers / isCapsLatched / setCapsLatched）直接读写。
+        var capsLatched = false
+        private var capsDownStartTime = 0L
+        private var capsUsedWithOtherKey = false
+        private var lastCapsTapEventTime = 0L
+        private var lastCapsKeyCode = KeyEvent.KEYCODE_SHIFT_LEFT
+        private var pendingCapsReplay: Runnable? = null
+        private val capsDoubleTapTimeoutMs = 300L
+        private val capsHoldThresholdMs = 500L
+        private var capsConsumedThisGesture = false
+
+        private fun isCapsLatchKeyCode(keyCode: Int) =
+            keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT
+
+        /**
+         * 常驻大写 key-down 状态机。
+         * 交互（与 Alt-latch 同构、对齐手机输入法惯例）：
+         *  - 长按 Shift ≥500ms → 锁定大写；
+         *  - 双击 Shift（300ms 内两下）→ 锁定大写；纯 Shift 的第一击延迟 300ms 合成补发，
+         *    单击的原有行为（如拼音模式中英切换）不丢、也不增加感知延迟之外的副作用；
+         *  - 锁定后再点一下 Shift → 解锁（整击消费）；
+         *  - Caps Lock 物理键 → 直接切换。
+         * @return true = 本次按下被消费；null = 未消费，继续下行派发。
+         */
+        fun dispatchCapsDown(keyCode: Int, event: KeyEvent): Boolean? {
+            if (!capsLockEnabled()) {
+                if (capsLatched) setCapsLatched(false)
+                return null
+            }
+            if (keyCode == KeyEvent.KEYCODE_CAPS_LOCK && event.repeatCount == 0) {
+                setCapsLatched(!capsLatched)
+                lastCapsTapEventTime = 0L
+                return true
+            }
+            if (!isCapsLatchKeyCode(keyCode)) {
+                // Shift 按住期间来了别的键：这是一次修饰键/和弦使用，不是"轻按"
+                if (capsDownStartTime > 0L) capsUsedWithOtherKey = true
+                return null
+            }
+            if (event.repeatCount > 0) return true // 吞掉 Shift 自动重复
+            val now = event.eventTime
+            if (capsLatched) {
+                // 已锁定：轻按 Shift = 解锁（整击消费，不再触发单击行为）
+                setCapsLatched(false)
+                lastCapsTapEventTime = 0L
+                capsConsumedThisGesture = true
+                capsDownStartTime = 0L
+                return true
+            }
+            if (lastCapsTapEventTime > 0L && now - lastCapsTapEventTime <= capsDoubleTapTimeoutMs) {
+                // 双击第二击：锁定；取消第一击的延迟补发
+                cancelCapsReplay()
+                setCapsLatched(true)
+                lastCapsTapEventTime = 0L
+                capsConsumedThisGesture = true
+                capsDownStartTime = 0L
+                return true
+            }
+            capsDownStartTime = now
+            capsUsedWithOtherKey = false
+            lastCapsKeyCode = keyCode
+            if (inputView?.isHardwareShortcutKey(event) == true) {
+                // 这个 Shift 同时绑了候选/翻页（如 Q25 的 Shift_R=候选5）：放行保住原有功能；
+                // 轻按在 up 侧参与双击判定（其候选选择副作用照旧，可接受）
+                lastCapsTapEventTime = now
+                return null
+            }
+            // 纯 Shift：先消费，up 时判定 短按(延迟补发保单击行为) / 长按(锁定)
+            capsConsumedThisGesture = true
+            return true
+        }
+
+        /**
+         * 常驻大写 key-up。
+         * @return true = 收尾完成结束 onKeyUp；null = 继续下行。
+         */
+        fun dispatchCapsUp(keyCode: Int, event: KeyEvent): Boolean? {
+            if (!capsLockEnabled() || !isCapsLatchKeyCode(keyCode)) return null
+            if (capsConsumedThisGesture) {
+                capsConsumedThisGesture = false
+                classifyCapsGesture(event, consumed = true)
+                return true
+            }
+            if (capsDownStartTime > 0L) {
+                classifyCapsGesture(event, consumed = false)
+            }
+            capsDownStartTime = 0L
+            return null
+        }
+
+        private fun classifyCapsGesture(event: KeyEvent, consumed: Boolean) {
+            if (!capsUsedWithOtherKey && capsDownStartTime > 0L) {
+                val held = event.eventTime - capsDownStartTime
+                if (held >= capsHoldThresholdMs) {
+                    // 长按 Shift：锁定常驻大写
+                    cancelCapsReplay()
+                    setCapsLatched(true)
+                    lastCapsTapEventTime = 0L
+                    return
+                }
+                // 短按轻触：记录双击窗口；纯 Shift 的第一击延迟补发（保住单击行为）
+                lastCapsTapEventTime = event.eventTime
+                if (consumed) scheduleCapsTapReplay()
+            }
+            capsUsedWithOtherKey = false
+        }
+
+        /** 纯 Shift 轻按被消费后，300ms 内没有第二击才合成补发给 fcitx5（单击语义不丢）。 */
+        private fun scheduleCapsTapReplay() {
+            cancelCapsReplay()
+            val code = lastCapsKeyCode
+            val meta = if (code == KeyEvent.KEYCODE_SHIFT_RIGHT) {
+                KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_RIGHT_ON
+            } else {
+                KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+            }
+            val r = Runnable {
+                pendingCapsReplay = null
+                if (!capsLatched) {
+                    val t = android.os.SystemClock.uptimeMillis()
+                    forwardKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, code, 0, meta, -1, 0, 0, 0))
+                    forwardKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_UP, code, 0, meta, -1, 0, 0, 0))
+                }
+            }
+            pendingCapsReplay = r
+            mainHandler.postDelayed(r, capsDoubleTapTimeoutMs)
+        }
+
+        private fun cancelCapsReplay() {
+            pendingCapsReplay?.let { mainHandler.removeCallbacks(it) }
+            pendingCapsReplay = null
         }
 
         /**

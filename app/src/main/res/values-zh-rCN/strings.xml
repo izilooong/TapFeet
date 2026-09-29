@@ -67,6 +67,10 @@
     <string name="hw_symbol_picker">打开快捷窗口</string>
     <string name="hw_alt_latch">Alt 锁定</string>
     <string name="hw_alt_latch_summary">双击锁定键可保持 Alt 按下状态。</string>
+    <string name="hw_caps_lock">Shift 锁定大写</string>
+    <string name="hw_caps_lock_summary">长按或双击 Shift 锁定大写，再点一下 Shift 解锁；Caps Lock 键可直接切换。</string>
+    <string name="caps_lock_enabled">大写锁定已开启</string>
+    <string name="caps_lock_disabled">大写锁定已关闭</string>
     <string name="hw_alt_latch_key">Alt 锁定键（双击）</string>
     <string name="hw_alt_delete_line">Alt + Del 删除整行</string>
     <string name="hw_alt_delete_line_summary">Alt + Del / 退格删除整行。</string>

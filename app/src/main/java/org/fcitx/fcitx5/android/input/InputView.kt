@@ -467,6 +467,10 @@ class InputView(
         kawaiiBar.onAltLatchChanged(locked)
     }
 
+    fun onCapsLatchChanged(locked: Boolean) {
+        kawaiiBar.onCapsLatchChanged(locked)
+    }
+
     fun onSystemAltStickyChanged(sticky: Boolean) {
         kawaiiBar.onSystemAltStickyChanged(sticky)
     }

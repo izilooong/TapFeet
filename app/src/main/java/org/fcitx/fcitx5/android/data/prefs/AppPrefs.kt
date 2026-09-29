@@ -538,6 +538,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
         // Double-tap the latch key to lock the Alt modifier. Default ON.
         val altLatchEnabled = bool("hw_alt_latch_enabled", true)
+
+        // 常驻大写（Caps Lock）：长按 Shift（≥500ms）或双击 Shift 锁定，再点一下 Shift 解锁；
+        // 报告 Caps Lock 键的机型可直接按 Caps Lock 切换。默认 ON。
+        val capsLockEnabled = bool("hw_caps_lock_enabled", true)
         // Which physical key, when double-tapped, latches (locks) the Alt modifier.
         // fcitx5 portableString. Default value left empty: the real default ("Alt_L" for blackberry,
         // "Alt_R" for tt2) is owned by [HardwareKeyProfiles] and written by [ensureInitialized].
