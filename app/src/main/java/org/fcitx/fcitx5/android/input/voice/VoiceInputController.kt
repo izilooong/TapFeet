@@ -66,11 +66,21 @@ class VoiceInputController(
     private var sessionText = ""
 
     /**
-     * 最近 0.5s 的音频（VAD 切段点之前的前文）。识别前垫在段首：
-     * VAD 切得太贴边会丢句首字（sherpa-onnx#2746，官方建议前后各 pad 0.5s）。
+     * 会话代际：start/destroy 递增。stop 的收尾协程在上屏/改状态前核对自己那代，
+     * 防止「切字段后旧会话的识别结果迟到上屏/把状态打回 Idle」的竞态（文字串输入框）。
      */
     @Volatile
-    private var preroll = FloatArray(0)
+    private var sessionId = 0
+
+    // 录音循环复用的转换缓冲与前文缓冲：每 0.1s 的音频不再各 new 一个数组（低端机 GC 抖动）
+    private val chunkFloats = FloatArray(SAMPLE_RATE / 10)
+    private val prerollBuf = FloatArray(PRE_ROLL_SAMPLES)
+    private var prerollLen = 0
+
+    /** 会话结束 60s 无新会话就释放识别器（约 300MB 内存），避免常驻拖累整机流畅度。 */
+    private val releaseRecognizerRunnable = Runnable {
+        scope.launch { VoiceRecognizer.release() }
+    }
 
     private var recorder: AudioRecord? = null
     private var vad: Vad? = null
@@ -127,7 +137,9 @@ class VoiceInputController(
         vad = localVad
         recording = true
         sessionText = ""
-        preroll = FloatArray(0)
+        sessionId += 1
+        prerollLen = 0
+        mainHandler.removeCallbacks(releaseRecognizerRunnable)
         // 预热识别器：与录音并行，用户说完第一句时通常已就绪
         preload()
         captureJob = scope.launch(Dispatchers.IO) {
@@ -143,6 +155,7 @@ class VoiceInputController(
     fun stop() {
         if (state != State.Recording) return
         recording = false
+        val mySession = sessionId
         setState(State.Recognizing)
         scope.launch(Dispatchers.IO) {
             try {
@@ -173,8 +186,14 @@ class VoiceInputController(
             synchronized(pendingRecognitions) { pendingRecognitions.clear() }
             val text = sessionText
             sessionText = ""
-            mainHandler.post { onSessionEnd(text) }
-            setState(State.Idle)
+            if (mySession == sessionId) {
+                mainHandler.post { onSessionEnd(text) }
+                setState(State.Idle)
+                // 空闲释放：60s 内没有新会话就把 ~300MB 的识别器放掉
+                mainHandler.removeCallbacks(releaseRecognizerRunnable)
+                mainHandler.postDelayed(releaseRecognizerRunnable, RECOGNIZER_IDLE_RELEASE_MS)
+            }
+            // 过期会话（已被 destroy 顶替）：什么都别做，避免迟到上屏/状态回退
         }
     }
 
@@ -185,6 +204,7 @@ class VoiceInputController(
     @Synchronized
     fun destroy() {
         recording = false
+        sessionId += 1 // 顶掉在途的 stop 收尾协程
         captureJob?.cancel()
         captureJob = null
         vad?.let {
@@ -198,9 +218,11 @@ class VoiceInputController(
         recorder = null
         synchronized(pendingRecognitions) { pendingRecognitions.forEach { it.cancel() } }
         synchronized(pendingRecognitions) { pendingRecognitions.clear() }
-        preroll = FloatArray(0)
+        prerollLen = 0
         sessionText = ""
-        VoiceRecognizer.release()
+        // 识别器释放放到后台：若此刻有识别任务正持有它的锁，主线程等锁会卡顿
+        mainHandler.removeCallbacks(releaseRecognizerRunnable)
+        scope.launch { VoiceRecognizer.release() }
         mainHandler.post { onSessionEnd("") }
         setState(State.Idle)
     }
@@ -245,14 +267,17 @@ class VoiceInputController(
                     mainHandler.post { stop() }
                     break
                 }
-                val samples = FloatArray(n) { buf[it] / 32768f }
+                // 就地转换到复用缓冲（不分配）
+                for (i in 0 until n) chunkFloats[i] = buf[i] / 32768f
                 // 音量动画：RMS 映射到 0..1
                 var sum = 0f
-                for (s in samples) sum += s * s
+                for (i in 0 until n) sum += chunkFloats[i] * chunkFloats[i]
                 val rms = sqrt(sum / n)
                 mainHandler.post { onAudioLevel((rms * 4f).coerceIn(0f, 1f)) }
-                preroll = (preroll + samples).takeLast(PRE_ROLL_SAMPLES).toFloatArray()
-                localVad.acceptWaveform(samples)
+                appendPreroll(chunkFloats, n)
+                localVad.acceptWaveform(
+                    if (n == chunkFloats.size) chunkFloats else chunkFloats.copyOf(n)
+                )
                 if (localVad.isSpeechDetected()) {
                     lastVoiceMs = elapsedMs
                 }
@@ -272,6 +297,22 @@ class VoiceInputController(
         }
     }
 
+    /** 滚动保留最近 [PRE_ROLL_SAMPLES] 个采样的前文（就地搬移，不分配）。 */
+    private fun appendPreroll(samples: FloatArray, n: Int) {
+        if (n >= PRE_ROLL_SAMPLES) {
+            System.arraycopy(samples, n - PRE_ROLL_SAMPLES, prerollBuf, 0, PRE_ROLL_SAMPLES)
+            prerollLen = PRE_ROLL_SAMPLES
+            return
+        }
+        if (prerollLen + n > PRE_ROLL_SAMPLES) {
+            val keep = PRE_ROLL_SAMPLES - n
+            System.arraycopy(prerollBuf, prerollLen - keep, prerollBuf, 0, keep)
+            prerollLen = keep
+        }
+        System.arraycopy(samples, 0, prerollBuf, prerollLen, n)
+        prerollLen += n
+    }
+
     /** 取出 VAD 已切出的完整语音段，垫上 0.5s 前文后识别，累积进会话文本并发出预览。 */
     private fun drainVad(localVad: Vad) {
         while (!localVad.empty()) {
@@ -279,7 +320,8 @@ class VoiceInputController(
             localVad.pop()
             val samples = segment.samples
             if (samples.size < MIN_SEGMENT_SAMPLES) continue
-            val padded = preroll + samples
+            val pre = if (prerollLen > 0) prerollBuf.copyOf(prerollLen) else FloatArray(0)
+            val padded = pre + samples
             val job = scope.launch(recognizeDispatcher) {
                 val text = VoiceRecognizer.recognize(padded)
                 if (!text.isNullOrEmpty()) {
@@ -302,5 +344,6 @@ class VoiceInputController(
         private const val MIN_SEGMENT_SAMPLES = 400 // 25ms
         private const val PRE_ROLL_SAMPLES = 8000 // 0.5s
         private const val MAX_SESSION_MS = 120_000L
+        private const val RECOGNIZER_IDLE_RELEASE_MS = 60_000L
     }
 }

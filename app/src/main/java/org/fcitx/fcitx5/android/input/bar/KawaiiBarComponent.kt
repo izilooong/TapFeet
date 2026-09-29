@@ -770,8 +770,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         val showBuiltInVoice = builtInVoiceInput && !capFlags.has(CapabilityFlag.Password)
         idleUi.voiceInputSlot.visibility = if (showBuiltInVoice) View.VISIBLE else View.GONE
         if (voiceInputController.state != VoiceInputController.State.Idle) {
-            // 密码框直接丢弃已录内容，普通切换则走正常收尾（剩余语音仍会上屏）
-            if (showBuiltInVoice) voiceInputController.stop() else voiceInputController.destroy()
+            // 切输入框一律丢弃进行中的会话：stop 的迟到识别结果会提交到【新】输入框（文字串字段），
+            // 丢弃比错位上屏安全得多
+            voiceInputController.destroy()
         }
         // 微信自动弹键盘（默认关）：聊天页输入框拿到焦点就请求显示输入法
         if (autoShowKeyboard && !capFlags.has(CapabilityFlag.Password) &&
