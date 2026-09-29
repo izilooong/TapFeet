@@ -1826,12 +1826,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         lastHardwareKeyAt = SystemClock.elapsedRealtime()
         KeyProbeLog.record(event)
 
+        // Track physical modifier state from the raw stream BEFORE any early return.
+        // If a modifier key is pressed while a KeyCapture dialog is open, the dialog's early
+        // return below skips this update, leaving physicalAltDown/physicalShiftDown/physicalCtrlDown
+        // stuck at true. Every subsequent letter then arrives with a phantom modifier and fcitx5
+        // routes it as a combo, producing the same candidates regardless of what the user types.
+        updatePhysicalModifiers(keyCode, false)
+
         if (currentInputEditorInfo.privateImeOptions?.contains(KeyCaptureFlag) == true) {
             return false
         }
-
-        // Track physical modifier state from the raw stream (authoritative for combo matching).
-        updatePhysicalModifiers(keyCode, false)
 
         // 伪修饰键抬起：清掉按住状态。放在最前面 —— 下面几条路径都可能提前 return
         // （长按符号 fired、Alt 锁定消费），漏清一次就是把「Fn 按着」永久留在那儿，
