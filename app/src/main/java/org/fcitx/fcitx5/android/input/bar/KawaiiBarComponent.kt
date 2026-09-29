@@ -8,6 +8,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
+import android.os.SystemClock
 import android.util.Size
 import android.view.KeyEvent
 import android.view.View
@@ -138,6 +139,16 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private var hideKeyboardOnNextKeyboardAttach = false
     private var altLatched = false
     private var systemAltSticky = false
+
+    /** 用户主动收起键盘的时刻（微信自动获取焦点的冷却依据：刚关掉不许再顶回来）。 */
+    private var lastUserHideAt = 0L
+
+    /** 上次微信自动获取焦点的时刻（防 onStartInput 重启风暴反复拉起）。 */
+    private var lastAutoShowAt = 0L
+
+    private fun noteUserHide() {
+        lastUserHideAt = SystemClock.uptimeMillis()
+    }
 
     /** 应用层 latch + 框架层 sticky 的合并显示态。 */
     private val isAltLockedOrSticky: Boolean
@@ -286,11 +297,13 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     }
 
     private val hideKeyboardCallback = View.OnClickListener {
+        noteUserHide()
         service.requestHideSelf(0)
     }
 
     private val swipeDownExpandCallback = CustomGestureView.OnGestureListener { _, e ->
         if (e.type == CustomGestureView.GestureType.Up && e.totalY > 0) {
+            noteUserHide()
             service.requestHideSelf(0)
             true
         } else false
@@ -491,6 +504,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             keyboardToggleButton.setOnClickListener {
                 // 主键盘开关：显示中且是主键盘 → 关闭；否则 → 打开主键盘
                 if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                    noteUserHide()
                     windowManager.setKeyboardWindowVisible(false)
                 } else {
                     windowManager.setKeyboardWindowVisible(true)
@@ -571,6 +585,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             keyboardToggleButton.setOnClickListener {
                 // 主键盘开关：显示中且是主键盘 → 关闭；否则 → 打开主键盘
                 if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                    noteUserHide()
                     windowManager.setKeyboardWindowVisible(false)
                 } else {
                     windowManager.setKeyboardWindowVisible(true)
@@ -774,16 +789,27 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             // 丢弃比错位上屏安全得多
             voiceInputController.destroy()
         }
-        // 微信自动弹键盘（默认关）：聊天页输入框拿到焦点就请求显示输入法
+        // 微信自动获取输入焦点（默认关）：目标是「能直接用物理键盘打字」，不是弹虚拟键盘。
+        // requestShowSelf 把输入会话带起来后立刻收起虚拟键盘面板；两道冷却防止把用户刚关掉的
+        // 键盘又顶回来（onStartInput 会因编辑器重启反复触发，"打开就关不了"就是它）。
         if (autoShowKeyboard && !capFlags.has(CapabilityFlag.Password) &&
             info.packageName == WECHAT_PACKAGE
         ) {
-            service.requestShowSelf(0)
+            val now = SystemClock.uptimeMillis()
+            if (now - lastUserHideAt > USER_HIDE_COOLDOWN_MS &&
+                now - lastAutoShowAt > AUTO_SHOW_COOLDOWN_MS
+            ) {
+                lastAutoShowAt = now
+                service.requestShowSelf(0)
+                windowManager.setKeyboardWindowVisible(false)
+                updateKeyboardToggleButton()
+            }
         }
         updateKeyboardToggleButton()
         // 同步应用层 latch + 框架层 sticky 的合并状态
         systemAltSticky = service.isSystemAltSticky()
         idleUi.updateAltLockButton(isAltLockedOrSticky)
+        idleUi.updateCapsLockButton(service.isCapsLatched())
         fcitx.launchOnReady {
             updateInputMethodIcon(it.inputMethodEntryCached)
         }
@@ -899,8 +925,14 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     companion object {
         const val HEIGHT = 40
 
-        /** 「微信自动弹出键盘」的目标应用包名。 */
+        /** 「微信自动获取输入焦点」的目标应用包名。 */
         private const val WECHAT_PACKAGE = "com.tencent.mm"
+
+        /** 用户主动收起键盘后，多久内不再自动获取焦点（防"刚关掉又被顶回来"）。 */
+        private const val USER_HIDE_COOLDOWN_MS = 10_000L
+
+        /** 两次自动获取焦点的最小间隔（防编辑器重启风暴）。 */
+        private const val AUTO_SHOW_COOLDOWN_MS = 5_000L
     }
 
     fun onKeyboardLayoutSwitched(isNumber: Boolean) {

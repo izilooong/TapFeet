@@ -399,8 +399,8 @@
     <string name="show_voice_input_button">显示语音输入按钮</string>
     <string name="local_voice_input">本地语音输入（SenseVoice）</string>
     <string name="local_voice_input_summary">在工具栏显示麦克风按钮，离线语音转文字。首次使用时下载模型（约 230 MB）。</string>
-    <string name="auto_show_keyboard">微信自动弹出键盘</string>
-    <string name="auto_show_keyboard_summary">进入微信聊天页、输入框获得焦点时自动弹出输入法（实验性）</string>
+    <string name="auto_show_keyboard">微信自动获取输入焦点</string>
+    <string name="auto_show_keyboard_summary">进入微信聊天页自动激活输入法，物理键盘可直接打字（不弹出虚拟键盘，实验性）</string>
     <string name="voice_auto_stop">静音自动结束录音</string>
     <string name="voice_auto_stop_summary">停止说话后自动结束本次录音</string>
     <string name="voice_auto_stop_seconds">静音时长</string>
