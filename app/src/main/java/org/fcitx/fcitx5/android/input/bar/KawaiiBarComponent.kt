@@ -127,9 +127,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val expandedCandidateStyle by prefs.keyboard.expandedCandidateStyle
     private val expandToolbarByDefault by prefs.keyboard.expandToolbarByDefault
     private val toolbarNumRowOnPassword by prefs.keyboard.toolbarNumRowOnPassword
-    private val showVoiceInputButton by prefs.keyboard.showVoiceInputButton
-    private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
-    private val builtInVoiceInput by prefs.keyboard.builtInVoiceInput
+    private val showVoiceInputButton by prefs.voice.showVoiceInputButton
+    private val preferredVoiceInput by prefs.voice.preferredVoiceInput
+    private val builtInVoiceInput by prefs.voice.builtInVoiceInput
     private val autoShowKeyboard by prefs.keyboard.autoShowKeyboardWeChat
     /** 「隐藏状态栏」：空闲时把整条 40dp 横条收起，只收这一行，键盘本体不动。 */
     private val hideStatusBar by prefs.candidateBar.hideStatusBar

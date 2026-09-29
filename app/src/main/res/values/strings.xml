@@ -424,6 +424,17 @@
     <string name="voice_input_model_download_error">Voice model download failed</string>
     <string name="voice_input_permission_required">Microphone permission is required for voice input</string>
     <string name="voice_input_unavailable">Voice input is unavailable</string>
+    <string name="cat_voice_input">Voice settings</string>
+    <string name="voice_model_management">Model management</string>
+    <string name="voice_model_status">Model status</string>
+    <string name="voice_model_download">Download model</string>
+    <string name="voice_model_redownload_summary">Tap to re-download</string>
+    <string name="voice_model_delete">Delete model</string>
+    <string name="voice_model_delete_confirm">Delete the local voice model? About 230 MB will be freed; you\'ll need to download it again to use voice input.</string>
+    <string name="voice_model_ready">Ready (%s)</string>
+    <string name="voice_model_not_downloaded">Not downloaded</string>
+    <string name="voice_model_downloading">Downloading… %d%%</string>
+    <string name="voice_model_error">Download failed: %s</string>
     <string name="fcitx_daemon">Fcitx Daemon</string>
     <string name="restarting_fcitx">Restarting Fcitx</string>
     <string name="plugin_needs_reload">Plugin changes detected, click here to reload</string>
@@ -580,7 +591,7 @@
     <string name="cat_keyboard_feedback_vibration">Vibration</string>
     <string name="cat_keyboard_feedback_sound">Sound</string>
     <string name="cat_keyboard_layout">Layout</string>
-    <string name="cat_keyboard_voice_swipe">Voice &amp; Swipe</string>
+    <string name="cat_keyboard_swipe">Swipe</string>
     <string name="cat_keyboard_space_lang">Space &amp; Language</string>
     <string name="cat_keyboard_size">Size</string>
     <string name="cat_keyboard_candidate">Candidate Style</string>
