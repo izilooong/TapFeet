@@ -359,6 +359,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                             }
                             return@event
                         }
+                        if (interceptHardwareEnter(keyEvent)) return@event
                         currentInputConnection?.sendKeyEvent(keyEvent)
                         return@event
                     }
@@ -484,23 +485,67 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun handleReturnKey() {
-        currentInputEditorInfo.run {
-            if (inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL ||
-                imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_ENTER_ACTION)
-            ) {
-                sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-                return
-            }
-            if (actionLabel?.isNotEmpty() == true && actionId != EditorInfo.IME_ACTION_UNSPECIFIED) {
-                currentInputConnection.performEditorAction(actionId)
-                return
-            }
-            when (val action = imeOptions and EditorInfo.IME_MASK_ACTION) {
-                EditorInfo.IME_ACTION_UNSPECIFIED,
-                EditorInfo.IME_ACTION_NONE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-                else -> currentInputConnection.performEditorAction(action)
-            }
+        val action = editorActionForReturn()
+        if (action == null) {
+            sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
+        } else {
+            currentInputConnection?.performEditorAction(action)
         }
+    }
+
+    /**
+     * 回车在当前编辑器上应执行的编辑器动作（发送 / 搜索 / 前往…）；null = 应发原始 ENTER
+     * （多行换行、TYPE_NULL 的游戏、编辑器没声明动作）。
+     * 虚拟回车（[handleReturnKey]）与物理回车（[interceptHardwareEnter]）共用这一份判定。
+     */
+    private fun editorActionForReturn(): Int? {
+        val info = currentInputEditorInfo ?: return null
+        if (info.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL ||
+            info.imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_ENTER_ACTION)
+        ) {
+            return null
+        }
+        if (info.actionLabel?.isNotEmpty() == true && info.actionId != EditorInfo.IME_ACTION_UNSPECIFIED) {
+            return info.actionId
+        }
+        return when (val action = info.imeOptions and EditorInfo.IME_MASK_ACTION) {
+            EditorInfo.IME_ACTION_UNSPECIFIED,
+            EditorInfo.IME_ACTION_NONE -> null
+            else -> action
+        }
+    }
+
+    /** 物理回车的按下已换成编辑器动作：同一次按键的自动重复与抬起一并吞掉，不给编辑器留孤立事件。 */
+    private var hardwareEnterAsAction = false
+
+    /**
+     * fcitx 没有消费的物理回车 → 编辑器动作。
+     *
+     * 虚拟回车由 [handleReturnKey] 按 imeOptions 调 performEditorAction；物理回车原先却把裸
+     * KEYCODE_ENTER 回吐给编辑器。微信聊天框只认 performEditorAction(IME_ACTION_SEND)，
+     * 裸回车发不出去。接管点放在引擎放行之后：有 preedit 时回车归引擎（拼音下上屏原始字母），
+     * 根本走不到这里。带 Shift / Alt / Ctrl 的回车照旧回吐，Shift+回车换行留给编辑器。
+     */
+    private fun interceptHardwareEnter(keyEvent: KeyEvent): Boolean {
+        if (keyEvent.keyCode != KeyEvent.KEYCODE_ENTER &&
+            keyEvent.keyCode != KeyEvent.KEYCODE_NUMPAD_ENTER
+        ) {
+            return false
+        }
+        if (keyEvent.action == KeyEvent.ACTION_UP) {
+            if (!hardwareEnterAsAction) return false
+            hardwareEnterAsAction = false
+            return true
+        }
+        if (keyEvent.repeatCount > 0) return hardwareEnterAsAction
+        hardwareEnterAsAction = false
+        val modifiers = KeyEvent.META_SHIFT_ON or KeyEvent.META_ALT_ON or KeyEvent.META_CTRL_ON
+        if (keyEvent.metaState and modifiers != 0) return false
+        val action = editorActionForReturn() ?: return false
+        val ic = currentInputConnection ?: return false
+        ic.performEditorAction(action)
+        hardwareEnterAsAction = true
+        return true
     }
 
     private fun handleArrowKey(keyCode: Int) {

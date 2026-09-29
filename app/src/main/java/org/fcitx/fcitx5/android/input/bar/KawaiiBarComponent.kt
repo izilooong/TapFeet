@@ -498,6 +498,16 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 swipeThresholdX = swipeThresholdY
                 onGestureListener = swipeHideKeyboardCallback
             }
+            // 「开始」与「结束」必须挂在**两个**宿主上，因为录音时可见的子 View 会换人：
+            //  - voiceInputButton 是 ToolButton(CustomGestureView)，其 onTouchEvent 无条件
+            //    return true —— 它会把落在自己身上的一切触摸吃掉，监听只挂在 slot 上时点击
+            //    永远到不了父容器，表现就是「麦克风按钮看得见、点了没反应」（进不去录音态，
+            //    于是音浪动画与流式上屏也都无从发生）；
+            //  - 录音中按钮 GONE、VoiceWaveView(普通 View，不可点) 显示，事件才穿透到 slot。
+            // 两者按可见性天然互斥，不会双触发。
+            voiceInputButton.setOnClickListener {
+                toggleVoiceInput()
+            }
             voiceInputSlot.setOnClickListener {
                 toggleVoiceInput()
             }
