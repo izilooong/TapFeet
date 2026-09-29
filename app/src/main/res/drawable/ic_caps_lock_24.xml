@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <!-- Caps Lock: 上箭头块 + 底横杠 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,3 L19,11 H15.2 V13.6 H8.8 V11 H5 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M5.5,16.2 H18.5 V18.8 H5.5 Z" />
+</vector>

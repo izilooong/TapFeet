@@ -256,6 +256,17 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         altScreen.addPreference(altLatchKeyPref)
         keyPrefs.add(altLatchKeyPref)
 
+        // 常驻大写：长按/双击 Shift 锁定，再点 Shift 解锁；Caps Lock 物理键直接切换。默认 ON。
+        val capsLockSwitch = SwitchPreference(context).apply {
+            key = hw.capsLockEnabled.key
+            title = getString(R.string.hw_caps_lock)
+            summary = getString(R.string.hw_caps_lock_summary)
+            setDefaultValue(hw.capsLockEnabled.getValue())
+            isChecked = hw.capsLockEnabled.getValue()
+            isIconSpaceReserved = false
+        }
+        altScreen.addPreference(capsLockSwitch)
+
         // Alt+Delete / Alt+Backspace deletes the whole line (terminal kill-line) instead of a
         // single character. Default OFF preserves the classic mobile delete-one-char behaviour.
         val altDeleteLineSwitch = SwitchPreference(context).apply {

@@ -13,6 +13,7 @@ import androidx.preference.PreferenceManager
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.InputFeedbacks.InputFeedbackMode
 import org.fcitx.fcitx5.android.data.InputFeedbacks.SoundScheme
+import org.fcitx.fcitx5.android.data.voice.VoiceLanguage
 import org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesOrientation
@@ -152,6 +153,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         init { category(R.string.cat_keyboard_layout) }
         val focusChangeResetKeyboard =
             switch(R.string.reset_keyboard_on_focus_change, "reset_keyboard_on_focus_change", true)
+        val autoShowKeyboardWeChat = switch(
+            R.string.auto_show_keyboard, "auto_show_keyboard_wechat", false,
+            R.string.auto_show_keyboard_summary
+        )
         val expandToolbarByDefault =
             switch(R.string.expand_toolbar_by_default, "expand_toolbar_by_default", false)
         val inlineSuggestions = switch(R.string.inline_suggestions, "inline_suggestions", true)
@@ -165,6 +170,23 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         )
 
         init { category(R.string.cat_keyboard_voice_swipe) }
+        val builtInVoiceInput =
+            switch(
+                R.string.local_voice_input, "built_in_voice_input", true,
+                R.string.local_voice_input_summary
+            )
+        val voiceAutoStop =
+            switch(
+                R.string.voice_auto_stop, "voice_auto_stop", false,
+                R.string.voice_auto_stop_summary
+            )
+        val voiceAutoStopSeconds = int(
+            R.string.voice_auto_stop_seconds, "voice_auto_stop_seconds",
+            3, 1, 10, "s", 1
+        ) { voiceAutoStop.getValue() }
+        val voiceLanguage = enumList(
+            R.string.voice_language, "voice_language", VoiceLanguage.Auto
+        )
         val showVoiceInputButton =
             switch(R.string.show_voice_input_button, "show_voice_input_button", false)
         val preferredVoiceInput = voiceInputPreference(
@@ -516,6 +538,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
         // Double-tap the latch key to lock the Alt modifier. Default ON.
         val altLatchEnabled = bool("hw_alt_latch_enabled", true)
+
+        // 常驻大写（Caps Lock）：长按 Shift（≥500ms）或双击 Shift 锁定，再点一下 Shift 解锁；
+        // 报告 Caps Lock 键的机型可直接按 Caps Lock 切换。默认 ON。
+        val capsLockEnabled = bool("hw_caps_lock_enabled", true)
         // Which physical key, when double-tapped, latches (locks) the Alt modifier.
         // fcitx5 portableString. Default value left empty: the real default ("Alt_L" for blackberry,
         // "Alt_R" for tt2) is owned by [HardwareKeyProfiles] and written by [ensureInitialized].
@@ -764,19 +790,25 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         fun key(action: ShortcutAction): ManagedPreference.PString = keys.getValue(action)
 
         /**
-         * 首次安装（以及从「还没有快捷键这个功能」的旧版本升级上来）时，按当前键盘预设播一套
-         * 推荐动作键。
+         * 按当前键盘预设给动作键播推荐值，**逐键守卫**：只有从未持久化过的键才播。
          *
-         * 与 [HardwareKeyboard.ensureInitialized] 同款守卫：**一个键都没持久化过**才动手，
-         * 只要有一个已存在就说明用户配过，绝不覆盖。刻意独立于那边 —— 旧安装的物理键位早已存在，
-         * 那边的守卫会直接早退，快捷键就永远播不上。
+         * 老守卫是「整套一个键都没写过才动手」——从「有快捷键但还没有某个动作」的旧版本升级时，
+         * 老动作的既有绑定会把整套守卫挡住，新动作（如语音输入）永远是空绑定，表现为
+         * 「按了没反应」。逐键判断 `contains(key)` 后：升级后新增的动作（用户从未碰过）会被
+         * 自动补上推荐键位；用户改过或清空过的键（已写入，含空串）一律不碰。
+         *
+         * ⚠️ 推荐值取自 [HardwareKeyProfiles.shortcutValuesFor]，随 `keyProfile` 预设变化。
+         * 应用数据被清（如 debug 签名覆盖安装 release 包）后预设退回默认 blackberry，
+         * 此时 Fn 系（Titan）会变成 Shift_R 系绑定 —— 需要在设置里重选键盘预设。
          */
         fun ensureInitialized() {
-            if (keys.values.any { sharedPreferences.contains(it.key) }) return
-            HardwareKeyProfiles.applyShortcutPreset(
-                AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue(),
-                AppPrefs.getInstance()
-            )
+            val profile = AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue()
+            for ((action, value) in HardwareKeyProfiles.shortcutValuesFor(profile)) {
+                val pref = keys.getValue(action)
+                if (!sharedPreferences.contains(pref.key)) {
+                    pref.setValue(value)
+                }
+            }
         }
     }
 

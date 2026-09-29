@@ -461,7 +461,13 @@ void AndroidFrontend::deactivateInputContext(const int uid) {
     auto *ptr = icCache_.find(uid);
     if (!ptr) return;
     focusGroup_.setFocusedInputContext(nullptr);
-    activeIC_ = nullptr;
+    // Only clear the active IC when it actually belongs to this uid. In rapid bind/unbind/bind
+    // cycles (app switching, multi-window), a stale deactivate job can arrive after a new IC for
+    // a different uid is already active — unconditionally clearing activeIC_ drops that new IC's
+    // FlushUI events, freezing the candidate bar while text still appears via InputConnection.
+    if (activeIC_ == dynamic_cast<AndroidInputContext *>(ptr->get())) {
+        activeIC_ = nullptr;
+    }
 }
 
 void AndroidFrontend::setCapabilityFlags(uint64_t flag) {

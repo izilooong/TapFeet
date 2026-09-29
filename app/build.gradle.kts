@@ -168,6 +168,10 @@ dependencies {
     implementation(libs.splitties.views.recyclerview)
     implementation(libs.aboutlibraries.core)
     implementation(libs.okhttp)
+    // 本地语音输入（SenseVoice via sherpa-onnx）：模型压缩包为 tar.bz2，需要解包
+    implementation(files("libs/sherpa-onnx.aar"))
+    implementation(libs.commons.compress)
+    implementation(libs.commons.io)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)

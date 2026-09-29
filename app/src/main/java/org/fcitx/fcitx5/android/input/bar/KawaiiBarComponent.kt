@@ -4,8 +4,11 @@
  */
 package org.fcitx.fcitx5.android.input.bar
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
+import android.os.SystemClock
 import android.util.Size
 import android.view.KeyEvent
 import android.view.View
@@ -19,6 +22,8 @@ import android.widget.ViewAnimator
 import android.widget.inline.InlineContentView
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -38,6 +43,7 @@ import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.voice.VoiceModelManager
 import org.fcitx.fcitx5.android.input.StatusIconMapping
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.State.ClickToAttachWindow
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.State.ClickToDetachWindow
@@ -71,11 +77,13 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
 import org.fcitx.fcitx5.android.input.PanelModule
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
+import org.fcitx.fcitx5.android.input.voice.VoiceInputController
 import org.fcitx.fcitx5.android.input.status.StatusAreaWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
 import org.fcitx.fcitx5.android.utils.AppUtil
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
+import org.fcitx.fcitx5.android.utils.toast
 
 import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.manager.must
@@ -121,6 +129,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val toolbarNumRowOnPassword by prefs.keyboard.toolbarNumRowOnPassword
     private val showVoiceInputButton by prefs.keyboard.showVoiceInputButton
     private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
+    private val builtInVoiceInput by prefs.keyboard.builtInVoiceInput
+    private val autoShowKeyboard by prefs.keyboard.autoShowKeyboardWeChat
     /** 「隐藏状态栏」：空闲时把整条 40dp 横条收起，只收这一行，键盘本体不动。 */
     private val hideStatusBar by prefs.candidateBar.hideStatusBar
 
@@ -129,6 +139,16 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private var hideKeyboardOnNextKeyboardAttach = false
     private var altLatched = false
     private var systemAltSticky = false
+
+    /** 用户主动收起键盘的时刻（微信自动获取焦点的冷却依据：刚关掉不许再顶回来）。 */
+    private var lastUserHideAt = 0L
+
+    /** 上次微信自动获取焦点的时刻（防 onStartInput 重启风暴反复拉起）。 */
+    private var lastAutoShowAt = 0L
+
+    private fun noteUserHide() {
+        lastUserHideAt = SystemClock.uptimeMillis()
+    }
 
     /** 应用层 latch + 框架层 sticky 的合并显示态。 */
     private val isAltLockedOrSticky: Boolean
@@ -267,17 +287,23 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         idleUi.updateAltLockButton(isAltLockedOrSticky)
     }
 
+    fun onCapsLatchChanged(latched: Boolean) {
+        idleUi.updateCapsLockButton(latched)
+    }
+
     fun onSystemAltStickyChanged(sticky: Boolean) {
         systemAltSticky = sticky
         idleUi.updateAltLockButton(isAltLockedOrSticky)
     }
 
     private val hideKeyboardCallback = View.OnClickListener {
+        noteUserHide()
         service.requestHideSelf(0)
     }
 
     private val swipeDownExpandCallback = CustomGestureView.OnGestureListener { _, e ->
         if (e.type == CustomGestureView.GestureType.Up && e.totalY > 0) {
+            noteUserHide()
             service.requestHideSelf(0)
             true
         } else false
@@ -349,6 +375,100 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         InputMethodUtil.switchInputMethod(service, id, subtype)
     }
 
+    /** 本地语音输入（SenseVoice）：录音 → VAD 断句 → 识别 → composing 准流式预览 → 上屏。 */
+    private val voiceInputController by lazy {
+        VoiceInputController(
+            context = context,
+            onPartialText = { service.currentInputConnection?.setComposingText(it, 1) },
+            onSessionEnd = { text ->
+                // 空串 = 取消（密码框/销毁），清掉 composing；否则整段上屏（commitText 会收走 composing）
+                if (text.isEmpty()) service.currentInputConnection?.setComposingText("", 0)
+                else service.commitText(text)
+            },
+            onStateChanged = { updateVoiceInputButton(it) },
+            onAudioLevel = { idleUi.voiceWaveView.level = it },
+            onError = { context.toast(R.string.voice_input_unavailable) }
+        )
+    }
+
+    /**
+     * 语音输入统一入口：键盘栏麦克风按钮与「语音输入」快捷键都走这里。
+     * 开始录音给一句 Toast 回执——热键触发时按钮可能被「隐藏状态栏」收起，没有回执用户不知道按中没按中。
+     */
+    fun toggleVoiceInput() {
+        // 密码框一律不响应（按钮靠 GONE 隐藏，热键只能在这里拦）
+        if (isCapabilityFlagsPassword) {
+            context.toast(R.string.voice_input_unavailable)
+            return
+        }
+        onVoiceInputButtonClick()
+    }
+
+    private fun onVoiceInputButtonClick() {
+        when (voiceInputController.state) {
+            VoiceInputController.State.Recording -> voiceInputController.stop()
+            VoiceInputController.State.Recognizing -> Unit
+            VoiceInputController.State.Idle -> {
+                if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                    != PackageManager.PERMISSION_GRANTED
+                ) {
+                    context.toast(R.string.voice_input_permission_required)
+                    AppUtil.launchMainToRecordAudioPermission(context)
+                    return
+                }
+                when (VoiceModelManager.state.value) {
+                    is VoiceModelManager.State.Downloading ->
+                        context.toast(R.string.voice_input_model_downloading)
+
+                    VoiceModelManager.State.Ready -> {
+                        voiceInputController.start()
+                        if (voiceInputController.state == VoiceInputController.State.Recording) {
+                            context.toast(R.string.voice_input_listening)
+                        }
+                    }
+
+                    VoiceModelManager.State.NotDownloaded,
+                    is VoiceModelManager.State.Error -> {
+                        context.toast(R.string.voice_input_model_download_start)
+                        VoiceModelManager.ensureDownloaded(
+                            onSuccess = {
+                                context.toast(R.string.voice_input_model_download_done)
+                            },
+                            onFailure = {
+                                context.toast(R.string.voice_input_model_download_error)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateVoiceInputButton(state: VoiceInputController.State) {
+        val slot = idleUi.voiceInputSlot
+        when (state) {
+            VoiceInputController.State.Idle -> {
+                idleUi.voiceInputButton.visibility = View.VISIBLE
+                idleUi.voiceWaveView.visibility = View.GONE
+                slot.contentDescription = context.getString(R.string.voice_input)
+            }
+
+            VoiceInputController.State.Recording -> {
+                idleUi.voiceInputButton.visibility = View.GONE
+                idleUi.voiceWaveView.visibility = View.VISIBLE
+                idleUi.voiceWaveView.indeterminate = false
+                slot.contentDescription = context.getString(R.string.voice_input_listening)
+            }
+
+            VoiceInputController.State.Recognizing -> {
+                idleUi.voiceInputButton.visibility = View.GONE
+                idleUi.voiceWaveView.visibility = View.VISIBLE
+                idleUi.voiceWaveView.indeterminate = true
+                slot.contentDescription = context.getString(R.string.voice_input_recognizing)
+            }
+        }
+    }
+
     private val idleUi: IdleUi by lazy {
         IdleUi(context, theme, popup, commonKeyActionListener).apply {
             menuButton.setOnClickListener {
@@ -378,9 +498,23 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 swipeThresholdX = swipeThresholdY
                 onGestureListener = swipeHideKeyboardCallback
             }
+            // 「开始」与「结束」必须挂在**两个**宿主上，因为录音时可见的子 View 会换人：
+            //  - voiceInputButton 是 ToolButton(CustomGestureView)，其 onTouchEvent 无条件
+            //    return true —— 它会把落在自己身上的一切触摸吃掉，监听只挂在 slot 上时点击
+            //    永远到不了父容器，表现就是「麦克风按钮看得见、点了没反应」（进不去录音态，
+            //    于是音浪动画与流式上屏也都无从发生）；
+            //  - 录音中按钮 GONE、VoiceWaveView(普通 View，不可点) 显示，事件才穿透到 slot。
+            // 两者按可见性天然互斥，不会双触发。
+            voiceInputButton.setOnClickListener {
+                toggleVoiceInput()
+            }
+            voiceInputSlot.setOnClickListener {
+                toggleVoiceInput()
+            }
             keyboardToggleButton.setOnClickListener {
                 // 主键盘开关：显示中且是主键盘 → 关闭；否则 → 打开主键盘
                 if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                    noteUserHide()
                     windowManager.setKeyboardWindowVisible(false)
                 } else {
                     windowManager.setKeyboardWindowVisible(true)
@@ -461,6 +595,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             keyboardToggleButton.setOnClickListener {
                 // 主键盘开关：显示中且是主键盘 → 关闭；否则 → 打开主键盘
                 if (windowManager.isKeyboardWindowVisible() && keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                    noteUserHide()
                     windowManager.setKeyboardWindowVisible(false)
                 } else {
                     windowManager.setKeyboardWindowVisible(true)
@@ -631,6 +766,12 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         clipboardSuggestion.registerOnChangeListener(onClipboardSuggestionUpdateListener)
         clipboardItemTimeout.registerOnChangeListener(onClipboardTimeoutUpdateListener)
         prefs.candidateBar.hideStatusBar.registerOnChangeListener(onHideStatusBarChangeListener)
+        // 输入服务销毁时确保录音与识别器资源释放
+        service.lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                voiceInputController.destroy()
+            }
+        })
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {
@@ -650,10 +791,35 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             shouldShowVoiceInput,
             if (shouldShowVoiceInput) switchToVoiceInputCallback else hideKeyboardCallback
         )
+        // 本地语音输入：密码框不显示；切换输入框时中止进行中的录音
+        val showBuiltInVoice = builtInVoiceInput && !capFlags.has(CapabilityFlag.Password)
+        idleUi.voiceInputSlot.visibility = if (showBuiltInVoice) View.VISIBLE else View.GONE
+        if (voiceInputController.state != VoiceInputController.State.Idle) {
+            // 切输入框一律丢弃进行中的会话：stop 的迟到识别结果会提交到【新】输入框（文字串字段），
+            // 丢弃比错位上屏安全得多
+            voiceInputController.destroy()
+        }
+        // 微信自动获取输入焦点（默认关）：目标是「能直接用物理键盘打字」，不是弹虚拟键盘。
+        // requestShowSelf 把输入会话带起来后立刻收起虚拟键盘面板；两道冷却防止把用户刚关掉的
+        // 键盘又顶回来（onStartInput 会因编辑器重启反复触发，"打开就关不了"就是它）。
+        if (autoShowKeyboard && !capFlags.has(CapabilityFlag.Password) &&
+            info.packageName == WECHAT_PACKAGE
+        ) {
+            val now = SystemClock.uptimeMillis()
+            if (now - lastUserHideAt > USER_HIDE_COOLDOWN_MS &&
+                now - lastAutoShowAt > AUTO_SHOW_COOLDOWN_MS
+            ) {
+                lastAutoShowAt = now
+                service.requestShowSelf(0)
+                windowManager.setKeyboardWindowVisible(false)
+                updateKeyboardToggleButton()
+            }
+        }
         updateKeyboardToggleButton()
         // 同步应用层 latch + 框架层 sticky 的合并状态
         systemAltSticky = service.isSystemAltSticky()
         idleUi.updateAltLockButton(isAltLockedOrSticky)
+        idleUi.updateCapsLockButton(service.isCapsLatched())
         fcitx.launchOnReady {
             updateInputMethodIcon(it.inputMethodEntryCached)
         }
@@ -768,6 +934,15 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     companion object {
         const val HEIGHT = 40
+
+        /** 「微信自动获取输入焦点」的目标应用包名。 */
+        private const val WECHAT_PACKAGE = "com.tencent.mm"
+
+        /** 用户主动收起键盘后，多久内不再自动获取焦点（防"刚关掉又被顶回来"）。 */
+        private const val USER_HIDE_COOLDOWN_MS = 10_000L
+
+        /** 两次自动获取焦点的最小间隔（防编辑器重启风暴）。 */
+        private const val AUTO_SHOW_COOLDOWN_MS = 5_000L
     }
 
     fun onKeyboardLayoutSwitched(isNumber: Boolean) {
