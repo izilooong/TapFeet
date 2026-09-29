@@ -82,6 +82,12 @@ enum class ShortcutAction(
      */
     CycleSoundMode("shortcut_cycle_sound_mode_key", R.string.shortcut_cycle_sound_mode),
 
+    /**
+     * 本地语音输入（SenseVoice）：与键盘栏麦克风按钮同一入口（[KawaiiBarComponent.toggleVoiceInput]），
+     * 按一下开始录音，再按一下收尾识别。密码框一律不响应。
+     */
+    VoiceInput("shortcut_voice_input_key", R.string.shortcut_voice_input),
+
     // —— 文本编辑类（chord=FN；作用在焦点编辑器上，经 InputConnection；
     // 编辑器自身给出可见反馈，不弹 Toast）——
     // 字母取自用户敲定的那套 `Fn+字母` 键位表（A/C/X/V/Q/Z + 光标簇 S/F/E/D + 选字簇 U/J/H/K），

@@ -23,6 +23,7 @@ import org.fcitx.fcitx5.android.input.bar.ui.idle.ButtonsBarUi
 import org.fcitx.fcitx5.android.input.bar.ui.idle.ClipboardSuggestionUi
 import org.fcitx.fcitx5.android.input.bar.ui.idle.InlineSuggestionsUi
 import org.fcitx.fcitx5.android.input.bar.ui.idle.NumberRow
+import org.fcitx.fcitx5.android.input.voice.VoiceWaveView
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import splitties.dimensions.dp
@@ -88,9 +89,29 @@ class IdleUi(
 
     val keyboardToggleButton = ToolButton(ctx, R.drawable.ic_baseline_keyboard_24, theme)
 
+    /** 本地语音输入（SenseVoice）触发按钮，仅在设置开启且非密码框时显示。 */
+    val voiceInputButton = ToolButton(ctx, R.drawable.ic_baseline_mic_24, theme)
+
+    /** 录音音量动画 / 识别中动画，与 [voiceInputButton] 在同一槽位互换显示。 */
+    val voiceWaveView = VoiceWaveView(ctx).apply {
+        visibility = View.GONE
+        setBarColor(theme.altKeyTextColor)
+    }
+
+    /** 语音输入槽位：点按=开始/结束，录音时显示 [voiceWaveView] 动画。 */
+    val voiceInputSlot = frameLayout {
+        add(voiceInputButton, lParams(matchParent, matchParent))
+        add(voiceWaveView, lParams(matchParent, matchParent))
+    }
+
     val inputMethodButton = ToolButton(ctx, R.drawable.ic_status_pinyin, theme)
 
     val altLockButton = ToolButton(ctx, R.drawable.ic_alt_key_24, theme)
+
+    /** 常驻大写指示按钮（锁定时显示），与 Alt 锁定按钮同一套显示逻辑。 */
+    val capsLockButton = ToolButton(ctx, R.drawable.ic_caps_lock_24, theme).apply {
+        visibility = View.GONE
+    }
 
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
 
@@ -150,6 +171,10 @@ class IdleUi(
             centerVertically()
         })
         add(keyboardToggleButton, lParams(size, size) {
+            before(voiceInputSlot)
+            centerVertically()
+        })
+        add(voiceInputSlot, lParams(size, size) {
             before(hideKeyboardButton)
             centerVertically()
         })
@@ -165,9 +190,13 @@ class IdleUi(
             before(inputMethodButton)
             centerVertically()
         })
+        add(capsLockButton, lParams(size, size) {
+            before(altLockButton)
+            centerVertically()
+        })
         add(animator, lParams(matchConstraints, matchParent) {
             after(menuButton)
-            before(altLockButton)
+            before(capsLockButton)
             centerVertically()
         })
     }
@@ -231,6 +260,16 @@ class IdleUi(
         } else {
             altLockButton.visibility = View.GONE
             altLockButton.contentDescription = ctx.getString(R.string.alt_lock_disabled)
+        }
+    }
+
+    fun updateCapsLockButton(locked: Boolean) {
+        if (locked) {
+            capsLockButton.visibility = View.VISIBLE
+            capsLockButton.contentDescription = ctx.getString(R.string.caps_lock_enabled)
+        } else {
+            capsLockButton.visibility = View.GONE
+            capsLockButton.contentDescription = ctx.getString(R.string.caps_lock_disabled)
         }
     }
 

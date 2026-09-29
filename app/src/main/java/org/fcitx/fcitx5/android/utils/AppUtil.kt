@@ -42,6 +42,15 @@ object AppUtil {
     fun launchMainToThemeList(context: Context) =
         launchMainToDest(context, SettingsRoute.Theme)
 
+    /** 打开设置页并直接发起 RECORD_AUDIO 权限申请（本地语音输入用）。 */
+    fun launchMainToRecordAudioPermission(context: Context) {
+        context.startActivity<MainActivity> {
+            action = Intent.ACTION_RUN
+            putExtra(MainActivity.EXTRA_REQUEST_RECORD_AUDIO, true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+        }
+    }
+
     fun launchMainToInputMethodConfig(context: Context, uniqueName: String, displayName: String) =
         launchMainToDest(context, SettingsRoute.InputMethodConfig(displayName, uniqueName))
 
