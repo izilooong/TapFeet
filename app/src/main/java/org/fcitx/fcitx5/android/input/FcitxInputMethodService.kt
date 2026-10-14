@@ -1360,6 +1360,29 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         fcitx.runImmediately { inputMethodEntryCached.addon }
             .equals("Table", ignoreCase = true)
 
+    /**
+     * 长按键帽符号的上屏通道：把符号当作一次「虚拟按键」交给 fcitx5 引擎，而不是直连 [commitText]。
+     *
+     * 为什么必须走引擎：全角/半角标点转换的唯一关口是 C++ 侧的 `Punctuation::pushPunctuation(V2)`，
+     * 它只在引擎收到按键事件时（`PinyinEngine::handlePunc` / `TableState` 的标点分支）被调用。
+     * 直连 [InputConnection] 会绕过它，中文模式下就把 `,` `.` `?` 按半角原样塞进正文 ——
+     * 而虚拟键盘按同一个符号走的是 [KeyAction.FcitxKeyAction] → [sendKey]，拿到的是 `，` `。` `？`。
+     * 这里照抄虚拟键盘的参数（[KeyStates.Virtual] + [ScancodeMapping.charToScancode]），让两条通道一致。
+     *
+     * 引擎不认的符号（`punc.mb` 无映射，如 `+` `@` `*` 与数字）会经 [FcitxEvent.KeyEvent] 回吐，
+     * 落到虚拟按键分支的 `commitText(unicode)`，仍是原来的半角字符 —— 行为不变。
+     */
+    private suspend fun FcitxAPI.commitSymbolThroughEngine(sym: String) {
+        // 符号表全是单码点；多码点无法用一个 KeySym 表达，退化为直接上屏（不做全角转换）。
+        if (sym.codePointCount(0, sym.length) != 1) {
+            withContext(Dispatchers.Main) { commitText(sym) }
+            return
+        }
+        // 用 [KeySym] 直传码点：对 ASCII 字符 KeySym == Unicode 码点（同 [KeySym.fromKeyEvent]），
+        // 不像 String 重载那样要过 keyName 表查找 + 单字符 fallback，语义更明确。
+        sendKey(KeySym(sym[0].code), KeyStates.Virtual, ScancodeMapping.charToScancode(sym[0]))
+    }
+
 
     // ===== Physical key press / keyboard-surface gesture sounds =====
     /**
@@ -2237,12 +2260,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                                                 )
                                             }
                                             if (!isEmpty()) reset()
-                                            withContext(Dispatchers.Main) { commitText(sym) }
+                                            commitSymbolThroughEngine(sym)
                                         }
                                     } else {
                                         postFcitxJob {
                                             if (!isEmpty()) reset()
-                                            withContext(Dispatchers.Main) { commitText(sym) }
+                                            commitSymbolThroughEngine(sym)
                                         }
                                     }
                                 }

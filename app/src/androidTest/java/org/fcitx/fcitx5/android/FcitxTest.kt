@@ -16,7 +16,10 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.runBlocking
 import org.fcitx.fcitx5.android.core.Fcitx
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.KeyStates
+import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.core.RawConfig
+import org.fcitx.fcitx5.android.core.ScancodeMapping
 import org.junit.After
 import org.junit.AfterClass
 import org.junit.Assert
@@ -145,6 +148,46 @@ class FcitxTest {
         } while (list!!.data.candidates.isNotEmpty())
         Timber.i("after second reset: ${fcitx.isEmpty()}")
         Assert.assertEquals(true, fcitx.isEmpty())
+    }
+
+    /**
+     * Regression for the long-press keycap-symbol path (BlackBerry-style): the symbol must be
+     * pushed through the engine as a *virtual key*, so fcitx5's Punctuation module converts it to
+     * full-width in Chinese mode (e.g. `,` → `，`).
+     *
+     * The bug this locks down: the long-press handler used to call `commitText(sym)` directly on the
+     * InputConnection, which bypasses `Punctuation::pushPunctuation` — the only place full/half-width
+     * conversion happens. Half-width characters leaked into Chinese text. See
+     * `FcitxInputMethodService.commitSymbolThroughEngine`.
+     *
+     * The seam is the exact call the fix makes: `sendKey(KeySym(code), KeyStates.Virtual, scancode)`.
+     */
+    @Test
+    fun testLongPressSymbolGoesThroughEnginePunctuation(): Unit = runBlocking {
+        fcitx.setEnabledIme(arrayOf("pinyin"))
+        fcitx.reset()
+        // Same parameters the long-press fix uses: virtual state + ASCII codepoint as KeySym.
+        fcitx.sendKey(KeySym(','.code), KeyStates.Virtual, ScancodeMapping.charToScancode(','))
+        val committed = receiveFirstCommitString()?.data?.text
+        Timber.i("long-press ',' committed: $committed")
+        Assert.assertEquals("，", committed)
+        fcitx.reset()
+    }
+
+    /**
+     * Companion to the above: a keycap symbol the punctuation map does NOT know (e.g. `@`) must
+     * still come out as the literal half-width character — the engine rejects it, the frontend
+     * forwards the raw key back, and it commits as-is. Guards against the fix swallowing these.
+     */
+    @Test
+    fun testLongPressSymbolWithoutPunctuationMappingPassesThrough(): Unit = runBlocking {
+        fcitx.setEnabledIme(arrayOf("pinyin"))
+        fcitx.reset()
+        fcitx.sendKey(KeySym('@'.code), KeyStates.Virtual, ScancodeMapping.charToScancode('@'))
+        val committed = receiveFirstCommitString()?.data?.text
+        Timber.i("long-press '@' committed: $committed")
+        Assert.assertEquals("@", committed)
+        fcitx.reset()
     }
 
 }
