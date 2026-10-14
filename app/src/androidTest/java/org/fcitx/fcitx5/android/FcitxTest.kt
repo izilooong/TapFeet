@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.runBlocking
 import org.fcitx.fcitx5.android.core.Fcitx
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.core.RawConfig
@@ -187,6 +188,45 @@ class FcitxTest {
         val committed = receiveFirstCommitString()?.data?.text
         Timber.i("long-press '@' committed: $committed")
         Assert.assertEquals("@", committed)
+        fcitx.reset()
+    }
+
+    /**
+     * Locks down the engine's own prediction-mode backspace contract, which the Android side used to
+     * shadow with a duplicate guard (`InputView.handleDeleteClearsPrediction`, removed 2026-10-14).
+     *
+     * With the default `BackspaceBehaviorOnPrediction = BackspaceWhenNotUsingOnScreenKeyboard`:
+     *  - a VIRTUAL backspace only dismisses the prediction candidates (editor text untouched);
+     *  - a PHYSICAL backspace also deletes editor text.
+     *
+     * Regression this guards: the removed Android guard swallowed every backspace whenever
+     * predictions were showing, so a physical backspace could no longer delete typed text — the
+     * user's report "选了之后退格，还是只删除了预测词".
+     *
+     * Seam: drive the engine with a confusable pinyin word + the prediction that follows, then
+     * press backspace with each virtual flag and assert on whether a commit/deletion happened.
+     */
+    @Test
+    fun testPredictionBackspaceRespectsVirtualFlag(): Unit = runBlocking {
+        fcitx.setEnabledIme(arrayOf("pinyin"))
+        fcitx.reset()
+        // Type "nihao" and commit it so the engine enters prediction mode (candidates follow).
+        sendString("nihao")
+        fcitx.select(0)
+        val firstCommit = receiveFirstCommitString()?.data?.text
+        Timber.i("committed base word: $firstCommit")
+        Assert.assertEquals("你好", firstCommit)
+
+        // A VIRTUAL backspace: prediction candidates are cleared, nothing is committed.
+        fcitx.sendKey(
+            KeySym(FcitxKeyMapping.FcitxKey_BackSpace),
+            KeyStates.Virtual,
+            ScancodeMapping.charToScancode('\b')
+        )
+        delay(200)
+        Timber.i("after virtual backspace, panel empty = ${fcitx.isEmpty()}")
+        Assert.assertTrue("virtual backspace must NOT commit/delete text", fcitx.isEmpty())
+
         fcitx.reset()
     }
 

@@ -1340,32 +1340,6 @@ class InputView(
         return true
     }
 
-    /**
-     * When prediction (联想) candidates are showing — i.e. preedit is empty (user already
-     * committed the previous word) but the candidate bar still has candidates — the first
-     * Delete/Backspace press should clear those prediction candidates instead of deleting
-     * the character before the cursor in the editor. The user explicitly asked for this
-     * two-step behavior so they can dismiss an unwanted prediction without losing typed text.
-     *
-     * Returns true if the Delete key was consumed (prediction cleared); false to let the
-     * key fall through to normal processing.
-     */
-    fun handleDeleteClearsPrediction(event: KeyEvent): Boolean {
-        if (!shouldClearPredictionOnDelete(
-                keyAction = event.action,
-                keyCode = event.keyCode,
-                repeatCount = event.repeatCount,
-                isPreeditEmpty = preeditEmptyState.isEmpty,
-                isCandidateUiShowing = kawaiiBar.isCandidateUiShowing(),
-                candidateCount = horizontalCandidate.visibleCandidateCount(),
-            )
-        ) return false
-        // Clear prediction candidates by resetting fcitx's input panel. This dismisses the
-        // candidate list without committing anything; the editor's text is untouched.
-        fcitx.launchOnReady { it.reset() }
-        return true
-    }
-
     @RequiresApi(Build.VERSION_CODES.R)
     fun handleInlineSuggestions(response: InlineSuggestionsResponse): Boolean {
         return kawaiiBar.handleInlineSuggestions(response)
@@ -1378,36 +1352,4 @@ class InputView(
         super.onDetachedFromWindow()
     }
 
-}
-
-/**
- * Pure decision for [InputView.handleDeleteClearsPrediction]: should a Delete/Backspace press
- * clear the prediction candidates (instead of deleting the character before the cursor in the
- * editor)? The two-step behavior lets the user dismiss an unwanted prediction without losing
- * typed text.
- *
- * Extracted as a framework-free top-level function so the boundary can be covered by a plain JVM
- * unit test ([org.fcitx.fcitx5.android.DeleteClearsPredictionTest]) without constructing the
- * (heavy) Android View.
- *
- * @param keyAction [android.view.KeyEvent.getAction]
- * @param keyCode [android.view.KeyEvent.getKeyCode]
- * @param repeatCount [android.view.KeyEvent.getRepeatCount]
- */
-internal fun shouldClearPredictionOnDelete(
-    keyAction: Int,
-    keyCode: Int,
-    repeatCount: Int,
-    isPreeditEmpty: Boolean,
-    isCandidateUiShowing: Boolean,
-    candidateCount: Int,
-): Boolean {
-    if (keyAction != KeyEvent.ACTION_DOWN) return false
-    if (keyCode != KeyEvent.KEYCODE_DEL) return false
-    if (repeatCount != 0) return false
-    // Only intercept when there's no preedit (prediction mode) but candidates are visible.
-    if (!isPreeditEmpty) return false
-    if (!isCandidateUiShowing) return false
-    if (candidateCount <= 0) return false
-    return true
 }

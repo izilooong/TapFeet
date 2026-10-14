@@ -1245,17 +1245,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // surface, not the screen, so the click is the only confirmation the delete fired.
                     playHardwareSound(InputFeedbacks.SoundEffect.Delete)
                     // Behave exactly like the physical Backspace key: the key goes through fcitx, which
-                    // deletes the last composing character (pinyin preedit) FIRST and only falls back to
-                    // deleting already-committed editor text when the preedit is empty. `handleBackspaceKey`
-                    // instead sends KEYCODE_DEL straight to the editor and would skip the composing text
-                    // entirely — so a flick from the corner deleted the wrong thing (committed text) while
-                    // the candidate bar stayed put. Mirrors onKeyDown: clear 联想 prediction candidates on
-                    // the first Delete when there is no preedit but candidates are showing.
-                    val del = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)
-                    if (inputView?.handleDeleteClearsPrediction(del) != true) {
-                        forwardKeyEvent(del)
-                        forwardKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
-                    }
+                    // owns the prediction-mode decision end to end. With the default
+                    // `BackspaceBehaviorOnPrediction` (= BackspaceWhenNotUsingOnScreenKeyboard) the
+                    // engine only swallows a *virtual* backspace; this synthetic event goes through
+                    // [forwardKeyEvent] without the Virtual flag, so it lands as a physical key and
+                    // clears the prediction candidates while also deleting editor text — matching
+                    // the physical Backspace key on this device. `handleBackspaceKey` instead sends
+                    // KEYCODE_DEL straight to the editor and would skip the composing text entirely —
+                    // so a flick from the corner deleted the wrong thing (committed text) while the
+                    // candidate bar stayed put.
+                    // (The old Android-side prediction guard was removed: it shadowed the engine's
+                    // own `BackspaceBehaviorOnPrediction` option and made the physical key unable to
+                    // delete text while predictions were showing.)
+                    forwardKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+                    forwardKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
                 },
                 typingGuard = {
                     SystemClock.elapsedRealtime() - lastHardwareKeyAt <
@@ -1836,11 +1839,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 consumedHardwareCandidateShortcutKeys.add(keyCode)
                 return true
             }
-        }
-        // Prediction-candidate dismiss: when 联想 candidates are showing (no preedit), the first
-        // Delete press clears them instead of deleting editor text. See InputView for full logic.
-        if (event.repeatCount == 0 && inputView?.handleDeleteClearsPrediction(effectiveEvent) == true) {
-            return true
         }
         return forwardKeyEvent(effectiveEvent) || super.onKeyDown(keyCode, effectiveEvent)
     }
