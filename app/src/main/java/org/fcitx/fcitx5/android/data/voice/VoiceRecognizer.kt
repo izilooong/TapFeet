@@ -35,7 +35,7 @@ object VoiceRecognizer {
      */
     @Synchronized
     fun load(): Boolean {
-        val language = AppPrefs.getInstance().keyboard.voiceLanguage.getValue().code
+        val language = AppPrefs.getInstance().voice.voiceLanguage.getValue().code
         if (recognizer != null) {
             if (loadedLanguage == language) return true
             release()

@@ -249,8 +249,8 @@ class VoiceInputController(
 
     private fun captureLoop(rec: AudioRecord, localVad: Vad) {
         val buf = ShortArray(SAMPLE_RATE / 10) // 0.1s
-        val voiceAutoStop = AppPrefs.getInstance().keyboard.voiceAutoStop
-        val voiceAutoStopSeconds = AppPrefs.getInstance().keyboard.voiceAutoStopSeconds
+        val voiceAutoStop = AppPrefs.getInstance().voice.voiceAutoStop
+        val voiceAutoStopSeconds = AppPrefs.getInstance().voice.voiceAutoStopSeconds
         var elapsedMs = 0L
         // 距上次语音活动的时刻；0 = 尚未说话（没说话也在计时：开了自动结束就别让会话挂死）
         var lastVoiceMs = 0L

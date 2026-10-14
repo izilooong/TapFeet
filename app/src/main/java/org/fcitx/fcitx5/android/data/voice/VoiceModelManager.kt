@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -106,6 +107,23 @@ object VoiceModelManager {
         return modelFile.length() > 0 && tokensFile.length() > 0 && vadFile.length() > 0
     }
 
+    /** 已下载模型文件总大小（字节），用于设置页展示。 */
+    fun modelSizeBytes(): Long {
+        return listOf(modelFile, tokensFile, vadFile).sumOf { if (it.exists()) it.length() else 0L }
+    }
+
+    /**
+     * 删除本地模型文件（含下载中的 .part 残留）。会取消进行中的下载；
+     * 取消后若下载协程迟到写回文件，下次 [isReady]/[ensureDownloaded] 会重新校准状态。
+     */
+    @Synchronized
+    fun deleteModel() {
+        downloadJob?.cancel()
+        downloadJob = null
+        modelDir.listFiles()?.forEach { it.deleteRecursively() }
+        mutableState.value = if (isReady()) State.Ready else State.NotDownloaded
+    }
+
     /**
      * 确保模型就绪；缺失时开始下载（幂等，重复调用不会并发下载）。
      * 进度与结果通过 [state] 发出；可选回调在主线程执行。
@@ -131,9 +149,11 @@ object VoiceModelManager {
                     }
                 }
                 if (!isReady()) throw IOException("模型文件缺失")
+                if (!isActive) return@launch
                 mutableState.value = State.Ready
                 onSuccess?.let { mainHandler.post(it) }
             } catch (e: Exception) {
+                if (!isActive) return@launch
                 Timber.e(e, "voice model download failed")
                 val message = e.message ?: "download failed"
                 mutableState.value = State.Error(message)

@@ -127,6 +127,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     SettingsRoute.ShortcutKeys
                 )
                 addDestinationPreference(
+                    R.string.voice_input,
+                    R.drawable.ic_baseline_mic_24,
+                    SettingsRoute.VoiceInput
+                )
+                addDestinationPreference(
                     R.string.custom_keyboard,
                     R.drawable.ic_baseline_keyboard_24,
                     SettingsRoute.CustomKeyboard

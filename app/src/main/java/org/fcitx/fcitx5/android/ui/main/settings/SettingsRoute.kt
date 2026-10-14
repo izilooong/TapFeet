@@ -32,6 +32,7 @@ import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidateBarSettingsFr
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CustomKeyboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.EffectsSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.PanelCycleSettingsFragment
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.VoiceSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.HardwareKeyboardSettingsFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.InputMethodTestFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.CandidatesSettingsFragment
@@ -115,6 +116,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object ShortcutKeys : SettingsRoute()
+
+    @Serializable
+    data object VoiceInput : SettingsRoute()
 
     @Serializable
     data object Developer : SettingsRoute()
@@ -287,6 +291,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<ShortcutKeysSettingsFragment, ShortcutKeys> {
                 label = ctx.getString(R.string.shortcut_keys)
+            }
+            fragment<VoiceSettingsFragment, VoiceInput> {
+                label = ctx.getString(R.string.voice_input)
             }
             fragment<DeveloperFragment, Developer> {
                 label = ctx.getString(R.string.developer)
