@@ -1161,6 +1161,22 @@ class InputView(
     }
 
     /**
+     * 编辑器动作（回车发送/搜索/前往…）触发前的面板复位：面板打开时走 [hideCurrentWindow]
+     * 的同一关闭态（symMode 归位、主键盘布局、键盘窗口按物理键盘态收/留），没开面板时 no-op。
+     *
+     * 供 [FcitxInputMethodService.interceptHardwareEnter]（物理回车 → 编辑器动作）在
+     * performEditorAction **之前**调用：发送后编辑器立刻重启输入会话，若 symMode 仍挂着
+     * SYMBOL，重启链会把面板拉回来或顶掉窗口留下卡死状态。必须抢在动作触发前复位。
+     *
+     * 物理键盘态下窗口本就隐藏（setKeyboardWindowVisible(false)），这里主要清 symMode
+     * 并保证键盘窗口挂回主布局——关闭态对两种键盘模式都是安全落点。
+     */
+    internal fun closeOpenPanelAfterEditorAction() {
+        if (currentPanelModule() == null) return
+        hideCurrentWindow()
+    }
+
+    /**
      * Whether the IME is currently in PHYSICAL keyboard mode, synced from
      * [org.fcitx.fcitx5.android.input.InputDeviceManager.isVirtualKeyboard]. In physical mode this
      * [InputView] is held GONE (the virtual keyboard is hidden), so the symbol window — which

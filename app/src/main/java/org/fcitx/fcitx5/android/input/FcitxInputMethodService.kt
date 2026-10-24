@@ -488,6 +488,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (action == null) {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         } else {
+            // 与物理回车（interceptHardwareEnter）同一份面板复位语义：编辑器动作=提交，
+            // 面板状态不能带进动作后的输入会话重启。面板未打开时 no-op。
+            inputView?.closeOpenPanelAfterEditorAction()
             currentInputConnection?.performEditorAction(action)
         }
     }
@@ -542,6 +545,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (keyEvent.metaState and modifiers != 0) return false
         val action = editorActionForReturn() ?: return false
         val ic = currentInputConnection ?: return false
+        // 先收面板再触发动作：编辑器动作（发送/搜索/前往…）意味着提交——打开中的符号/表情面板
+        // 对新上下文已过时，而发送后编辑器会立即重启输入会话；若此刻 symMode 仍挂在 SYMBOL，
+        // 重启链要么把面板原样拉回来、要么把窗口被动顶掉而状态卡死（"收起了窗口但没回到正常
+        // 输入状态"）。在动作触发前先走面板循环的「关闭」态复位（symMode / 布局 / 键盘窗口），
+        // 无面板打开时是 no-op，普通打字的回车不受影响。
+        inputView?.closeOpenPanelAfterEditorAction()
         ic.performEditorAction(action)
         hardwareEnterAsAction = true
         return true
