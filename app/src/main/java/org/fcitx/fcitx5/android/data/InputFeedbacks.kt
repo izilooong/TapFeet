@@ -56,6 +56,7 @@ object InputFeedbacks {
         Woodfish(R.string.sound_scheme_woodfish, 0.95f),
         Abacus(R.string.sound_scheme_abacus, 0.92f),
         Mechanical(R.string.sound_scheme_mechanical, 0.95f),
+        Ratchet(R.string.sound_scheme_ratchet, 0.95f),
         Silent(R.string.sound_scheme_silent, 0f);
     }
 
@@ -161,7 +162,8 @@ object InputFeedbacks {
         SoundScheme.Telegraph to R.raw.keypress_telegraph,
         SoundScheme.Woodfish to R.raw.keypress_woodfish,
         SoundScheme.Abacus to R.raw.keypress_abacus,
-        SoundScheme.Mechanical to R.raw.keypress_mechanical
+        SoundScheme.Mechanical to R.raw.keypress_mechanical,
+        SoundScheme.Ratchet to R.raw.keypress_ratchet
     )
 
     // Small pitch offsets so Space/Delete/Return don't all sound the same (1.0 = original).

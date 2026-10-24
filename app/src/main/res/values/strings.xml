@@ -94,6 +94,8 @@
     <string name="hw_flytext_guard_ms">Mis-touch guard duration</string>
     <string name="hw_key_sound">Physical key sound</string>
     <string name="hw_key_sound_summary">Click sounds for physical keys and keyboard swipes.</string>
+    <string name="hw_gesture_vibration">Keyboard touch vibration</string>
+    <string name="hw_gesture_vibration_strength">Keyboard touch vibration strength</string>
     <string name="hw_key_sound_volume">Physical key sound volume</string>
     <string name="hw_toggle_ime">Toggle IME</string>
     <string name="hw_show_picker">Show input method picker</string>
@@ -455,6 +457,7 @@
     <string name="sound_scheme_woodfish">Woodfish</string>
     <string name="sound_scheme_abacus">Abacus</string>
     <string name="sound_scheme_mechanical">Mechanical</string>
+    <string name="sound_scheme_ratchet">Ratchet</string>
     <string name="sound_scheme_silent">Silent</string>
     <string name="clipboard_return_after_paste">Return after pasting</string>
     <string name="theme_message_follow_system_day_night_mode_enabled">Cannot switch theme manually while \"Follow system day/night mode\" is enabled.</string>

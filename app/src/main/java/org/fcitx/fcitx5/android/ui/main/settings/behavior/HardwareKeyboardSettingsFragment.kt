@@ -370,6 +370,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 getString(R.string.sound_scheme_woodfish),
                 getString(R.string.sound_scheme_abacus),
                 getString(R.string.sound_scheme_mechanical),
+                getString(R.string.sound_scheme_ratchet),
                 getString(R.string.sound_scheme_silent)
             )
             entryValues = arrayOf(
@@ -382,6 +383,7 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 SoundScheme.Woodfish.name,
                 SoundScheme.Abacus.name,
                 SoundScheme.Mechanical.name,
+                SoundScheme.Ratchet.name,
                 SoundScheme.Silent.name
             )
             // MUST be the enum's NAME, not the enum instance: ListPreference.onSetInitialValue
@@ -400,6 +402,38 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
             isSingleLineTitle = false
         }
         soundScreen.addPreference(soundSchemePref)
+
+        // Vibrate a short tick for every keyboard-surface gesture (pick / page / delete / cursor
+        // step). Bottom of the sound tab, opt-in (off by default) — same shape as the key-sound
+        // pair above: switch + strength slider, enabled only while the switch is on.
+        val gestureVibrationSwitch = SwitchPreference(context).apply {
+            key = hw.gestureVibrationEnabled.key
+            title = getString(R.string.hw_gesture_vibration)
+            setDefaultValue(hw.gestureVibrationEnabled.getValue())
+            isChecked = hw.gestureVibrationEnabled.getValue()
+            isIconSpaceReserved = false
+        }
+        soundScreen.addPreference(gestureVibrationSwitch)
+
+        val gestureVibrationStrengthPref = DialogSeekBarPreference(context).apply {
+            key = hw.gestureVibrationStrength.key
+            title = getString(R.string.hw_gesture_vibration_strength)
+            dialogTitle = getString(R.string.hw_gesture_vibration_strength)
+            setDefaultValue(hw.gestureVibrationStrength.defaultValue)
+            min = 0
+            max = 100
+            step = 1
+            unit = "%"
+            summaryProvider = DialogSeekBarPreference.SimpleSummaryProvider
+            isIconSpaceReserved = false
+            isSingleLineTitle = false
+        }
+        gestureVibrationStrengthPref.isEnabled = gestureVibrationSwitch.isChecked
+        gestureVibrationSwitch.setOnPreferenceChangeListener { _, newValue ->
+            gestureVibrationStrengthPref.isEnabled = newValue as Boolean
+            true
+        }
+        soundScreen.addPreference(gestureVibrationStrengthPref)
 
         // Build the per-key preferences. candidate2-5 are remembered separately so the display-mode
         // handler can flip their visibility without disturbing candidate1 (first-pick, always shown).

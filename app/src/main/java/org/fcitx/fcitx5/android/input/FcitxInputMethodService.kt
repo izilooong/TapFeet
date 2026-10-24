@@ -30,6 +30,7 @@ import org.fcitx.fcitx5.android.input.swipe.SwipeDirection
 import org.fcitx.fcitx5.android.input.swipe.cornerDeleteRegion
 import org.fcitx.fcitx5.android.utils.DeviceInfo
 import android.view.View
+import android.view.HapticFeedbackConstants
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
@@ -584,9 +585,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * landed — the finger is on the keyboard surface, not the screen.
      *
      * Called repeatedly during a continuous cursor drag (the selector tracks the finger per
-     * [org.fcitx.fcitx5.android.input.swipe.SWIPE_CURSOR_STEP_SLOP_DP] after the entry swipe), so
-     * drag steps fire silently: the moving caret is the feedback, and a click per step at drag rate
-     * is noise. [isDragStep] is false only for the entry swipe, which keeps its confirmation click.
+     * [org.fcitx.fcitx5.android.input.swipe.SWIPE_CURSOR_STEP_SLOP_DP] after the entry swipe).
+     * Every step — entry and drag alike — plays the Standard key click: the finger is on the
+     * keyboard surface, not the screen, and the per-step click is the only confirmation each
+     * caret move landed.
      *
      * Alt active (held, or double-tap latched) → extend the selection instead of moving the caret
      * ([InputView.flyExtendSelection], which reuses the selection-cluster machinery). Deliberately
@@ -604,9 +606,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             hw.keyboardFlyTextCursorMove.getValue()
         }
         if (!enabled) return
-        if (!isDragStep) {
-            playHardwareSound(InputFeedbacks.SoundEffect.Standard)
-        }
+        // Every caret step clicks — the entry swipe and each drag step alike: the finger is on
+        // the keyboard surface, not the screen, so the click is the only immediate confirmation
+        // that the step landed at all.
+        playHardwareSound(InputFeedbacks.SoundEffect.Standard)
+        vibrateHardwareGesture()
         // Alt active (held, or double-tap latched) → extend the selection instead of moving the
         // caret. Same "Alt is meant to be active" pair [withInjectedModifiers] trusts
         // ([physicalAltDown] / [altLatched]); [systemAltSticky] is ROM residue and deliberately
@@ -1243,6 +1247,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // A key-based pick (physical number key, bar tap) stays silent on purpose — the
                     // physical key already clicks and stacking a second click there was rejected.
                     playHardwareSound(InputFeedbacks.SoundEffect.Standard)
+                    vibrateHardwareGesture()
                     // Route through the bar's tap path so the fly animation fires like a normal
                     // pick; fall back to a plain engine select when the index isn't on the bar
                     // (stale rects, or the rects came from the floating CandidatesView).
@@ -1258,6 +1263,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // Same key click as a physical key press (SoundEffect.Standard), not a distinct
                     // paging tone — the swipe should feel like a hardware-keyboard action.
                     playHardwareSound(InputFeedbacks.SoundEffect.Standard)
+                    vibrateHardwareGesture()
                     // Honours the user's "swap page swipe direction" toggle, then pages the
                     // candidate bar locally for bulk lists (engine paging has nothing to move
                     // there); only falls back to engine paging for the floating window.
@@ -1286,6 +1292,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     // Click feedback like a physical Backspace key: the finger is on the keyboard
                     // surface, not the screen, so the click is the only confirmation the delete fired.
                     playHardwareSound(InputFeedbacks.SoundEffect.Delete)
+                    vibrateHardwareGesture()
                     // Behave exactly like the physical Backspace key: the key goes through fcitx, which
                     // owns the prediction-mode decision end to end. With the default
                     // `BackspaceBehaviorOnPrediction` (= BackspaceWhenNotUsingOnScreenKeyboard) the
@@ -1467,6 +1474,39 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         InputFeedbacks.soundEffectForHardwareKeyboard(
             effect, AppPrefs.getInstance().hardwareKeyboard.keySoundVolume.getValue()
         )
+    }
+
+    /**
+     * The haptic twin of [playHardwareSound]: a short tick for every keyboard-SURFACE gesture
+     * that fires (up-swipe pick, paging, corner-delete, cursor step). Same funnel shape — one
+     * place, every gesture — so the "which gestures vibrate" question always has one answer.
+     *
+     * Gated by the hardware-keyboard page's own vibration switch
+     * ([AppPrefs.HardwareKeyboard.gestureVibrationEnabled]), scaled by its strength setting
+     * (percent of the vibrator's max amplitude; duration scales with strength too — cheap ERM
+     * motors need 20ms+ to spin up, so the weak end still guarantees a perceptible tick).
+     */
+    private fun vibrateHardwareGesture() {
+        val hw = AppPrefs.getInstance().hardwareKeyboard
+        if (!hw.gestureVibrationEnabled.getValue()) return
+        if (!::decorView.isInitialized) return
+        // Same channel as the on-screen keyboard's vibration (InputFeedbacks.hapticFeedback with
+        // a 0ms duration): View.performHapticFeedback. Raw Vibrator one-shots proved
+        // imperceptible on this hardware (cheap ERM motors need spin-up the pulse never
+        // covered), while the platform channel ramps up properly and honours the system's
+        // haptic state. Strength maps to the semantic feedback constants — the only strength
+        // dimension this channel has: CLOCK_TICK below 50%, KEYBOARD_TAP above (same constant
+        // the on-screen keys use, so the feel matches).
+        val strength = hw.gestureVibrationStrength.getValue().coerceIn(0, 100)
+        val hfc = if (strength >= 50) {
+            HapticFeedbackConstants.KEYBOARD_TAP
+        } else {
+            HapticFeedbackConstants.CLOCK_TICK
+        }
+        @Suppress("DEPRECATION")
+        val flags = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING or
+                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
+        decorView.performHapticFeedback(hfc, flags)
     }
 
     fun isAltLatched(): Boolean = hardwareKeyDispatch.altLatched

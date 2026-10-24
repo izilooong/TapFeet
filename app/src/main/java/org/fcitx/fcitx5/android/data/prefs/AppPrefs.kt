@@ -617,6 +617,27 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             SoundScheme.Classic
         )
 
+        // Vibrate a short tick for every keyboard-surface gesture that fires (up-swipe pick,
+        // paging, corner-delete, cursor step). The strength below scales the amplitude.
+        // Off by default: haptics are an opt-in feel, not a default.
+        val gestureVibrationEnabled = switch(
+            R.string.hw_gesture_vibration,
+            "hw_gesture_vibration_enabled",
+            false
+        )
+
+        // Amplitude of the gesture vibration tick, in percent of the vibrator's maximum.
+        val gestureVibrationStrength = int(
+            R.string.hw_gesture_vibration_strength,
+            "hw_gesture_vibration_strength",
+            50,
+            0,
+            100,
+            "%"
+        ) {
+            gestureVibrationEnabled.getValue()
+        }
+
         // fcitx5 Key portableString for each shortcut (e.g. "Alt+space", "dollar", "Shift_L"), or a
         // [HardwareSpecialKeys] pseudo-key name (e.g. "Sym", "NavBack") for physical function keys
         // that have no fcitx5 KeySym.

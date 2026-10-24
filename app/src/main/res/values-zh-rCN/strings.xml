@@ -94,6 +94,8 @@
     <string name="hw_flytext_guard_ms">防误触时长</string>
     <string name="hw_key_sound">物理按键音</string>
     <string name="hw_key_sound_summary">物理按键、键盘面手势发声。</string>
+    <string name="hw_gesture_vibration">键盘触摸震动</string>
+    <string name="hw_gesture_vibration_strength">键盘触摸震动强度</string>
     <string name="hw_key_sound_volume">物理按键音音量</string>
     <string name="hw_toggle_ime">切换输入法</string>
     <string name="hw_show_picker">显示输入法选择器</string>
@@ -451,6 +453,7 @@
     <string name="sound_scheme_woodfish">木鱼笃笃</string>
     <string name="sound_scheme_abacus">算盘噼啪</string>
     <string name="sound_scheme_mechanical">机械键盘</string>
+    <string name="sound_scheme_ratchet">金属刻度</string>
     <string name="sound_scheme_silent">静默无声</string>
     <string name="clipboard_return_after_paste">粘贴后返回键盘</string>
     <string name="theme_message_follow_system_day_night_mode_enabled">“跟随系统夜间模式”已启用，不能手动更换主题。</string>
