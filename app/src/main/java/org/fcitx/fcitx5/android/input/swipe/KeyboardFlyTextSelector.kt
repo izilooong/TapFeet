@@ -122,6 +122,18 @@ class KeyboardFlyTextSelector(
     private var lastEventTime = 0L
 
     /**
+     * Coordinates of the last seen MOVE (or the DOWN point, until the first MOVE). A MOVE that
+     * jumps more than [SWIPE_TELEPORT_SLOP_DP] from this in one sample is not finger travel —
+     * the touch driver switched the reported contact between physically distinct fingers
+     * (two thumbs typing on both sides of the surface), or dropped/glitched the stream. A real
+     * swipe samples at ~125Hz and moves a few px per sample; a contact switch moves hundreds of
+     * px in one step. The jump filter resets the gesture instead of letting the fake displacement
+     * fire a page/cursor/delete action.
+     */
+    private var lastMoveX = 0f
+    private var lastMoveY = 0f
+
+    /**
      * True while a finger is down on the keyboard surface (between DOWN and UP/CANCEL).
      *
      * The caller uses this to keep feeding onTouchEvent even after fly-text is disarmed (e.g. the
@@ -146,7 +158,14 @@ class KeyboardFlyTextSelector(
         if ((classified || cursorDragging) && (t - lastEventTime) > EXPIRE_MS) reset()
         lastEventTime = t
 
+        // Two-finger guard: two thumbs typing on both sides of the surface are never a gesture.
+        // Either the stream reports multiple pointers outright (PTR_DOWN / pointerCount > 1), or
+        // the single-pointer stream teleports between the contacts (caught by the jump filter in
+        // ACTION_MOVE). Multi-pointer events are ignored entirely — not even a reset, since a
+        // second finger landing mid-swipe is also common while scrolling with intent.
+        if (event.pointerCount > 1) return
         when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> return
             MotionEvent.ACTION_DOWN -> {
                 // Typing guard: keys are still being hit, so this contact is a graze between
                 // keystrokes — never arm a gesture from it.
@@ -159,6 +178,8 @@ class KeyboardFlyTextSelector(
                 downX = event.rawX
                 downY = event.rawY
                 downTime = t
+                lastMoveX = event.rawX
+                lastMoveY = event.rawY
                 // Corner-delete is reserved for contacts that START in the surface's top-right
                 // corner: a left swipe from there is Backspace, and nothing else fires from a corner
                 // contact (so a stray brush near the backspace key can't page or pick a candidate).
@@ -184,6 +205,45 @@ class KeyboardFlyTextSelector(
                     reset()
                     return
                 }
+                // Jump filter (thumb handoff / centroid switch): per-sample travel beyond
+                // SWIPE_TELEPORT_SLOP_DP (>60dp) is a raw contact switch or stream glitch —
+                // reset the whole gesture. Travel in [SWIPE_BASE_SLOP_DP, SWIPE_TELEPORT_SLOP_DP)
+                // (16–60dp) in a single sample is faster than any real finger (a 125Hz swipe
+                // moves single-digit dp per step): the driver's single-pointer stream is
+                // gliding between two contacts — e.g. its reported centroid jumping toward the
+                // midpoint when a second thumb lands two keys away, then to the second thumb
+                // when the first lifts (each step ≤ half the key distance, so small). Re-anchor
+                // the gesture's origin to the current sample so the fake, stepwise displacement
+                // can never accumulate past a commit slop — a real swipe's small steps never
+                // re-anchor, so its travel still accumulates from the true DOWN point.
+                val jumpD = density * flyTextSensitivityScale(sensitivityProvider())
+                val step = hypot(event.rawX - lastMoveX, event.rawY - lastMoveY)
+                when {
+                    step > SWIPE_TELEPORT_SLOP_DP * jumpD -> {
+                        Timber.i(
+                            "FlyText: jump filter reset (rawX=${event.rawX} rawY=${event.rawY} " +
+                                "fromX=${lastMoveX} fromY=${lastMoveY})"
+                        )
+                        reset()
+                        return
+                    }
+                    step >= SWIPE_BASE_SLOP_DP * jumpD -> {
+                        Timber.i(
+                            "FlyText: re-anchor (step=${step}px rawX=${event.rawX} " +
+                                "fromX=${lastMoveX})"
+                        )
+                        downX = event.rawX
+                        downY = event.rawY
+                        pendingDir = null
+                        cornerDeleteArmed = false
+                        // Also re-origin a live drag so a second contact landing mid-drag cannot
+                        // yank the caret a full step.
+                        cursorOriginX = event.rawX
+                        cursorOriginY = event.rawY
+                    }
+                }
+                lastMoveX = event.rawX
+                lastMoveY = event.rawY
                 // Continuous cursor drag: handled BEFORE the one-shot classification machinery —
                 // no direction lock, no reversal guard, no classified latch. The caret follows the
                 // finger per step, re-originating at every fire, until the finger lifts.
@@ -249,7 +309,14 @@ class KeyboardFlyTextSelector(
                 // Clearing it is also the DRAG-ENTRY gate: the first fire starts continuous
                 // tracking, and the gesture stops being one-shot from here.
                 if (cursorModeProvider()) {
-                    val cursorSlopPx = SWIPE_CURSOR_SLOP_DP * d
+                    // Sensitivity-scaled threshold with a HARD floor: the resting-two-finger
+                    // centroid ceiling (~82dp) is physical and does not shrink with the
+                    // sensitivity slider — the scaled threshold must never drop under it, or the
+                    // mis-touch returns at high sensitivity.
+                    val cursorSlopPx = kotlin.math.max(
+                        SWIPE_CURSOR_SLOP_FLOOR_DP,
+                        SWIPE_CURSOR_SLOP_DP * flyTextSensitivityScale(sensitivityProvider())
+                    ) * d
                     val travel = when (dir) {
                         SwipeDirection.UP, SwipeDirection.DOWN -> kotlin.math.abs(dy)
                         SwipeDirection.LEFT, SwipeDirection.RIGHT -> kotlin.math.abs(dx)
@@ -311,5 +378,7 @@ class KeyboardFlyTextSelector(
         cursorDragging = false
         cursorOriginX = 0f
         cursorOriginY = 0f
+        lastMoveX = 0f
+        lastMoveY = 0f
     }
 }

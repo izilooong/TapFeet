@@ -984,6 +984,40 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var lastHardwareKeyAt = 0L
 
     /**
+     * Typing streak: keys seen (down or up) with no more than [TYPING_STREAK_GAP_MS] between
+     * consecutive events. A streak of [TYPING_STREAK_MIN] events or more proves a real typing
+     * burst (down+up both count, so that is ≥2 physical keys), and the guard window is then
+     * widened by [TYPING_PAUSE_BONUS_MS] — a graze right after a word's last key (the commit
+     * clears candidates, cursor mode arms instantly, and the pause before the next key is
+     * naturally longer than the base guard window) is still recognised as typing. A lone key
+     * does not build a streak, so "tap once, then swipe to fix the cursor" stays instant.
+     */
+    private var typingStreak = 0
+
+    /**
+     * True while the keyboard surface should be treated as "the user is typing": a hardware key
+     * landed within the effective guard window — the configured [AppPrefs.HardwareKeyboard.keyboardFlyTextGuardMs]
+     * base, plus [TYPING_PAUSE_BONUS_MS] while an active typing streak proves a burst. While
+     * true the fly-text selector suppresses DOWN and cancels in-flight gestures.
+     */
+    private fun typingGuardActive(): Boolean {
+        val since = SystemClock.elapsedRealtime() - lastHardwareKeyAt
+        if (since < 0) return false
+        val base = AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextGuardMs
+            .getValue().toLong()
+        val effective = base + if (typingStreak >= TYPING_STREAK_MIN) TYPING_PAUSE_BONUS_MS else 0L
+        return since < effective
+    }
+
+    /** A hardware key event (down or up) refreshes the streak and the guard clock. */
+    private fun recordTypingStroke() {
+        val now = SystemClock.elapsedRealtime()
+        typingStreak = if (now - lastHardwareKeyAt > TYPING_STREAK_GAP_MS) 1
+        else typingStreak + 1
+        lastHardwareKeyAt = now
+    }
+
+    /**
      * Live state: fly-text is armed (pref on AND visible candidates, from either candidate event
      * source — this device's config emits [FcitxEvent.CandidateListEvent], not the paged variant).
      * Recomputed on every [refreshFlyTextState], read by [installDecorMotionListener] and by
@@ -1268,10 +1302,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     forwardKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
                     forwardKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
                 },
-                typingGuard = {
-                    SystemClock.elapsedRealtime() - lastHardwareKeyAt <
-                        AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextGuardMs.getValue()
-                },
+                typingGuard = { typingGuardActive() },
                 sensitivityProvider = {
                     AppPrefs.getInstance().hardwareKeyboard.keyboardFlyTextSensitivity.getValue()
                 },
@@ -1661,6 +1692,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // "typing in progress" for the window configured by hw.keyboardFlyTextGuardMs — grazes
         // between keystrokes must not arm fly-text gestures.
         lastHardwareKeyAt = SystemClock.elapsedRealtime()
+        recordTypingStroke()
 
         // Lab-page probe: record every key BEFORE any dispatch decision, so the log also covers keys
         // a shortcut ends up consuming — and, by their absence, proves which keys never get
@@ -1836,6 +1868,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         lastHardwareKeyAt = SystemClock.elapsedRealtime()
+        recordTypingStroke()
         KeyProbeLog.record(event)
 
         // Track physical modifier state from the raw stream BEFORE any early return.
@@ -2845,5 +2878,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     companion object {
         const val DeleteSurroundingFlag = "org.fcitx.fcitx5.android.DELETE_SURROUNDING"
         const val KeyCaptureFlag = "org.fcitx.fcitx5.android.KEY_CAPTURE"
+
+        // Typing-streak guard tuning: see [typingStreak] / [recordTypingStroke].
+        // Gap between key events (ms) that still counts as one typing burst; long gaps reset the
+        // streak to a lone key so the widened guard decays with real typing pauses.
+        private const val TYPING_STREAK_GAP_MS = 500L
+        // Key events (down+up counted) needed before the burst widens the guard window.
+        private const val TYPING_STREAK_MIN = 3
+        // Extra guard window (ms, on top of the user's configured base) while a typing streak is
+        // active — covers the natural pause at a word/letter boundary after a burst.
+        private const val TYPING_PAUSE_BONUS_MS = 300L
     }
 }

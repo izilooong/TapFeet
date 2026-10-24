@@ -35,13 +35,33 @@ const val SWIPE_PAGE_SLOP_DP = 32f
 
 /**
  * Cursor-move mode (no candidates on screen): a four-way swipe drives the caret. Deliberately the
- * LONGEST threshold of the three — well above [SWIPE_UP_SLOP_DP] and [SWIPE_PAGE_SLOP_DP] — because
- * with no candidate strip the swipe has no "safe" target and a stray brush across the keyboard
- * surface would otherwise shove the caret. This is the DRAG-ENTRY threshold: clearing it fires the
- * first caret step and opens continuous tracking ([SWIPE_CURSOR_STEP_SLOP_DP] takes over), so the
- * longer travel stays the mode's mis-touch guard without making every step feel heavy.
+ * LONGEST threshold of the three — well above [SWIPE_UP_SLOP_DP] and [SWIPE_PAGE_SLOP_DP] — and
+ * now also above TWO KEY WIDTHS on the keyboard surface. The driver's single-pointer stream
+ * reports the CENTROID of resting fingers: two thumbs held two keys apart walk the reported
+ * point from the first thumb, to the midpoint, to the second thumb — a total displacement of
+ * exactly the key spacing (≈82dp at this device's ~41dp pitch), gliding there in small steps
+ * that no per-sample filter can distinguish from a slow real swipe. A threshold above that
+ * hard physical ceiling (96dp > 82dp with margin) makes the resting-two-finger case
+ * mathematically unable to fire; a deliberate swipe simply travels farther before the first
+ * caret step, then continuous tracking ([SWIPE_CURSOR_STEP_SLOP_DP]) takes over as before. This
+ * is the DRAG-ENTRY threshold: clearing it fires the first caret step and opens continuous
+ * tracking, so the longer travel stays the mode's mis-touch guard without making every step
+ * feel heavy. Vertical caret moves (off by default) share the threshold. Kept generously above
+ * the centroid ceiling (160dp ≈ four key pitches, nearly half the surface width) — cursor-by-
+ * swipe is a rare gesture, so it leans hard toward never firing by accident over firing easily.
  */
-const val SWIPE_CURSOR_SLOP_DP = 56f
+const val SWIPE_CURSOR_SLOP_DP = 160f
+
+/**
+ * Hard floor for the cursor-move threshold, in raw dp — applied AFTER the fly-text sensitivity
+ * scaling (which shrinks every slop at higher sensitivity). The resting-two-finger centroid
+ * ceiling (~82dp = two key pitches) is a PHYSICAL constant of the hardware; it does not shrink
+ * when the user raises gesture sensitivity. Without this floor, the sensitivity slider would
+ * scale [SWIPE_CURSOR_SLOP_DP] down toward the ceiling and the mis-touch would come straight
+ * back. The floor sits comfortably above the ceiling (108dp > ~82dp), so the slider keeps
+ * shaving the threshold only within the safe band (160dp → 144dp), never below it.
+ */
+const val SWIPE_CURSOR_SLOP_FLOOR_DP = 144f
 
 /**
  * Cursor DRAG step: after the entry swipe ([SWIPE_CURSOR_SLOP_DP]) opened continuous tracking, the
@@ -51,6 +71,23 @@ const val SWIPE_CURSOR_SLOP_DP = 56f
  * mid-drag takes effect on the next step (no direction lock in drag).
  */
 const val SWIPE_CURSOR_STEP_SLOP_DP = 24f
+
+/**
+ * Jump filter: a single MOVE sample that travels farther than this (dp) between consecutive
+ * samples is a contact SWITCH, not finger motion — the touch driver's reported contact jumped
+ * between two physically distinct fingers (two thumbs typing on opposite sides of the surface,
+ * reported by single-pointer drivers as one teleporting stream), or the stream glitched. A real
+ * swipe samples at 60–125Hz and moves a few px per sample; a thumb handoff moves hundreds of
+ * px in one step. The selector resets the gesture on such a jump instead of letting the fake
+ * displacement fire a page/cursor/delete action.
+ *
+ * Calibration (measured on the 1080px/2.625-density surface, ~41dp key pitch): a two-key thumb
+ * handoff jumps ≈82dp and a three-key one ≈123dp — 90dp let the two-key case through. 60dp sits
+ * below the two-key jump with margin while staying ~2× above the fastest per-sample travel a
+ * real flick produces (observed strokes run 40–90 samples for a few hundred px, i.e. single-digit
+ * dp per step), and still above every commit slop including [SWIPE_CURSOR_SLOP_DP].
+ */
+const val SWIPE_TELEPORT_SLOP_DP = 60f
 
 /**
  * A swipe only commits to a direction when that axis clearly outweighs the other (≈34° off-axis).
