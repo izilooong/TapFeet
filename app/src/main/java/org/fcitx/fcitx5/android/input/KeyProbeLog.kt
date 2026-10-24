@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver
+import org.fcitx.fcitx5.android.input.candidates.toKeyPress
 import timber.log.Timber
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -120,7 +121,7 @@ object KeyProbeLog {
             metaState = event.metaState,
             repeatCount = event.repeatCount,
             specialName = HardwareSpecialKeys.entryForKeyCode(event.keyCode)?.name,
-            isShortcutKey = HardwareShortcutResolver.isHardwareShortcutKey(event),
+            isShortcutKey = HardwareShortcutResolver.isHardwareShortcutKey(event.toKeyPress()),
         )
         synchronized(lock) {
             entries.addFirst(entry)

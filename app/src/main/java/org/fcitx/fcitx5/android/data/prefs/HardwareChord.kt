@@ -18,14 +18,15 @@ import android.view.KeyEvent
  *
  * 存储串形如 `"Fn+e"`（Titan2 / Titan2 Elite）或 `"Sym+e"`（BlackBerry —— 那台机器的 Sym 键上报
  * 右 Alt `Alt_R`，走 `Sym+` 前缀而不是直接写 `Alt+e`：真修饰键的 meta 分不出左右 Alt，会把左 Alt
- * 那份**系统原生键帽符号**一起吞掉，详见 [SYM] 与 `modifierHeld`）。解析时先 [split] 出前缀，
+ * 那份**系统原生键帽符号**一起吞掉，详见 [SYM] 与匹配核心的 `modifierHeld`）。解析时先 [split] 出前缀，
  * 内层键照旧走原来那套（伪键名 → fcitx5 portableString）。
  *
  * ⚠️ 两端约定：
  * - 状态由 [org.fcitx.fcitx5.android.input.FcitxInputMethodService] 的按下/抬起喂进来
  *   （[onKeyDown] / [onKeyUp]），会话结束必须 [reset]；
- * - 读取方是**两份**按键解析拷贝（[org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver]
- *   与 `InputView`），项目铁律：改匹配两处同改。
+ * - 读取方只有一个：派发入口的 [org.fcitx.fcitx5.android.input.candidates.toKeyPress] 快照，
+ *   匹配核心 [org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver] 经快照判和弦。
+ *   曾经的「两份按键解析拷贝同改」已收编为一份。
  *
  * ⚠️ 本对象只存**运行期状态**，不落盘。状态僵死比不生效危险得多 —— 一个卡住的「Fn 按住」会把
  * 每次按字母都判成和弦（按 E 就切特效）。所以：抬起即清、会话收尾即清，绝不引入「只能靠超时才
@@ -56,7 +57,8 @@ object HardwareChord {
      * ⚠️ 黑莓预设的动作快捷键不建在这个前缀上（那边两族统一挂 [SHIFT_R]，见
      * HardwareKeyProfiles.shortcutValuesFor）—— 但前缀本身仍然有效：用户在捕获窗口里
      * 手工拼 `Sym+字母` 照样能绑、能匹配。**绝不要改用 `Alt+字母`**：真修饰键的 meta 分不出左右
-     * Alt，会把左 Alt（键帽符号 + Alt Latch 用的那个）一起吞掉，详见 [modifierHeld]。
+     * Alt，会把左 Alt（键帽符号 + Alt Latch 用的那个）一起吞掉，详见
+     * [org.fcitx.fcitx5.android.input.candidates.toKeyPress] 的 symHeld 注释。
      */
     const val SYM = "Sym"
 
@@ -64,8 +66,9 @@ object HardwareChord {
     //
     // 为什么真修饰键也要走和弦前缀：fcitx5 KeyStates 的 Alt / Shift 位**分不出左右**，存 `Alt+e`
     // 会把左右两份一起吞。要「只认某一侧」（黑莓快捷键统一挂 Shift_R；左 Alt + 字母是黑莓原生
-    // 键帽符号输入，绝不能吞）就走和弦前缀：解析时剥出 `Alt_R+` 这类前缀，匹配时 [modifierHeld]
-    // 直接读 meta 的侧别位（META_ALT_LEFT_ON 等，KeyEvent 自带，无需 fnDown 式按住跟踪）。
+    // 键帽符号输入，绝不能吞）就走和弦前缀：解析时剥出 `Alt_R+` 这类前缀，匹配时由
+    // [org.fcitx.fcitx5.android.input.candidates.HardwareKeyMatcher.modifierHeld]
+    // 直接读快照 metaState 的侧别位（META_ALT_LEFT_ON 等，无需 fnDown 式按住跟踪）。
     //
     // ⚠️ 存储串形如 `"Shift_R+s"`；裸键 `"Shift_R"` / `"Alt_L"`（黑莓预设把右 Shift 绑候选 5、
     // 左 Alt 绑 Alt Latch）不含 `+` 后缀，[split] 不会误剥。
@@ -128,6 +131,15 @@ object HardwareChord {
     private var fnDown = false
     private var symDown = false
 
+    /** 只读快照口：[org.fcitx.fcitx5.android.input.candidates.toKeyPress] 在建 KeyPress 时把
+     *  系统 meta 与这两个按住状态取并集冻结进快照，匹配核心
+     *  ([org.fcitx.fcitx5.android.input.candidates.HardwareKeyMatcher]) 只读快照、不回头看本对象
+     *  （写状态仍只走 [onKeyDown]/[onKeyUp]/[reset]）。
+     *  ⚠️ Sym 不许兜底认 `isAltPressed` 的坑（META_ALT_ON 分不出左右 Alt，黑莓 SYM 是右 Alt，
+     *  而左 Alt+字母是系统原生键帽符号 —— 详见 toKeyPress 的注释）由快照侧守着。 */
+    internal val isFnDown: Boolean get() = fnDown
+    internal val isSymDown: Boolean get() = symDown
+
     /** 被 tap-hold 挂起的符号键；null = 没有挂起。见 [armSymbolTap]。 */
     private var pendingSymbolTapKeyCode: Int? = null
 
@@ -171,28 +183,6 @@ object HardwareChord {
             // NavBack 之类的伪键不是修饰键，没有按住语义。
             else -> Unit
         }
-    }
-
-    /**
-     * 该修饰键此刻是否算「按住」。两条路取并集：
-     *  - 系统 meta（`isFunctionPressed` / `isSymPressed`）—— 平台真的把 Fn/Sym 当修饰键报时最准；
-     *  - 我们自己跟踪的按下状态 —— 平台什么都不报时（Titan 的 Fn 是裸 keyCode 403）唯一的路。
-     *
-     * ⚠️ Sym **不许**再兜底认 `isAltPressed`（曾经这么写过，是个坑）：`isAltPressed` 读的是
-     * META_ALT_ON，**分不出左右 Alt**。黑莓的 SYM 是右 Alt，而 Q25 的左 Alt + 字母恰恰是系统原生的
-     * 「键帽符号」输入（Alt Latch 双击锁定也是为它服务的）—— 兜底一挂上，用户按左 Alt 打符号时
-     * 动作先命中，那 6 个字母的键帽符号就再也打不出来了。注册表已把 `KEYCODE_ALT_RIGHT` 登记给
-     * `Sym`，[setHeld] 的 `symDown` 是**分左右**的可靠状态，用它就够。
-     */
-    fun modifierHeld(name: String, event: KeyEvent): Boolean = when (name) {
-        FN -> event.isFunctionPressed || fnDown
-        SYM -> event.isSymPressed || symDown
-        // 侧别精确的真修饰键：meta 自带侧别位，直接读，无需跟踪。
-        ALT_L -> event.metaState and KeyEvent.META_ALT_LEFT_ON != 0
-        ALT_R -> event.metaState and KeyEvent.META_ALT_RIGHT_ON != 0
-        SHIFT_L -> event.metaState and KeyEvent.META_SHIFT_LEFT_ON != 0
-        SHIFT_R -> event.metaState and KeyEvent.META_SHIFT_RIGHT_ON != 0
-        else -> false
     }
 
     /** 这个 keyCode 是不是「可以拿来拼和弦的修饰键」—— tap-hold 的适用条件之一。 */

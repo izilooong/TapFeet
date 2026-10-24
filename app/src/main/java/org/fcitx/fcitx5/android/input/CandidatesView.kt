@@ -16,6 +16,7 @@ import android.view.ViewTreeObserver.OnPreDrawListener
 import android.view.WindowInsets
 import android.widget.TextView
 import org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver
+import org.fcitx.fcitx5.android.input.candidates.toKeyPress
 import androidx.annotation.Size
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
@@ -256,7 +257,7 @@ class CandidatesView(
         if (!isShowingCandidates()) return false
 
         // Paging: previous / next candidate page (layout-independent).
-        val paging = HardwareShortcutResolver.resolvePaging(event)
+        val paging = HardwareShortcutResolver.resolvePaging(event.toKeyPress())
         if (paging != null) {
             pageCandidates(paging)
             return true
@@ -284,7 +285,7 @@ class CandidatesView(
         if (count <= 0) return false
 
         // Selection is purely by sequence number: candidate N → visible position N-1.
-        val position = HardwareShortcutResolver.resolveShortcutPositionBySequence(event, count)
+        val position = HardwareShortcutResolver.resolveShortcutPositionBySequence(event.toKeyPress(), count)
             ?: return false
         return selectAtVisiblePosition(position)
     }

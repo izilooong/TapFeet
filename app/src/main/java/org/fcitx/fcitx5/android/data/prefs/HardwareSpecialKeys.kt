@@ -24,10 +24,10 @@ import org.fcitx.fcitx5.android.R
  *
  * This follows the pre-existing `"Sym"` precedent, now generalised: every consumer must consult
  * this registry **before** calling `Key.parse`. The parse sites are
- * [org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver],
- * [org.fcitx.fcitx5.android.input.InputView],
- * [org.fcitx.fcitx5.android.ui.main.settings.KeyCaptureUi] and
- * `FcitxInputMethodService.isAltLatchKey`.
+ * [org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver] (all runtime matching:
+ * candidate / paging / symbol / Alt-latch — the service's old private `isAltLatchKey` copy and
+ * InputView's duplicate are now collapsed into this one) and
+ * [org.fcitx.fcitx5.android.ui.main.settings.KeyCaptureUi] (the binding dialog's preview).
  *
  * ⚠️ When adding a new parse site, check this registry first — entry names deliberately avoid the
  * fcitx5 native key names (`Back`/`Home`/`Fn` all collide, hence the `Nav` prefix), so a missed

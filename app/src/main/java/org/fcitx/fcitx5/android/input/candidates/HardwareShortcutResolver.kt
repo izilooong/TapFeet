@@ -4,10 +4,7 @@
  */
 package org.fcitx.fcitx5.android.input.candidates
 
-import android.view.KeyEvent
-import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.Key
-import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareChord
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
@@ -19,11 +16,17 @@ import org.fcitx.fcitx5.android.utils.normalizeKeyString
 /**
  * View-independent resolution of physical-keyboard candidate shortcuts.
  *
- * The virtual keyboard's horizontal candidate bar ([org.fcitx.fcitx5.android.input.InputView])
- * and the physical-keyboard floating candidate window
- * ([org.fcitx.fcitx5.android.input.CandidatesView]) both need to map a pressed physical key to a
- * candidate position, and both share the key-string parsing, paging and memoization caches here
- * so the two views don't each duplicate ~150 lines of shortcut logic.
+ * The virtual keyboard's horizontal candidate bar (via
+ * [org.fcitx.fcitx5.android.input.InputView]) and the physical-keyboard floating candidate
+ * window ([org.fcitx.fcitx5.android.input.CandidatesView]) both need to map a pressed physical
+ * key to a candidate position; they share key-string parsing, paging and memoization caches here
+ * so neither view keeps a private copy of the shortcut logic.
+ *
+ * This facade takes [KeyPress] snapshots, never `android.view.KeyEvent`: callers capture the
+ * snapshot once at dispatch entry ([toKeyPress]), and the matching rules live in
+ * [HardwareKeyMatcher] — a pure module unit tests drive directly with hand-built snapshots.
+ * The only step that cannot run on the JVM is [parseKeyString]'s `Key.parse` (JNI); bindings
+ * round-trip through the Lab key-capture page on-device instead.
  *
  * The two surfaces differ in how a position is resolved:
  * - The horizontal bar is arrangement-aware: it uses a BlackBerry slot table and a centre
@@ -31,9 +34,6 @@ import org.fcitx.fcitx5.android.utils.normalizeKeyString
  * - The floating window renders candidates in plain index order, so selection is **strictly by
  *   sequence number** (candidate1 → 0, candidate2 → 1, …) via [resolveShortcutPositionBySequence],
  *   independent of arrangement mode.
- *
- * This object is intentionally free of any Android `View` state: callers supply the candidate
- * count and perform the final selection.
  */
 object HardwareShortcutResolver {
 
@@ -44,7 +44,8 @@ object HardwareShortcutResolver {
 
         /**
          * 伪修饰键和弦（`Fn+字母` / `Sym+字母`）。修饰键没有 fcitx5 Keysym、也进不了 metaState，
-         * 所以只能靠 [HardwareChord] 自己跟踪的按住状态来判 —— 见那边的说明。
+         * 所以只能靠 [KeyPress.fnHeld] / [KeyPress.symHeld] 在快照时刻冻结的按住状态来判 ——
+         * 按住状态的唯一写方见 [HardwareChord]。
          */
         data class Chord(val modifier: String, val inner: ParsedKey) : ParsedKey
     }
@@ -54,6 +55,10 @@ object HardwareShortcutResolver {
         mutableMapOf<Pair<Int, CandidateArrangementMode>, List<ShortcutRule>>()
     private var wideShortcutsCache = mutableMapOf<CandidateArrangementMode, List<ShortcutRule>>()
     private var shortcutKeysCache: List<ParsedKey>? = null
+
+    /** Alt-latch 触发键的 memo：字符串没变就不重复走 JNI parse（每次物理按键都会问一次）。 */
+    private var latchKeyString: String? = null
+    private var latchKeyParsed: ParsedKey? = null
 
     /** 动作快捷键（开关类…）的解析结果，按 [ShortcutAction] 声明顺序排列 = 匹配优先级。 */
     private var actionParsedKeysCache: List<Pair<ShortcutAction, ParsedKey>>? = null
@@ -78,7 +83,11 @@ object HardwareShortcutResolver {
         wideShortcutsCache.clear()
         shortcutKeysCache = null
         actionParsedKeysCache = null
+        latchKeyString = null
+        latchKeyParsed = null
     }
+
+    // ------------------------------------------------------------------ parsing
 
     internal fun parseKeyString(keyString: String): ParsedKey? {
         if (keyString.isEmpty()) return null
@@ -97,68 +106,49 @@ object HardwareShortcutResolver {
         }
     }
 
-    internal fun matchesParsedKey(event: KeyEvent, parsed: ParsedKey?): Boolean = when (parsed) {
-        null -> false
-        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
-        is ParsedKey.Ref -> matchesKey(event, parsed.key)
-        // 和弦：修饰键按住 **且** 内层键命中。顺序要紧：内层键（如 "e"）本身不带 modifier，
-        // 会被 matchesKey 的「纯键」分支当成普通按键命中，所以必须先过修饰键这一关。
-        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
-                matchesParsedKey(event, parsed.inner)
-    }
+    // ------------------------------------------------------------------ matching (thin delegates to HardwareKeyMatcher)
 
-    internal fun matchesKey(event: KeyEvent, key: Key): Boolean {
-        if (key.sym == 0) return false
-        // Match by the physical key's keysym OR the character it produces. We must also accept the
-        // keyCode-derived keysym because holding a modifier (e.g. Alt) can change event.unicodeChar
-        // into a composed character, which would otherwise make the sym comparison fail for symbol
-        // keys like grave (`) and break combos such as "Alt+grave". Character keys whose keyCode is
-        // unreliable across layouts (e.g. `$`) still match via event.unicodeChar.
-        val symFromKeyCode = FcitxKeyMapping.keyCodeToSym(event.keyCode)
-        val symMatches = symFromKeyCode == key.sym ||
-            (event.unicodeChar != 0 && event.unicodeChar == key.sym)
-        if (!symMatches) return false
-        if (KeyStates.isModifierKeySym(key.sym)) return true
-        // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so use
-        // raw states (no stripping). A plain key (no modifier) keeps [KeyStates.fromKeyEvent]'s
-        // tolerant stripping, so an Alt-latched press of a number/symbol key still selects the
-        // candidate (the original fcitx5-android behaviour).
-        // A configured COMBO (has modifier, e.g. "Alt+grave") must match the modifier exactly, so
-        // use raw states (no stripping). A plain key (no modifier) must ignore the system's residual
-        // modifier state — notably Alt sticky/locked left by some ROMs after an Alt tap — so the
-        // shortcut still works in editors where that happens. KeyStates.fromKeyEvent does this
-        // clearing for number/symbol keys but *skips* the space key (it special-cases unicode == ' '),
-        // which is exactly why the first-pick (Space) candidate shortcut failed in some editors while
-        // candidate keys 2-5 kept working. Use an empty state directly so any plain key, Space
-        // included, matches regardless of leftover Alt.
-        val states = if (key.states != 0) KeyStates.rawModifierStates(event) else KeyStates.Empty
-        return states.toInt() == key.states
-    }
+    internal fun matchesParsedKey(kp: KeyPress, parsed: ParsedKey?): Boolean =
+        HardwareKeyMatcher.matchesParsedKey(kp, parsed)
 
-    internal fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean {
+    /** Match by KeySym only (any modifier state) — a physical key regardless of what is held. */
+    internal fun matchesKeySymOnly(kp: KeyPress, parsed: ParsedKey): Boolean =
+        HardwareKeyMatcher.matchesKeySymOnly(kp, parsed)
+
+    fun isSameKeySymString(kp: KeyPress, keyString: String): Boolean {
         val parsed = parseKeyString(keyString) ?: return false
-        return matchesKeySymOnly(event, parsed)
-    }
-
-    /** 只比 KeySym / 伪键名，不管修饰键状态（和弦则额外要求修饰键按住）。 */
-    internal fun matchesKeySymOnly(event: KeyEvent, parsed: ParsedKey): Boolean = when (parsed) {
-        is ParsedKey.Special -> parsed.entry.matches(event.keyCode)
-        is ParsedKey.Ref -> FcitxKeyMapping.keyCodeToSym(event.keyCode) == parsed.key.sym ||
-                (event.unicodeChar != 0 && event.unicodeChar == parsed.key.sym)
-        is ParsedKey.Chord -> HardwareChord.modifierHeld(parsed.modifier, event) &&
-                matchesKeySymOnly(event, parsed.inner)
+        return matchesKeySymOnly(kp, parsed)
     }
 
     /**
-     * Whether [event] matches any configured hardware shortcut key
+     * Whether [kp] matches any configured hardware shortcut key
      * (candidates / symbol / paging / global / action).
      */
-    fun isHardwareShortcutKey(event: KeyEvent): Boolean {
-        return shortcutParsedKeys().any { matchesParsedKey(event, it) }
+    fun isHardwareShortcutKey(kp: KeyPress): Boolean =
+        shortcutParsedKeys().any { matchesParsedKey(kp, it) }
+
+    /**
+     * Whether [kp] is the configured Alt-latch trigger key (setting:
+     * hardwareKeyboard.altLatchKey, default "Alt_L"). An empty value disables latching.
+     *
+     * Matched by keysym only (bare physical press, residual modifiers ignored). This goes
+     * through the SAME parse path as every other binding, so pseudo keys (`Sym`) and chord
+     * prefixes (`Fn+x`) work here exactly as they do for candidate shortcuts — the Service's
+     * old private copy consulted neither and silently ignored such bindings.
+     */
+    fun matchesLatchKey(kp: KeyPress): Boolean {
+        val keyString = hardwareKeyboardPrefs.altLatchKey.getValue()
+        if (keyString.isEmpty()) return false
+        if (keyString != latchKeyString) {
+            latchKeyString = keyString
+            latchKeyParsed = parseKeyString(keyString)
+        }
+        val parsed = latchKeyParsed ?: return false
+        return matchesKeySymOnly(kp, parsed)
     }
 
     /**
-     * 解析 [event] 命中的动作快捷键（开关类…），未绑定时返回 null。
+     * 解析 [kp] 命中的动作快捷键（开关类…），未绑定时返回 null。
      *
      * 调用方 (`FcitxInputMethodService.onKeyDown`) 把它放在整条派发链的**最前面**，
      * 于是同一个键既被绑成候选字又被绑成动作时，动作赢——这条优先级是刻意的，配置界面
@@ -166,8 +156,8 @@ object HardwareShortcutResolver {
      *
      * [ShortcutAction] 的声明顺序即优先级：同键多绑定时取最先命中者。
      */
-    fun resolveAction(event: KeyEvent): ShortcutAction? =
-        actionParsedKeys().firstOrNull { matchesParsedKey(event, it.second) }?.first
+    fun resolveAction(kp: KeyPress): ShortcutAction? =
+        actionParsedKeys().firstOrNull { matchesParsedKey(kp, it.second) }?.first
 
     /**
      * 已绑定的动作键（跳过空串），与缓存同生共死。所有预设（含黑莓）统一放行：
@@ -194,50 +184,25 @@ object HardwareShortcutResolver {
         return keys
     }
 
-    private fun candidate1Parsed(): ParsedKey? = parseKeyString(hardwareKeyboardPrefs.candidate1Key.getValue())
-
-    fun candidate1HasModifier(): Boolean = (candidate1Parsed() as? ParsedKey.Ref)?.key?.states != 0
-
-    /** candidate1 bound to a combo (e.g. "Alt+space") pressed → caller should select the centre/first-pick. */
-    fun matchesCandidate1WithModifier(event: KeyEvent): Boolean {
-        val parsed = candidate1Parsed() ?: return false
-        return (parsed as? ParsedKey.Ref)?.key?.states != 0 && matchesParsedKey(event, parsed)
-    }
-
-    /** Plain candidate1 (no modifier) pressed → caller should select the first-pick candidate. */
-    fun matchesCandidate1Plain(event: KeyEvent): Boolean {
-        if (candidate1HasModifier()) return false
-        return isSameKeySymString(event, hardwareKeyboardPrefs.candidate1Key.getValue())
-    }
+    // ------------------------------------------------------------------ paging (single source; used to be copied 3×)
 
     /**
-     * Resolve paging direction from [event]. Returns -1 (previous page), 1 (next page),
-     * or null when the event does not match either paging key.
+     * Resolve paging direction from [kp]. Returns -1 (previous page), 1 (next page),
+     * or null when the press does not match either paging key.
+     *
+     * 唯一的翻页仲裁。水平候选条、picker 窗口、浮动候选窗曾各持一份逐字同构的拷贝
+     * （"combo 优先于同物理键的纯键绑定"抄了三遍），现在三个消费方都只问这里。
      */
-    fun resolvePaging(event: KeyEvent): Int? {
+    fun resolvePaging(kp: KeyPress): Int? {
         val hw = hardwareKeyboardPrefs
-        val nextParsed = parseKeyString(hw.pageNextKey.getValue())
-        val prevParsed = parseKeyString(hw.pagePrevKey.getValue())
-        val nextMatches = matchesParsedKey(event, nextParsed)
-        val prevMatches = matchesParsedKey(event, prevParsed)
-        if (!nextMatches && !prevMatches) return null
-        // A combo (modifier) binding takes precedence over a plain binding on the same physical key,
-        // so e.g. "Alt+grave" (prev) is not stolen by a plain "grave" (next) binding.
-        val prevHasModifier = (prevParsed as? ParsedKey.Ref)?.key?.states != 0
-        val nextHasModifier = (nextParsed as? ParsedKey.Ref)?.key?.states != 0
-        return when {
-            prevMatches && prevHasModifier -> -1
-            nextMatches && nextHasModifier -> 1
-            prevMatches -> -1
-            else -> 1
-        }
+        return HardwareKeyMatcher.pagingDirection(
+            kp,
+            nextParsed = parseKeyString(hw.pageNextKey.getValue()),
+            prevParsed = parseKeyString(hw.pagePrevKey.getValue()),
+        )
     }
 
-    /** Visible position of the "first-pick" candidate given the current candidate count. */
-    fun firstPickPosition(count: Int): Int = when (arrangementModePref.getValue()) {
-        CandidateArrangementMode.Macrohard -> (count - 1) / 2
-        CandidateArrangementMode.Linear -> 0
-    }
+    // ------------------------------------------------------------------ position tables
 
     // 1~5 候选的精细映射：物理键 → 可见位置。映射取决于候选栏排列模式（巨硬居中展开 / 普通线性），
     // 必须与 CandidateArrangementMode 保持一致，否则物理键会选到错误的候选。
@@ -306,23 +271,23 @@ object HardwareShortcutResolver {
     }
 
     /**
-     * Resolve the visible candidate position selected by [event] for a surface showing [count]
+     * Resolve the visible candidate position selected by [kp] for a surface showing [count]
      * candidates, or null when no candidate shortcut key matches.
      */
-    fun resolveShortcutPosition(event: KeyEvent, count: Int): Int? {
+    fun resolveShortcutPosition(kp: KeyPress, count: Int): Int? {
         preciseShortcuts(count)?.let { rules ->
-            for (r in rules) if (matchesParsedKey(event, r.parsedKey)) return r.position
+            for (r in rules) if (matchesParsedKey(kp, r.parsedKey)) return r.position
         }
         if (count > CandidateUi.BlackBerryBottomRowKeyCount) {
             for (r in wideShortcuts()) {
-                if (matchesParsedKey(event, r.parsedKey) && r.position < count) return r.position
+                if (matchesParsedKey(kp, r.parsedKey) && r.position < count) return r.position
             }
         }
         return null
     }
 
     /**
-     * Resolve the candidate position selected by [event] strictly by **sequence number**, ignoring
+     * Resolve the candidate position selected by [kp] strictly by **sequence number**, ignoring
      * any layout / arrangement mode (BlackBerry slots, centre first-pick). Used by the floating
      * candidate window ([org.fcitx.fcitx5.android.input.CandidatesView]), which renders candidates
      * in plain index order, so candidate1 → 0, candidate2 → 1, … candidate5 → 4.
@@ -330,7 +295,7 @@ object HardwareShortcutResolver {
      * A candidate key bound to a combo (e.g. "Alt+space") still maps to its sequence position,
      * because [matchesParsedKey] honours the modifier exactly.
      */
-    fun resolveShortcutPositionBySequence(event: KeyEvent, count: Int): Int? {
+    fun resolveShortcutPositionBySequence(kp: KeyPress, count: Int): Int? {
         if (count <= 0) return null
         val hw = hardwareKeyboardPrefs
         val rules = listOf(
@@ -341,7 +306,7 @@ object HardwareShortcutResolver {
             parseKeyString(hw.candidate5Key.getValue()) to 4,
         )
         for ((parsed, pos) in rules) {
-            if (matchesParsedKey(event, parsed) && pos < count) return pos
+            if (matchesParsedKey(kp, parsed) && pos < count) return pos
         }
         return null
     }

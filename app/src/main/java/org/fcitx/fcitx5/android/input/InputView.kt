@@ -52,6 +52,8 @@ import org.fcitx.fcitx5.android.input.broadcast.PunctuationComponent
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
 import org.fcitx.fcitx5.android.input.candidates.CandidateViewHolder
 import org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver
+import org.fcitx.fcitx5.android.input.candidates.KeyPress
+import org.fcitx.fcitx5.android.input.candidates.toKeyPress
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateComponent
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.HiddenKeyboardWindow
@@ -223,16 +225,17 @@ class InputView(
     }
 
     // ---- Hardware shortcut key resolution -------------------------------------
-    // Parsing / matching now lives in [HardwareShortcutResolver]; the two helpers below are thin
-    // adapters so the rest of InputView keeps calling by the same names.
+    // Parsing / matching now lives in [HardwareShortcutResolver] (pure rules in
+    // [HardwareKeyMatcher]); the helpers below are thin adapters that take a [KeyPress] snapshot,
+    // so the rest of InputView keeps calling by the same names.
 
     private fun parseKeyString(keyString: String): HardwareShortcutResolver.ParsedKey? =
         HardwareShortcutResolver.parseKeyString(keyString)
 
     private fun matchesParsedKey(
-        event: KeyEvent,
+        kp: KeyPress,
         parsed: HardwareShortcutResolver.ParsedKey?
-    ): Boolean = HardwareShortcutResolver.matchesParsedKey(event, parsed)
+    ): Boolean = HardwareShortcutResolver.matchesParsedKey(kp, parsed)
 
 
     private val hardwareKeyboardPrefs = AppPrefs.getInstance().hardwareKeyboard
@@ -476,8 +479,8 @@ class InputView(
     }
 
     /** Match by KeySym only (any modifiers) — used to detect a physical key regardless of modifiers. */
-    private fun isSameKeySymString(event: KeyEvent, keyString: String): Boolean =
-        HardwareShortcutResolver.isSameKeySymString(event, keyString)
+    private fun isSameKeySymString(kp: KeyPress, keyString: String): Boolean =
+        HardwareShortcutResolver.isSameKeySymString(kp, keyString)
 
     private fun selectCandidateAtVisiblePosition(position: Int): Boolean {
         val count = horizontalCandidate.visibleCandidateCount()
@@ -573,8 +576,8 @@ class InputView(
         return true
     }
 
-    private fun resolveShortcutPosition(event: KeyEvent, count: Int): Int? =
-        HardwareShortcutResolver.resolveShortcutPosition(event, count)
+    private fun resolveShortcutPosition(kp: KeyPress, count: Int): Int? =
+        HardwareShortcutResolver.resolveShortcutPosition(kp, count)
 
     /**
      * Side-effect-free check: does [event] match any configured hardware shortcut key
@@ -590,7 +593,7 @@ class InputView(
      * 新增的动作快捷键因此只需在 Resolver 里登记一次，就会被 Alt 锁定逻辑认出来。
      */
     fun isHardwareShortcutKey(event: KeyEvent): Boolean =
-        HardwareShortcutResolver.isHardwareShortcutKey(event)
+        HardwareShortcutResolver.isHardwareShortcutKey(event.toKeyPress())
 
     /**
      * 动作快捷键（开关类 + 文本编辑类）：命中即执行并消费该键。
@@ -603,7 +606,7 @@ class InputView(
      */
     fun handleHardwareActionShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
-        val action = HardwareShortcutResolver.resolveAction(event) ?: return false
+        val action = HardwareShortcutResolver.resolveAction(event.toKeyPress()) ?: return false
         performShortcutAction(action)
         return true
     }
@@ -941,10 +944,11 @@ class InputView(
 
     fun handleHardwareCandidateShortcut(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
+        val kp = event.toKeyPress()
 
         // 全局动作（可配置快捷键）：切换输入法 / 显示输入法选择器。
         // 放在最前，确保无论候选窗是否显示都能触发。
-        if (handleHardwareGlobalAction(event)) return true
+        if (handleHardwareGlobalAction(kp)) return true
 
         // 物理键盘模式下，本 InputView 的水平候选条已隐藏，活跃的候选面是浮动窗口
         // （CandidatesView）。此处若继续走下方的"选字 / 翻页"分支，会经
@@ -962,16 +966,16 @@ class InputView(
         val candidate1HasModifier = (c1Parsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
 
         // candidate1 组合键（配置带 modifier）：精确匹配后直接选居中候选（优先于符号切换）
-        if (candidate1HasModifier && matchesParsedKey(event, c1Parsed)) {
+        if (candidate1HasModifier && matchesParsedKey(kp, c1Parsed)) {
             if (kawaiiBar.isCandidateUiShowing()) {
                 val count = horizontalCandidate.visibleCandidateCount()
                 if (count > 0) return selectCandidateAtVisiblePosition((count - 1) / 2)
             }
         }
 
-        if (handleHardwareSymToggle(event)) return true
+        if (handleHardwareSymToggle(kp)) return true
         if (!kawaiiBar.isCandidateUiShowing()) return false
-        if (handleHardwareCandidatePaging(event)) return true
+        if (handleHardwareCandidatePaging(kp)) return true
 
         val count = horizontalCandidate.visibleCandidateCount()
         if (count <= 0) return false
@@ -983,7 +987,7 @@ class InputView(
         //  - Linear: candidates are laid out left-to-right, so the first-pick sits at position 0.
         // Reading the preference on every press is fine — it is a single SharedPreferences get
         // and keeps the picker stateless against mode changes that happen in the settings screen.
-        if (!candidate1HasModifier && isSameKeySymString(event, c1)) {
+        if (!candidate1HasModifier && isSameKeySymString(kp, c1)) {
             val firstPickPosition = when (
                 candidateArrangementModePref.getValue()
             ) {
@@ -993,21 +997,21 @@ class InputView(
             return selectCandidateAtVisiblePosition(firstPickPosition)
         }
 
-        val position = resolveShortcutPosition(event, count) ?: return false
+        val position = resolveShortcutPosition(kp, count) ?: return false
         return selectCandidateAtVisiblePosition(position)
     }
 
     // 全局动作：可配置的快捷键（默认 Alt+space 切换输入法、Shift+space 显示输入法选择器）。
     // 配置为空串表示未绑定。这两个动作原先硬绑在 candidate1Key 的 Alt/Shift 组合上，现独立出来。
-    private fun handleHardwareGlobalAction(event: KeyEvent): Boolean {
+    private fun handleHardwareGlobalAction(kp: KeyPress): Boolean {
         val hw = hardwareKeyboardPrefs
         val toggleKey = hw.toggleImeKey.getValue()
         val pickerKeyStr = hw.pickerKey.getValue()
-        if (toggleKey.isNotEmpty() && matchesParsedKey(event, parseKeyString(toggleKey))) {
+        if (toggleKey.isNotEmpty() && matchesParsedKey(kp, parseKeyString(toggleKey))) {
             service.postFcitxJob { toggleIme() }
             return true
         }
-        if (pickerKeyStr.isNotEmpty() && matchesParsedKey(event, parseKeyString(pickerKeyStr))) {
+        if (pickerKeyStr.isNotEmpty() && matchesParsedKey(kp, parseKeyString(pickerKeyStr))) {
             commonKeyActionListener.listener.onKeyAction(
                 KeyAction.ShowInputMethodPickerAction,
                 KeyActionListener.Source.Keyboard,
@@ -1017,10 +1021,10 @@ class InputView(
         return false
     }
 
-    private fun handleHardwareSymToggle(event: KeyEvent): Boolean {
+    private fun handleHardwareSymToggle(kp: KeyPress): Boolean {
         val hw = hardwareKeyboardPrefs
         val symKeyCombined = hw.symbolPickerKey.getValue()
-        val isSymToggleKey = matchesParsedKey(event, parseKeyString(symKeyCombined))
+        val isSymToggleKey = matchesParsedKey(kp, parseKeyString(symKeyCombined))
         if (!isSymToggleKey) return false
 
         // Candidate total can be stale from previous sessions. Use visible UI state instead.
@@ -1030,7 +1034,7 @@ class InputView(
 
         // tap-hold：本该在这里切窗口，但若这个键同时是伪修饰键（Elite 预设的 Fn：symbolPickerKey
         // = "NavFn"），按下就切会让 Fn+字母 永远走不通 —— 挂起到松手，没被和弦用掉再切。
-        if (HardwareChord.armSymbolTap(event.keyCode)) return true
+        if (HardwareChord.armSymbolTap(kp.keyCode)) return true
 
         toggleSymbolForKeyPress()
         return true
@@ -1209,7 +1213,7 @@ class InputView(
         // [onHardwareSymbolTapReleased]；被和弦用掉了就不补（按下时已由 HardwareChord 作废挂起）。
         if (handleHardwareChordTapHold(event)) return true
         if (event.action != KeyEvent.ACTION_DOWN) return false
-        if (!matchesSymbolKey(event)) return false
+        if (!matchesSymbolKey(event.toKeyPress())) return false
         toggleSymbolForKeyPress()
         return true
     }
@@ -1227,13 +1231,13 @@ class InputView(
      */
     fun handleHardwareChordTapHold(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
-        if (!matchesSymbolKey(event)) return false
+        if (!matchesSymbolKey(event.toKeyPress())) return false
         return HardwareChord.armSymbolTap(event.keyCode)
     }
 
-    /** 这个事件是不是配置的「符号窗口」键（[AppPrefs.HardwareKeyboard.symbolPickerKey]）。 */
-    private fun matchesSymbolKey(event: KeyEvent): Boolean =
-        matchesParsedKey(event, parseKeyString(hardwareKeyboardPrefs.symbolPickerKey.getValue()))
+    /** 这个快照是不是配置的「符号窗口」键（[AppPrefs.HardwareKeyboard.symbolPickerKey]）。 */
+    private fun matchesSymbolKey(kp: KeyPress): Boolean =
+        matchesParsedKey(kp, parseKeyString(hardwareKeyboardPrefs.symbolPickerKey.getValue()))
 
     /**
      * 符号键「轻按」的动作体：有序面板循环（关闭 → 排序1 → … → 关闭）。
@@ -1277,25 +1281,12 @@ class InputView(
     fun handleHardwarePickerSelection(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
         val picker = currentPickerWindow() ?: return false
-        val hw = hardwareKeyboardPrefs
-        val symKey = hw.symbolPickerKey.getValue()
-        if (matchesParsedKey(event, parseKeyString(symKey))) return false
-        // 翻页：复用候选分页快捷键（pageNextKey / pagePrevKey）。
-        // 组合键（带 modifier）优先于同物理键的纯键绑定，
-        // 例如 "Alt+grave"(上一页) 不被纯 "grave"(下一页) 抢走。
-        val nextParsed = parseKeyString(hw.pageNextKey.getValue())
-        val prevParsed = parseKeyString(hw.pagePrevKey.getValue())
-        val nextMatches = matchesParsedKey(event, nextParsed)
-        val prevMatches = matchesParsedKey(event, prevParsed)
-        if (nextMatches || prevMatches) {
-            val prevHasModifier = (prevParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
-            val nextHasModifier = (nextParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
-            val direction = when {
-                prevMatches && prevHasModifier -> -1
-                nextMatches && nextHasModifier -> 1
-                prevMatches -> -1
-                else -> 1
-            }
+        val kp = event.toKeyPress()
+        val symKey = hardwareKeyboardPrefs.symbolPickerKey.getValue()
+        if (matchesParsedKey(kp, parseKeyString(symKey))) return false
+        // 翻页：与候选分页、浮动窗口共用同一份仲裁（[HardwareShortcutResolver.resolvePaging]）——
+        // "Alt+grave"(上一页) 不被纯 "grave"(下一页) 抢走，规则只住 Resolver 一处。
+        HardwareShortcutResolver.resolvePaging(kp)?.let { direction ->
             picker.page(direction)
             return true
         }
@@ -1319,23 +1310,9 @@ class InputView(
 
     // 物理键 → 候选位置的映射已重构为数据驱动表，见上方 preciseShortcuts() / wideShortcuts() / resolveShortcutPosition()。
 
-    private fun handleHardwareCandidatePaging(event: KeyEvent): Boolean {
-        val hw = hardwareKeyboardPrefs
-        val nextParsed = parseKeyString(hw.pageNextKey.getValue())
-        val prevParsed = parseKeyString(hw.pagePrevKey.getValue())
-        val nextMatches = matchesParsedKey(event, nextParsed)
-        val prevMatches = matchesParsedKey(event, prevParsed)
-        if (!nextMatches && !prevMatches) return false
-        // A combo (modifier) binding takes precedence over a plain binding on the same physical key,
-        // so e.g. "Alt+grave" (prev) is not stolen by a plain "grave" (next) binding.
-        val prevHasModifier = (prevParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
-        val nextHasModifier = (nextParsed as? HardwareShortcutResolver.ParsedKey.Ref)?.key?.states != 0
-        val direction = when {
-            prevMatches && prevHasModifier -> -1
-            nextMatches && nextHasModifier -> 1
-            prevMatches -> -1
-            else -> 1
-        }
+    private fun handleHardwareCandidatePaging(kp: KeyPress): Boolean {
+        // 与 picker / 浮动候选窗共用 [HardwareShortcutResolver.resolvePaging] 一份仲裁。
+        val direction = HardwareShortcutResolver.resolvePaging(kp) ?: return false
         horizontalCandidate.page(direction)
         return true
     }

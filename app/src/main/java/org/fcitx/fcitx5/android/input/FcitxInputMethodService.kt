@@ -62,7 +62,6 @@ import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.FormattedText
-import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.core.ScancodeMapping
@@ -72,13 +71,14 @@ import org.fcitx.fcitx5.android.daemon.FcitxDaemon
 import org.fcitx.fcitx5.android.data.InputFeedbacks
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareChord
-import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
+import org.fcitx.fcitx5.android.input.candidates.HardwareShortcutResolver
+import org.fcitx.fcitx5.android.input.candidates.toKeyPress
 import org.fcitx.fcitx5.android.input.effects.CommitEffectsOverlay
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
@@ -86,7 +86,6 @@ import org.fcitx.fcitx5.android.utils.forceShowSelf
 import org.fcitx.fcitx5.android.utils.inputMethodManager
 import org.fcitx.fcitx5.android.utils.isTypeNull
 import org.fcitx.fcitx5.android.utils.monitorCursorAnchor
-import org.fcitx.fcitx5.android.utils.normalizeKeyString
 import org.fcitx.fcitx5.android.utils.styledFloat
 import org.fcitx.fcitx5.android.utils.withBatchEdit
 import splitties.bitflags.hasFlag
@@ -1542,32 +1541,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     /**
      * Whether [event] is the configured Alt-latch trigger key
-     * (setting: hardwareKeyboard.altLatchKey, default "Alt_L").
+     * (setting: hardwareKeyboard.altLatchKey, default "Alt_L"). An empty configured value
+     * disables latching entirely.
      *
-     * The latch key is a bare physical key press (typically a modifier like Alt_L), so it is matched
-     * by the keysym derived from the event's keyCode. [HardwareSpecialKeys] names (e.g. "Sym")
-     * resolve to pseudo keys that have no keysym. An empty configured value disables latching
-     * entirely.
+     * Delegates to [HardwareShortcutResolver.matchesLatchKey]: same parse path as every other
+     * binding (pseudo keys and `Fn+` / `Sym+` chord prefixes included), same memo. The old
+     * private copy consulted neither and silently ignored such bindings.
      */
-    // Self-invalidating memo of the parsed alt-latch key. Reparsing only happens when the
-    // configured string actually changes (rare), instead of on every physical key press.
-    private var cachedAltLatchString: String? = null
-    private var cachedAltLatchKey: Key? = null
-
-    private fun isAltLatchKey(event: KeyEvent): Boolean {
-        val keyString = AppPrefs.getInstance().hardwareKeyboard.altLatchKey.getValue()
-        if (keyString.isEmpty()) return false
-        HardwareSpecialKeys.entryForName(keyString)?.let { return it.matches(event.keyCode) }
-        if (keyString != cachedAltLatchString) {
-            cachedAltLatchString = keyString
-            cachedAltLatchKey = Key.parse(normalizeKeyString(keyString))
-        }
-        val key = cachedAltLatchKey ?: return false
-        if (key.sym == 0) return false
-        val symFromKeyCode = FcitxKeyMapping.keyCodeToSym(event.keyCode)
-        return symFromKeyCode == key.sym ||
-                (event.unicodeChar != 0 && event.unicodeChar == key.sym)
-    }
+    private fun isAltLatchKey(event: KeyEvent): Boolean =
+        HardwareShortcutResolver.matchesLatchKey(event.toKeyPress())
 
     private fun isAltUnlockKeyCode(keyCode: Int): Boolean {
         return isAnyAltKeyCode(keyCode) ||
