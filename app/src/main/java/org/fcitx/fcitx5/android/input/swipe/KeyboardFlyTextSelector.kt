@@ -205,41 +205,41 @@ class KeyboardFlyTextSelector(
                     reset()
                     return
                 }
-                // Jump filter (thumb handoff / centroid switch): per-sample travel beyond
-                // SWIPE_TELEPORT_SLOP_DP (>60dp) is a raw contact switch or stream glitch —
-                // reset the whole gesture. Travel in [SWIPE_BASE_SLOP_DP, SWIPE_TELEPORT_SLOP_DP)
-                // (16–60dp) in a single sample is faster than any real finger (a 125Hz swipe
-                // moves single-digit dp per step): the driver's single-pointer stream is
-                // gliding between two contacts — e.g. its reported centroid jumping toward the
-                // midpoint when a second thumb lands two keys away, then to the second thumb
-                // when the first lifts (each step ≤ half the key distance, so small). Re-anchor
-                // the gesture's origin to the current sample so the fake, stepwise displacement
-                // can never accumulate past a commit slop — a real swipe's small steps never
-                // re-anchor, so its travel still accumulates from the true DOWN point.
-                val jumpD = density * flyTextSensitivityScale(sensitivityProvider())
-                val step = hypot(event.rawX - lastMoveX, event.rawY - lastMoveY)
-                when {
-                    step > SWIPE_TELEPORT_SLOP_DP * jumpD -> {
-                        Timber.i(
-                            "FlyText: jump filter reset (rawX=${event.rawX} rawY=${event.rawY} " +
-                                "fromX=${lastMoveX} fromY=${lastMoveY})"
-                        )
-                        reset()
-                        return
-                    }
-                    step >= SWIPE_BASE_SLOP_DP * jumpD -> {
-                        Timber.i(
-                            "FlyText: re-anchor (step=${step}px rawX=${event.rawX} " +
-                                "fromX=${lastMoveX})"
-                        )
-                        downX = event.rawX
-                        downY = event.rawY
-                        pendingDir = null
-                        cornerDeleteArmed = false
-                        // Also re-origin a live drag so a second contact landing mid-drag cannot
-                        // yank the caret a full step.
-                        cursorOriginX = event.rawX
-                        cursorOriginY = event.rawY
+                // Jump / re-anchor filter (thumb handoff / centroid switch) — CURSOR MODE ONLY.
+                // It exists to stop the driver's single-pointer stream from drifting between two
+                // resting thumbs (the centroid glide that fired spurious caret moves). Candidate
+                // gestures (up-swipe pick, left/right page) must NOT pay this tax: a brisk real
+                // swipe can produce 16dp+ per-sample steps when the driver coalesces samples, and
+                // re-anchoring those killed the up-swipe's accumulated travel — the pick became
+                // "hard to trigger" overnight. So the filter arms only while there is nothing to
+                // pick or page (cursor mode armed, or a caret drag already in flight).
+                val cursorArmed = cursorModeProvider()
+                if (cursorArmed || cursorDragging) {
+                    val jumpD = density * flyTextSensitivityScale(sensitivityProvider())
+                    val step = hypot(event.rawX - lastMoveX, event.rawY - lastMoveY)
+                    when {
+                        step > SWIPE_TELEPORT_SLOP_DP * jumpD -> {
+                            Timber.i(
+                                "FlyText: jump filter reset (rawX=${event.rawX} rawY=${event.rawY} " +
+                                    "fromX=${lastMoveX} fromY=${lastMoveY})"
+                            )
+                            reset()
+                            return
+                        }
+                        step >= SWIPE_REANCHOR_SLOP_DP * jumpD -> {
+                            Timber.i(
+                                "FlyText: re-anchor (step=${step}px rawX=${event.rawX} " +
+                                    "fromX=${lastMoveX})"
+                            )
+                            downX = event.rawX
+                            downY = event.rawY
+                            pendingDir = null
+                            cornerDeleteArmed = false
+                            // Also re-origin a live drag so a second contact landing mid-drag
+                            // cannot yank the caret a full step.
+                            cursorOriginX = event.rawX
+                            cursorOriginY = event.rawY
+                        }
                     }
                 }
                 lastMoveX = event.rawX

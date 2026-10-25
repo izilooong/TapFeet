@@ -90,6 +90,18 @@ const val SWIPE_CURSOR_STEP_SLOP_DP = 24f
 const val SWIPE_TELEPORT_SLOP_DP = 60f
 
 /**
+ * Re-anchor threshold (cursor mode only): a per-sample step of 16–60dp is treated as the
+ * driver's centroid gliding between two resting contacts, and the gesture's origin moves to the
+ * current sample so the fake displacement cannot accumulate. 24dp rather than the old 16dp
+ * ([SWIPE_BASE_SLOP_DP]): a brisk real swipe whose samples got coalesced by the driver can
+ * legitimately cover 16-20dp in one step, and re-anchoring those ate the up-swipe pick's
+ * accumulated travel (the "up-swipe became insensitive" regression) — 24dp keeps a safety
+ * margin above that while still sitting far below the ~41dp half-pitch of a two-key centroid
+ * hop, which is the signal this filter exists to catch.
+ */
+const val SWIPE_REANCHOR_SLOP_DP = 24f
+
+/**
  * A swipe only commits to a direction when that axis clearly outweighs the other (≈34° off-axis).
  * Inside the deadzone between [SWIPE_AXIS_RATIO] and its reciprocal the gesture is "ambiguous" and
  * ignored — this is what stops a sloppy horizontal swipe from being hijacked into an up-select (and
