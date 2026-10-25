@@ -37,7 +37,9 @@ import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.InputFeedbacks.InputFeedbackMode
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareChord
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
+import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
@@ -246,6 +248,27 @@ class InputView(
     // String and the method would not resolve — see the same fix in HorizontalCandidateComponent.
     private val candidateArrangementModePref = AppPrefs.getInstance().candidateBar.arrangementMode
 
+    /**
+     * 键盘预设切换 → Passport 固定行立即生效（物理键盘模式半边）。KeyboardWindow 的
+     * keyProfileListener 只管布局改道；这里补另一半：物理模式下 InputView 若处于 GONE
+     * （虚拟键盘藏起、只留顶栏），切到 Passport 时把常驻行亮出来。虚拟模式 InputView
+     * 本就可见，无需处理。监听经 SharedPreferences 异步派发到主线程，回调时 preset/enabled
+     * 均已落盘，customKeyboardPinned() 读到完整新状态。
+     *
+     * ⚠️ 声明必须在 init 块**之前**——init 里就注册它，声明在后会撞"must be initialized"。
+     */
+    @Keep
+    private val onKeyProfileChanged =
+        ManagedPreference.OnChangeListener<String> { _, _ ->
+            if (HardwareKeyProfiles.customKeyboardPinned() && physicalKeyboardMode &&
+                visibility != View.VISIBLE
+            ) {
+                revealPanelInputViewIfHidden()
+                windowManager.setKeyboardWindowVisible(true)
+                service.requestInsetsUpdate()
+            }
+        }
+
     val keyboardView: View
 
     init {
@@ -266,8 +289,12 @@ class InputView(
             // 物理键盘模式下，从符号/自定义会话返回主键盘（TextKeyboard）时收起虚拟键盘。
             // 自 Sym 改为「符号↔自定义」二态循环后，Sym 不再回主键盘，故在此兜底收起，
             // 覆盖符号面板 ABC 键、自定义键盘下滑返回等回主键盘路径。
+            // Passport 固定行例外：常驻行（=自定义键盘）不收——挂在状态栏下方的常驻行
+            // 正是物理键盘模式下它的意义（符号/数字随时可点）。
             if (physicalKeyboardMode && isInputViewRevealed() &&
-                keyboardWindow.currentLayoutName == TextKeyboard.Name) {
+                keyboardWindow.currentLayoutName == TextKeyboard.Name &&
+                !HardwareKeyProfiles.customKeyboardPinned()
+            ) {
                 visibility = View.GONE
             }
         }
@@ -358,6 +385,9 @@ class InputView(
         })
 
         keyboardPrefs.registerOnChangeListener(onKeyboardSizeChangeListener)
+        // 键盘预设切换 → Passport 固定行立即生效（监听器声明在 init 之前的
+        // [onKeyProfileChanged]，注释见彼处）。
+        hardwareKeyboardPrefs.keyProfile.registerOnChangeListener(onKeyProfileChanged)
     }
 
     private fun updateKeyboardSize() {
@@ -472,6 +502,13 @@ class InputView(
 
     fun onCapsLatchChanged(locked: Boolean) {
         kawaiiBar.onCapsLatchChanged(locked)
+        // 物理侧 caps latch（长按 Shift 锁定 / CapsLock 键）同步到常驻行的虚拟 Shift 图标。
+        keyboardWindow.onCapsLatched(locked)
+    }
+
+    /** 虚拟 Shift「下一键大写」一次性状态变化 → 常驻行 Shift 图标（once ↔ none）。 */
+    fun onShiftOnceChanged(once: Boolean) {
+        keyboardWindow.onShiftOnceChanged(once)
     }
 
     fun onSystemAltStickyChanged(sticky: Boolean) {
@@ -1054,7 +1091,9 @@ class InputView(
         return when (module) {
             PanelModule.SYMBOL -> prefs.panelCycle.symbolPanelEnabled.getValue()
             PanelModule.EMOJI -> prefs.panelCycle.emojiPanelEnabled.getValue()
-            PanelModule.CUSTOM -> prefs.customKeyboard.enabled.getValue()
+            // Passport 固定显示下自定义键盘就是常驻主键盘本体，循环到它 = 原地踏步，剔除。
+            PanelModule.CUSTOM -> prefs.customKeyboard.enabled.getValue() &&
+                !HardwareKeyProfiles.customKeyboardPinned()
         }
     }
 
@@ -1092,6 +1131,20 @@ class InputView(
     }
 
     private fun applyPanelModule(module: PanelModule?) {
+        // Passport 固定行：自定义键盘常驻在状态栏下方（主键盘位），面板循环已剔除 CUSTOM 态
+        // （panelModuleEnabled），这里按理收不到它。关闭态仍然回到常驻行而不是隐藏键盘：
+        // setKeyboardWindowVisible(false) 会连常驻行一起收掉，等于把固定显示拆了。
+        if (module == null && HardwareKeyProfiles.customKeyboardPinned()) {
+            if (!windowManager.isAttached(keyboardWindow)) {
+                windowManager.attachWindow(KeyboardWindow)
+            }
+            keyboardWindow.switchLayoutSync(CustomKeyboard.Name)
+            windowManager.setKeyboardWindowVisible(true)
+            revealPanelInputViewIfHidden()
+            service.requestInsetsUpdate()
+            kawaiiBar.updatePanelCycleButton(null)
+            return
+        }
         when (module) {
             null -> {
                 keyboardWindow.symMode = KeyboardWindow.SymMode.NONE

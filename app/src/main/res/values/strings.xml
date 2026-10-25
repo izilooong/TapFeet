@@ -513,6 +513,7 @@
     <string name="arrangement_macrohard">Macrohard (4-2-1-3-5)</string>
     <string name="arrangement_linear">Linear (1-2-3-4-5)</string>
     <string name="show_candidate_index">Show candidate index</string>
+    <string name="number_key_selection">Select candidate with number keys</string>
     <string name="candidate_index_font_size">Candidate index font size</string>
     <string name="candidate_text_font_size">Candidate text font size</string>
     <string name="candidates_window_min_width">Candidate window minimum width</string>

@@ -252,6 +252,28 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         return job
     }
 
+    /**
+     * 数字键选词的偏好→引擎桥。读改写整份 pinyin IM 配置（setImConfig 是整体覆盖，直接写
+     * 只含一项的 RawConfig 会把其余引擎选项全抹掉），只更新 NumberSelectionEnabled 子项。
+     * 引擎不存在该项（老配置）时 getOrCreate 建出子项再赋值。
+     */
+    private fun syncNumberSelectionToEngine() {
+        postFcitxJob {
+            val enabled = AppPrefs.getInstance().candidateBar.numberKeySelectionEnabled.getValue()
+            val raw = runCatching { getImConfig("pinyin") }.getOrNull() ?: return@postFcitxJob
+            val item = raw.findByName("NumberSelectionEnabled") ?: return@postFcitxJob
+            val target = if (enabled) "True" else "False"
+            if (item.value != target) {
+                item.value = target
+                runCatching { setImConfig("pinyin", raw) }
+            }
+        }
+    }
+
+    @Keep
+    private val onNumberSelectionChanged =
+        ManagedPreference.OnChangeListener<Boolean> { _, _ -> syncNumberSelectionToEngine() }
+
     override fun onCreate() {
         fcitx = FcitxDaemon.connect(javaClass.name)
         lifecycleScope.launch {
@@ -273,6 +295,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 SubtypeManager.syncWith(enabledIme())
             }
         }
+        // 数字键选词开关 → 引擎配置（pinyin.conf 的 NumberSelectionEnabled）。物理键盘的
+        // 数字选词归引擎管，这个桥把 AppPrefs 的开关同步过去；读改写整份配置，只动这一个子项。
+        // 启动时同步一次 + 偏好变化时再同步（监听器经 SharedPreferences 异步派发，届时值已落盘）。
+        syncNumberSelectionToEngine()
+        AppPrefs.getInstance().candidateBar.numberKeySelectionEnabled
+            .registerOnChangeListener(onNumberSelectionChanged)
         super.onCreate()
         // Sync the system sound/haptic switches up-front: with a physical keyboard the first key
         // press can happen before the IME window is ever shown (which is the other sync point),
@@ -1585,6 +1613,42 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         inputView?.onCapsLatchChanged(locked)
     }
 
+    /**
+     * 虚拟 Shift（常驻行左端键）的「单击一次 = 下一键大写」一次性状态。真源在 service：
+     * 物理键盘（Passport 的字母全走物理键）和虚拟常驻行两条通道都要消费它——
+     *  - 物理键：[withInjectedModifiers] 给下一个**字符键**注入 Shift meta 后清零；
+     *  - 虚拟常驻行：[CustomKeyboard] 转大写后回调 [consumeVirtualShiftOnce] 清零。
+     * 与 [hardwareKeyDispatch.capsLatched]（常驻大写）互不干扰；状态变化经
+     * [onShiftOnceChanged] 广播给常驻行刷 Shift 图标。
+     */
+    private var shiftOnce = false
+
+    /**
+     * 虚拟 Shift 单击：Lock 态 → 解锁；否则置一次性大写。
+     */
+    fun pressVirtualShift() {
+        if (hardwareKeyDispatch.capsLatched) {
+            setCapsLatched(false)
+            return
+        }
+        if (shiftOnce) {
+            shiftOnce = false
+        } else {
+            shiftOnce = true
+        }
+        inputView?.onShiftOnceChanged(shiftOnce)
+    }
+
+    /** 虚拟键（常驻行）路径消费一次性大写：转大写完成后调用。物理路径在 withInjectedModifiers 消费。 */
+    fun consumeVirtualShiftOnce() {
+        if (!shiftOnce) return
+        shiftOnce = false
+        inputView?.onShiftOnceChanged(false)
+    }
+
+    /** 当前是否处于「下一键大写」的一次性状态（常驻行图标用）。 */
+    fun isVirtualShiftOnce() = shiftOnce
+
     private fun setSystemAltSticky(sticky: Boolean) {
         if (systemAltSticky == sticky) return
         systemAltSticky = sticky
@@ -1685,6 +1749,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             // 常驻大写：给后续按键注入 CapsLock 状态，fcitx5 据此输出大写
             // （与虚拟键盘 CapsAction → switchCapsState 走同一套 KeyState.CapsLock 机制）
             meta = meta or KeyEvent.META_CAPS_LOCK_ON
+        } else if (shiftOnce) {
+            // 虚拟 Shift（常驻行单击）的一次性大写：给这个**字符键**注入 Shift，之后自动回小写。
+            // 修饰键自身（Alt/Shift/Ctrl/方向键等非字符键）不消费它——长按的修饰键 / DPAD 翻页
+            // 不该把用户点的「下一键大写」吃掉。
+            val isCharacterKey = event.unicodeChar != 0 || event.displayLabel != '\u0000'
+            if (isCharacterKey) {
+                meta = meta or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+                shiftOnce = false
+                inputView?.onShiftOnceChanged(false)
+            }
         }
         if (meta == event.metaState) return event
         return KeyEvent(

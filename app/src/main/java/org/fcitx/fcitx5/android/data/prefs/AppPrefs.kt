@@ -422,6 +422,18 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             true
         )
 
+        /**
+         * 数字键选词：拼音有候选时按 1-9/0 选中对应候选。关闭后数字键不选词（数字直接上屏/
+         * 进缓冲），物理与虚拟两条路径都生效——物理走引擎开关（pinyin.conf 的
+         * NumberSelectionEnabled），虚拟走 CommonKeyActionListener 的本地拦截门。
+         * 默认关。
+         */
+        val numberKeySelectionEnabled = switch(
+            R.string.number_key_selection,
+            "number_key_selection",
+            false
+        )
+
         val candidateIndexFontSize = int(
             R.string.candidate_index_font_size,
             "candidate_index_font_size",

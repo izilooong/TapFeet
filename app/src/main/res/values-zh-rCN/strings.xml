@@ -509,6 +509,7 @@
     <string name="arrangement_macrohard">巨硬模式（4-2-1-3-5）</string>
     <string name="arrangement_linear">普通（1-2-3-4-5）</string>
     <string name="show_candidate_index">显示候选序号</string>
+    <string name="number_key_selection">数字键选词</string>
     <string name="candidate_index_font_size">候选序号字体大小</string>
     <string name="candidate_text_font_size">候选字字体大小</string>
     <string name="candidates_window_min_width">候选窗口最小宽度</string>

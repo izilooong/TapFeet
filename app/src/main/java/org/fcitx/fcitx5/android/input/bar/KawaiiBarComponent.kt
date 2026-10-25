@@ -82,6 +82,7 @@ import org.fcitx.fcitx5.android.input.status.StatusAreaWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
 import org.fcitx.fcitx5.android.utils.AppUtil
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.toast
 
@@ -802,6 +803,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         // 微信自动获取输入焦点（默认关）：目标是「能直接用物理键盘打字」，不是弹虚拟键盘。
         // requestShowSelf 把输入会话带起来后立刻收起虚拟键盘面板；两道冷却防止把用户刚关掉的
         // 键盘又顶回来（onStartInput 会因编辑器重启反复触发，"打开就关不了"就是它）。
+        // Passport 固定行例外：常驻行（自定义键盘）挂在状态栏下，不跟着收。
         if (autoShowKeyboard && !capFlags.has(CapabilityFlag.Password) &&
             info.packageName == WECHAT_PACKAGE
         ) {
@@ -811,7 +813,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             ) {
                 lastAutoShowAt = now
                 service.requestShowSelf(0)
-                windowManager.setKeyboardWindowVisible(false)
+                if (!HardwareKeyProfiles.customKeyboardPinned()) {
+                    windowManager.setKeyboardWindowVisible(false)
+                }
                 updateKeyboardToggleButton()
             }
         }
@@ -848,7 +852,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     override fun onWindowAttached(window: InputWindow) {
         if (hideKeyboardOnNextKeyboardAttach && window is KeyboardWindow) {
             hideKeyboardOnNextKeyboardAttach = false
-            windowManager.setKeyboardWindowVisible(false)
+            // Passport 固定行：从工具窗（剪贴板/编辑/状态）回键盘时不收常驻行，只收普通主键盘。
+            if (!HardwareKeyProfiles.customKeyboardPinned()) {
+                windowManager.setKeyboardWindowVisible(false)
+            }
         }
         when (window) {
             is InputWindow.ExtendedInputWindow<*> -> {

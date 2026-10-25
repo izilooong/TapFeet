@@ -26,6 +26,7 @@ import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener.Backspace
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.CommitAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.DeleteSelectionAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.FcitxKeyAction
+import org.fcitx.fcitx5.android.input.keyboard.KeyAction.HideStatusBarAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.LangSwitchAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.MoveSelectionAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.PanelCycleAction
@@ -62,6 +63,9 @@ class CommonKeyActionListener :
 
     private val kbdPrefs = AppPrefs.getInstance().keyboard
 
+    /** 数字键选词开关（虚拟路径门控；物理路径由引擎的 NumberSelectionEnabled 门控）。 */
+    private val numberKeySelection by AppPrefs.getInstance().candidateBar.numberKeySelectionEnabled
+
     private val spaceKeyLongPressBehavior by kbdPrefs.spaceKeyLongPressBehavior
     private val langSwitchKeyBehavior by kbdPrefs.langSwitchKeyBehavior
 
@@ -94,6 +98,8 @@ class CommonKeyActionListener :
         val char = action.act[0]
         if (char == ' ') return selectCurrentLocalCandidate(1)
         if (!char.isDigit()) return false
+        // 数字键选词开关关闭：数字键不选词，走正常输入路径（与引擎侧同语义）。
+        if (!numberKeySelection) return false
         return selectCurrentLocalCandidate(char.digitToInt())
     }
 
@@ -104,6 +110,7 @@ class CommonKeyActionListener :
         ) {
             return selectCurrentLocalCandidate(1)
         }
+        if (!numberKeySelection) return false
         return when (val sym = action.sym.sym) {
             '0'.code, 0xffb0 -> selectCurrentLocalCandidate(0)
             '1'.code, 0xffb1 -> selectCurrentLocalCandidate(1)
@@ -238,6 +245,12 @@ class CommonKeyActionListener :
                     }
                 }
                 is PanelCycleAction -> onPanelCycle?.invoke()
+                is HideStatusBarAction -> {
+                    // 常驻行右端「隐藏状态栏」键：与 ToggleStatusBar 快捷键 / 设置项同一开关。
+                    // 翻转后 AppPrefs 全局监听自动收起/展开 KawaiiBar，无需额外接线。
+                    val pref = AppPrefs.getInstance().candidateBar.hideStatusBar
+                    pref.setValue(!pref.getValue())
+                }
                 is SpaceLongPressAction -> {
                     when (spaceKeyLongPressBehavior) {
                         SpaceLongPressBehavior.None -> {}

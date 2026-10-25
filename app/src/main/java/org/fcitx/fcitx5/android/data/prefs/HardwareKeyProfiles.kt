@@ -254,6 +254,20 @@ object HardwareKeyProfiles {
         }
     }
 
+    /**
+     * 自定义键盘是否「固定显示」：Passport 预设专属。该机的 29 键物理键盘没有任何符号/数字，
+     * 自定义一行键盘就是它的符号排 —— 主键盘布局直接钉死到自定义键盘（见
+     * [org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow.doSwitchLayout] 的路由），
+     * 快捷窗口面板循环同时剔除自定义态（已常驻，循环到它没有意义 —— 见
+     * [org.fcitx.fcitx5.android.input.InputView.panelModuleEnabled]）。
+     *
+     * 钉住条件带上总开关：用户可在设置里关掉自定义键盘来解除固定（退回主键盘），
+     * 固定不剥夺逃生口。选 Passport 预设时 [applyProfile] 会把开关一并播成开。
+     */
+    fun customKeyboardPinned(): Boolean =
+        AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue() == PASSPORT &&
+            AppPrefs.getInstance().customKeyboard.enabled.getValue()
+
     /** 把该预设的推荐动作键写进 `AppPrefs.Shortcuts`。 */
     fun applyShortcutPreset(name: String, prefs: AppPrefs) {
         val shortcuts = prefs.shortcuts
@@ -280,6 +294,10 @@ object HardwareKeyProfiles {
         val hw = prefs.hardwareKeyboard
         keyBindings(hw).zip(valuesFor(name)).forEach { (pref, value) -> pref.setValue(value) }
         applyShortcutPreset(name, prefs)
+        // Passport 的自定义键盘是主键盘本体（固定显示）—— 切到该预设时把总开关一并播成开，
+        // 否则 [customKeyboardPinned] 条件不成立、键盘面一片空白。切走预设不反向关闭：
+        // 用户可能本来就手动开着自定义键盘，替他关掉是越权。
+        if (name == PASSPORT) prefs.customKeyboard.enabled.setValue(true)
     }
 
     /**

@@ -17,6 +17,7 @@ import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.InputMethodEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.CustomKeyConfig
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcastReceiver
@@ -112,13 +113,23 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             }
         }
 
-    /** 总开关关闭时：若正显示自定义键盘则立即切回主键盘（并重置 Sym 记忆态） */
+    /**
+     * 总开关变化时立即对齐显示态：
+     *  - 关闭：若正显示自定义键盘则切回主键盘（并重置 Sym 记忆态）。Passport 下此时
+     *    customKeyboardPinned() 已为 false，这次 TextKeyboard 切换不会再被改道回自定义 —— 固定
+     *    的逃生口就是关这个开关；
+     *  - 打开（仅 Passport 固定显示下）：若正显示主键盘则立即改道自定义键盘，不等下次输入会话。
+     */
     @Keep
     private val customKeyboardEnabledListener =
         ManagedPreference.OnChangeListener<Boolean> { _, enabled ->
             if (!enabled && currentKeyboardName == CustomKeyboard.Name) {
                 symMode = SymMode.NONE
                 switchLayoutSync(TextKeyboard.Name, remember = false)
+            } else if (enabled && HardwareKeyProfiles.customKeyboardPinned() &&
+                currentKeyboardName == TextKeyboard.Name
+            ) {
+                switchLayoutSync(CustomKeyboard.Name, remember = false)
             }
         }
 
@@ -134,6 +145,32 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         popup.listener
     }
 
+    /**
+     * 键盘预设切换 → Passport 固定行**立即**生效/失效：
+     *  - 切到 Passport：若正显示主键盘（TextKeyboard），当场改道自定义键盘（applyProfile 已把
+     *    总开关播成开，pinned 为 true）；
+     *  - 切走：若正显示自定义键盘，当场退回主键盘——此时它已不是常驻行，留着是残留。
+     * 不等下一次 onStartInput（那只在切换输入框时才来）——用户在设置页切完预设回到输入框，
+     * 看到的就该是新布局。
+     */
+    @Keep
+    private val keyProfileListener =
+        ManagedPreference.OnChangeListener<String> { _, _ ->
+            when {
+                HardwareKeyProfiles.customKeyboardPinned() &&
+                    currentKeyboardName == TextKeyboard.Name ->
+                    switchLayoutSync(CustomKeyboard.Name, remember = false)
+                !HardwareKeyProfiles.customKeyboardPinned() &&
+                    currentKeyboardName == CustomKeyboard.Name -> {
+                    // 关掉的不是预设也可能走到这（keyProfile 没变、enabled 没变的情况不会
+                    // fireChange），但 pinned 由 PASSPORT+enabled 合成，到这里必然是解除了
+                    // 固定（切走预设，或总开关被关）。退回主键盘。
+                    symMode = SymMode.NONE
+                    switchLayoutSync(TextKeyboard.Name, remember = false)
+                }
+            }
+        }
+
     // This will be called EXACTLY ONCE
     override fun onCreateView(): View {
         keyboardView = context.frameLayout(R.id.keyboard_view)
@@ -144,6 +181,8 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         AppPrefs.getInstance().customKeyboard.keys.registerOnChangeListener(customKeyboardKeysListener)
         // 监听总开关：关闭时若正显示自定义键盘，立即切回主键盘
         AppPrefs.getInstance().customKeyboard.enabled.registerOnChangeListener(customKeyboardEnabledListener)
+        // 监听键盘预设：Passport 固定行立即生效/失效（切预设不等下一次输入会话）
+        AppPrefs.getInstance().hardwareKeyboard.keyProfile.registerOnChangeListener(keyProfileListener)
         return keyboardView
     }
 
@@ -183,7 +222,14 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         doSwitchLayout(to.ifEmpty { lastSymbolType }, remember)
     }
 
-    private fun doSwitchLayout(target: String, remember: Boolean) {
+    private fun doSwitchLayout(requested: String, remember: Boolean) {
+        // Passport 固定行：该机的 29 键物理键盘没有任何符号/数字，自定义一行键盘以**常驻行**
+        // 固定在状态栏（KawaiiBar）下方 —— 主键盘布局入口全部改道自定义键盘。这是「替换
+        // 常驻行内容」，不是新增一行；总开关关闭即解除固定退回普通主键盘（customKeyboardPinned
+        // 的第二个条件）。见 [HardwareKeyProfiles.customKeyboardPinned]。
+        val target =
+            if (requested == TextKeyboard.Name && HardwareKeyProfiles.customKeyboardPinned())
+                CustomKeyboard.Name else requested
         // 总开关兜底：关闭后任何入口（Sym 循环 / 状态栏⑩ / 符号键盘⑩ / 恢复上次态）都打不开自定义键盘
         if (target == CustomKeyboard.Name && !AppPrefs.getInstance().customKeyboard.enabled.getValue()) {
             if (symMode == SymMode.CUSTOM) symMode = SymMode.NONE
@@ -200,8 +246,16 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             popup.dismissAll()
             detachCurrentLayout()
             if (target == CustomKeyboard.Name) {
-                // 用户配置在构造时读取，每次切换重建即拿到最新配置
-                keyboards[CustomKeyboard.Name] = CustomKeyboard(context, theme)
+                // 用户配置在构造时读取，每次切换重建即拿到最新配置。
+                // 虚拟 Shift 的状态真源在 service（物理字母键也要吃 once 态）：单击/双击/消费
+                // 三个回调全部导向 service；图标随 service 广播 + 此处注入的初值同步。
+                keyboards[CustomKeyboard.Name] = CustomKeyboard(context, theme).apply {
+                    onVirtualShiftTap = { service.pressVirtualShift() }
+                    onVirtualShiftLock = { service.toggleCapsLatch() }
+                    onShiftOnceConsumed = { service.consumeVirtualShiftOnce() }
+                    onCapsLatched(service.isCapsLatched())
+                    onShiftOnceChanged(service.isVirtualShiftOnce())
+                }
             }
             attachLayout(target)
             // 记录当前 Sym 三态：自定义键盘 → CUSTOM；主键盘 / 数字键盘 → NONE
@@ -220,6 +274,22 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     /** 标记符号选择器激活（符号态不走 switchLayout，需单独记录） */
     internal fun markSymbolPickerActive() {
         symMode = SymMode.SYMBOL
+    }
+
+    /**
+     * caps latch 广播（service → InputView 转发）：常驻行正显示自定义键盘时，同步其虚拟
+     * Shift 图标（三态）。当前显示其他布局时忽略——下次切换到自定义键盘时构造注入初值。
+     */
+    internal fun onCapsLatched(latched: Boolean) {
+        (currentKeyboard as? CustomKeyboard)?.onCapsLatched(latched)
+    }
+
+    /**
+     * 虚拟 Shift「下一键大写」一次性状态广播：常驻行 Shift 图标随 service 的 shiftOnce
+     * 真源切换（物理键消费、虚拟键消费、再次单击取消，都经此同步）。
+     */
+    internal fun onShiftOnceChanged(once: Boolean) {
+        (currentKeyboard as? CustomKeyboard)?.onShiftOnceChanged(once)
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {

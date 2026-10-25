@@ -46,4 +46,19 @@ sealed class KeyAction {
     data object PanelCycleAction : KeyAction()
 
     data object SpaceLongPressAction : KeyAction()
+
+    /**
+     * 常驻行左端「虚拟 Shift」键的单击：下一键大写（caps once 语义，键盘层私有状态）；
+     * Lock 态下单击 = 解锁。处理在 [CustomKeyboard.onVirtualShiftTap]（键盘层消化，不外发）。
+     */
+    data object CustomShiftAction : KeyAction()
+
+    /**
+     * 常驻行左端「虚拟 Shift」键的双击：锁定/解锁大写（caps latch，与物理键盘长按 Shift 同一套
+     * hardwareKeyDispatch.capsLatched 机制，KawaiiBar 大写指示按钮联动）。
+     */
+    data object CustomShiftLockAction : KeyAction()
+
+    /** 常驻行右端「隐藏状态栏」键：翻转 [org.fcitx.fcitx5.android.data.prefs.AppPrefs.CandidateBar.hideStatusBar]。 */
+    data object HideStatusBarAction : KeyAction()
 }
