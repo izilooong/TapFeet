@@ -29,9 +29,10 @@ object HardwareKeyProfiles {
     const val TT2 = "tt2"
     const val TITAN2_ELITE = "titan2_elite"
     const val TITAN2_ELITE_MOD = "titan2_elite_mod"
+    const val PASSPORT = "passport"
 
     /** All available profile ids, in display order. */
-    fun ids(): List<String> = listOf(BLACKBERRY, TT2, TITAN2_ELITE, TITAN2_ELITE_MOD)
+    fun ids(): List<String> = listOf(BLACKBERRY, TT2, TITAN2_ELITE, TITAN2_ELITE_MOD, PASSPORT)
 
     /**
      * 预设显示名。下拉框的 entries 与「恢复推荐键位」的摘要都从这里取，
@@ -42,6 +43,7 @@ object HardwareKeyProfiles {
         TT2 -> R.string.hw_profile_tt2
         TITAN2_ELITE -> R.string.hw_profile_titan2_elite
         TITAN2_ELITE_MOD -> R.string.hw_profile_titan2_elite_mod
+        PASSPORT -> R.string.hw_profile_passport
         else -> R.string.hw_profile_blackberry
     }
 
@@ -141,10 +143,39 @@ object HardwareKeyProfiles {
         "Alt_L",        // altLatchKey       本机只有左 Alt
     )
 
+    /**
+     * Passport（护照）：26 字母 + 空格 + 退格 + 回车，共 29 键，**没有任何修饰键**
+     * （无 Shift / Alt / Sym / Fn，键帽上连子刻印都没有）。触摸面不产坐标流，固件把滑动
+     * 翻译成 DPAD 四向按键（实测 `KEYCODE_DPAD_*`，scan 103/105/106/108，dev=5），
+     * 而 DPAD 恰好是 fcitx5 原生 keysym（`Up/Down/Left/Right`，见 GenKeyMapping），所以触摸面
+     * 直接走既有的 keysym 匹配路径当快捷键用，零新代码。
+     *
+     * 键位分配（触摸面 = 翻页器）：
+     *  - 空格 = 首选字（candidate1，全机型统一）；
+     *  - 右滑 = 下一页、左滑 = 上一页（箭头惯例：右 = 前进方向）；
+     *  - candidate2-5 留空：触摸面四向不产坐标、且上下滑留给未来的光标/选字手势；
+     *  - 符号窗 / 切换输入法 / 快捷窗口 / Alt Latch 全部留空：本机没有任何空闲修饰键，
+     *    回车是编辑器唯一的「发送」不能抢，退格是删除不能动 —— 符号窗走 KawaiiBar 按钮点选。
+     */
+    private val passportValues = listOf(
+        "space",        // candidate1Key     空格 —— 首选字
+        "",             // candidate2Key     留空（上下滑不占，留给未来手势）
+        "",             // candidate3Key     同上
+        "",             // candidate4Key     无键可绑
+        "",             // candidate5Key     无键可绑
+        "Left",        // pageNextKey       触摸面右滑 —— 下一页
+        "Right",         // pagePrevKey       触摸面左滑 —— 上一页
+        "",             // symbolPickerKey   无空闲键（符号窗走 KawaiiBar 按钮）
+        "",             // toggleImeKey      无 Alt/Shift 可组合
+        "",             // pickerKey         同上
+        "",             // altLatchKey       本机没有 Alt，latch 无从谈起
+    )
+
     private fun valuesFor(name: String): List<String> = when (name) {
         TT2 -> tt2Values
         TITAN2_ELITE -> titan2EliteValues
         TITAN2_ELITE_MOD -> titan2EliteModValues
+        PASSPORT -> passportValues
         else -> blackberryValues
     }
 
@@ -205,6 +236,12 @@ object HardwareKeyProfiles {
             return ShortcutAction.entries.associateWith {
                 HardwareChord.compose(HardwareChord.SHIFT_R, leaderFor(it))
             }
+        }
+        // Passport：本机没有 Shift/Alt/Fn/Sym 任何修饰键，26 字母全部要留给打字，
+        // 触摸面四向键已绑给候选 2/3 + 翻页 —— 动作快捷键无键可播，整套留空。
+        // 用户想绑动作键需先手动让出某个触摸面键（冲突检测会提示）。
+        if (name == PASSPORT) {
+            return ShortcutAction.entries.associateWith { "" }
         }
         return ShortcutAction.entries.associateWith {
             HardwareChord.compose(

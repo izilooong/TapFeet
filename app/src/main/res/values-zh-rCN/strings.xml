@@ -104,6 +104,7 @@
     <string name="hw_profile_tt2">Titan2</string>
     <string name="hw_profile_titan2_elite">Titan2 Elite</string>
     <string name="hw_profile_titan2_elite_mod">Titan2 Elite（改键）</string>
+    <string name="hw_profile_passport">Passport</string>
     <string name="main_header_subtitle">%1$s · %2$s</string>
     <string name="switch_keyboard_preset">切换键盘预设</string>
     <!-- 伪按键显示名（见 HardwareSpecialKeys）：没有 fcitx5 KeySym 的物理功能键 -->

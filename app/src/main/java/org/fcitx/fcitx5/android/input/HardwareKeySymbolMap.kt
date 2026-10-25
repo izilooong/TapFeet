@@ -135,6 +135,41 @@ object HardwareKeySymbolMap {
     )
 
     /**
+     * Passport（护照）：29 键纯字母机，键帽上没有任何子刻印 —— 这套符号是**软件定义**的
+     * 长按映射（不是读键帽读出来的），基于黑莓表只动 4 键：`Z→0`、`X→7`、`C→8`、`V→9`，
+     * 其余 23 键与黑莓一致。四键改动让数字 0-9 全部落在底排/数字位（0 独占 Z，7/8/9 顺排
+     * X/C/V），比黑莓原表（Z=7 X=8 C=9，0 无处安放）更整齐。
+     */
+    private val passportSymbolMap: Map<Int, String> = mapOf(
+        KeyEvent.KEYCODE_Q to "#",
+        KeyEvent.KEYCODE_W to "1",
+        KeyEvent.KEYCODE_E to "2",
+        KeyEvent.KEYCODE_R to "3",
+        KeyEvent.KEYCODE_T to "(",
+        KeyEvent.KEYCODE_Y to ")",
+        KeyEvent.KEYCODE_U to "_",
+        KeyEvent.KEYCODE_I to "-",
+        KeyEvent.KEYCODE_O to "+",
+        KeyEvent.KEYCODE_P to "@",
+        KeyEvent.KEYCODE_A to "*",
+        KeyEvent.KEYCODE_S to "4",
+        KeyEvent.KEYCODE_D to "5",
+        KeyEvent.KEYCODE_F to "6",
+        KeyEvent.KEYCODE_G to "/",
+        KeyEvent.KEYCODE_H to ":",
+        KeyEvent.KEYCODE_J to ";",
+        KeyEvent.KEYCODE_K to "'",
+        KeyEvent.KEYCODE_L to "\"",
+        KeyEvent.KEYCODE_Z to "0",
+        KeyEvent.KEYCODE_X to "7",
+        KeyEvent.KEYCODE_C to "8",
+        KeyEvent.KEYCODE_V to "9",
+        KeyEvent.KEYCODE_B to "!",
+        KeyEvent.KEYCODE_N to ",",
+        KeyEvent.KEYCODE_M to "."
+    )
+
+    /**
      * Returns the symbol map for the given profile id (defaults to [HardwareKeyProfiles.BLACKBERRY]).
      * Each device has its own keycaps, so no profile shares another's map.
      */
@@ -142,6 +177,7 @@ object HardwareKeySymbolMap {
         HardwareKeyProfiles.TT2 -> tt2SymbolMap
         HardwareKeyProfiles.TITAN2_ELITE -> titan2EliteSymbolMap
         HardwareKeyProfiles.TITAN2_ELITE_MOD -> titan2EliteSymbolMap
+        HardwareKeyProfiles.PASSPORT -> passportSymbolMap
         else -> blackberrySymbolMap
     }
 
