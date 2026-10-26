@@ -462,6 +462,16 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             false,
             R.string.hide_status_bar_summary
         )
+
+        /**
+         * 顶栏「虚拟键盘」切换按钮（键盘图标，隐藏时一键把软键盘顶回来）的常驻显示开关。
+         * 默认关——物理键盘为主、不需要该按钮的用户顶栏更干净；需要时在设置里打开。
+         */
+        val showVirtualKeyboardButton = switch(
+            R.string.show_virtual_keyboard_button,
+            "show_virtual_keyboard_button",
+            false
+        )
     }
 
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {

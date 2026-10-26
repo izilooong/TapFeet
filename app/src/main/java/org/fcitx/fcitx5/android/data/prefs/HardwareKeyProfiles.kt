@@ -261,12 +261,14 @@ object HardwareKeyProfiles {
      * 快捷窗口面板循环同时剔除自定义态（已常驻，循环到它没有意义 —— 见
      * [org.fcitx.fcitx5.android.input.InputView.panelModuleEnabled]）。
      *
-     * 钉住条件带上总开关：用户可在设置里关掉自定义键盘来解除固定（退回主键盘），
-     * 固定不剥夺逃生口。选 Passport 预设时 [applyProfile] 会把开关一并播成开。
+     * ⚠️ **只看 `keyProfile == PASSPORT`，不再依赖自定义键盘总开关（`customKeyboard.enabled`）。**
+     * 该开关默认 `false`、且可被用户手滑关掉；一旦它为 false，passport 这台没有任何符号键
+     * 的设备会直接废掉（键盘面一片空白）。所以 passport 钉死自定义键盘是**无条件**的，
+     * 总开关对 passport 不再构成逃生口（想退回主键盘请直接切换预设）。
+     * [applyProfile] 仍会把开关一并播成开，仅为让设置页开关显示「开」、不负载行为。
      */
     fun customKeyboardPinned(): Boolean =
-        AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue() == PASSPORT &&
-            AppPrefs.getInstance().customKeyboard.enabled.getValue()
+        AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue() == PASSPORT
 
     /** 把该预设的推荐动作键写进 `AppPrefs.Shortcuts`。 */
     fun applyShortcutPreset(name: String, prefs: AppPrefs) {

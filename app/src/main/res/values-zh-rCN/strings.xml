@@ -299,6 +299,7 @@
     <string name="expand_toolbar_by_default">默认展开工具栏</string>
     <string name="hide_status_bar">隐藏状态栏</string>
     <string name="hide_status_bar_summary">空闲时收起顶栏；打字时照常显示候选栏。</string>
+    <string name="show_virtual_keyboard_button">显示虚拟键盘按钮</string>
     <string name="popup_on_key_press">按键时弹出显示字符</string>
     <string name="disable_animation">禁用动画</string>
     <string name="import_from_file">导入文件…</string>

@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.utils.isTypeNull
 import timber.log.Timber
@@ -22,7 +23,15 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
     private fun setupInputViewEvents(isVirtual: Boolean) {
         val iv = inputView ?: return
         iv.handleEvents = isVirtual
-        iv.visibility = if (isVirtual) View.VISIBLE else View.GONE
+        if (isVirtual) {
+            iv.visibility = View.VISIBLE
+        } else {
+            // 物理键盘模式：不再 GONE 整个 InputView（会连带藏掉顶栏），改为保留 InputView、
+            // 按预设决定键盘面——Passport 显示自定义键盘行，其它预设藏掉软键盘面只留顶栏。
+            // 具体状态由 InputView.applyPhysicalKeyboardPresetState 按 customKeyboardPinned() 路由。
+            iv.visibility = View.VISIBLE
+            iv.applyPhysicalKeyboardPresetState()
+        }
     }
 
     private fun setupCandidatesViewEvents(isVirtual: Boolean) {

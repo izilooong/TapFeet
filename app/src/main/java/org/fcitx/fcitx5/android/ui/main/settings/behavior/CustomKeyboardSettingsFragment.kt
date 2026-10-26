@@ -12,6 +12,7 @@ import androidx.preference.Preference
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.CustomKeyConfig
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.main.modified.MySwitchPreference
 
@@ -53,11 +54,11 @@ class CustomKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 addPreference(pref)
                 keyPrefs.add(pref)
             }
-            // 开关关闭时禁用下方按键条目
-            keyPrefs.forEach { it.isEnabled = customKeyboard.enabled.getValue() }
+            // 开关关闭时禁用下方按键条目；Passport 预设无条件钉死自定义键盘，键位仍可编辑
+            keyPrefs.forEach { it.isEnabled = customKeyboard.enabled.getValue() || HardwareKeyProfiles.customKeyboardPinned() }
             enableSwitch.setOnPreferenceChangeListener { _, newValue ->
                 val enabled = newValue as Boolean
-                keyPrefs.forEach { it.isEnabled = enabled }
+                keyPrefs.forEach { it.isEnabled = enabled || HardwareKeyProfiles.customKeyboardPinned() }
                 true
             }
         }

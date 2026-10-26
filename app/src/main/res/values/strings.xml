@@ -303,6 +303,7 @@
     <string name="expand_toolbar_by_default">Expand toolbar by default</string>
     <string name="hide_status_bar">Hide status bar</string>
     <string name="hide_status_bar_summary">Collapse the top bar while idle; the candidate bar still shows while typing.</string>
+    <string name="show_virtual_keyboard_button">Show virtual keyboard button</string>
     <string name="popup_on_key_press">Popup on key press</string>
     <string name="disable_animation">Disable animation</string>
     <string name="import_from_file">Import from file…</string>

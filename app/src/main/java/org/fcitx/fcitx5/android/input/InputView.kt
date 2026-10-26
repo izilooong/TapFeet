@@ -260,12 +260,13 @@ class InputView(
     @Keep
     private val onKeyProfileChanged =
         ManagedPreference.OnChangeListener<String> { _, _ ->
-            if (HardwareKeyProfiles.customKeyboardPinned() && physicalKeyboardMode &&
-                visibility != View.VISIBLE
-            ) {
-                revealPanelInputViewIfHidden()
-                windowManager.setKeyboardWindowVisible(true)
-                service.requestInsetsUpdate()
+            // 物理键盘模式下、运行时切预设 → 按「是否 Passport」刷新键盘面状态，且始终保留顶栏：
+            // - 切到 Passport：揭示 InputView + 点亮自定义键盘行；
+            // - 切到其它预设：藏掉软键盘面，只留顶栏（不再 GONE 整个 InputView）。
+            // 原逻辑只在 InputView 处于 GONE 时补 Passport 揭示，非 Passport 反向（Passport→其它）
+            // 不会回收键盘面；这里统一走 applyPhysicalKeyboardPresetState 双向覆盖。
+            if (physicalKeyboardMode) {
+                applyPhysicalKeyboardPresetState()
             }
         }
 
@@ -295,7 +296,9 @@ class InputView(
                 keyboardWindow.currentLayoutName == TextKeyboard.Name &&
                 !HardwareKeyProfiles.customKeyboardPinned()
             ) {
-                visibility = View.GONE
+                // 物理模式 + 非 Passport：回到主键盘即藏软键盘面、只留顶栏。
+                // 不复 GONE 整个 InputView——会连带藏掉顶栏，违背「只留顶栏」诉求。
+                hideKeyboardSurfaceKeepBar()
             }
         }
         windowManager.addEssentialWindow(hiddenKeyboardWindow, createView = true)
@@ -439,6 +442,16 @@ class InputView(
      * called when [InputView] is about to show, or restart
      */
     fun startInput(info: EditorInfo, capFlags: CapabilityFlags, restarting: Boolean = false) {
+        // Passport 固定行：进入输入态即点亮常驻行（揭示 InputView + 键盘窗口置可见）。
+        // 否则 [windowManager.registerKeyboardVisibilityWindows] 初始 visible=false 会让
+        // attachWindow(KeyboardWindow) 经 resolveWindowKey 重定向到 HiddenKeyboardWindow，
+        // 自定义行被整个藏起，只能手动点「显示键盘」才露面。[onKeyProfileChanged] 只覆盖
+        // 运行时切预设，这里覆盖冷启动 / 首启 passport 已持久化选中的情况。
+        if (HardwareKeyProfiles.customKeyboardPinned()) {
+            revealPanelInputViewIfHidden()
+            windowManager.setKeyboardWindowVisible(true)
+            service.requestInsetsUpdate()
+        }
         broadcaster.onStartInput(info, capFlags)
         returnKeyDrawable.updateDrawableOnEditorInfo(info)
         if (focusChangeResetKeyboard || !restarting) {
@@ -1091,9 +1104,12 @@ class InputView(
         return when (module) {
             PanelModule.SYMBOL -> prefs.panelCycle.symbolPanelEnabled.getValue()
             PanelModule.EMOJI -> prefs.panelCycle.emojiPanelEnabled.getValue()
-            // Passport 固定显示下自定义键盘就是常驻主键盘本体，循环到它 = 原地踏步，剔除。
-            PanelModule.CUSTOM -> prefs.customKeyboard.enabled.getValue() &&
-                !HardwareKeyProfiles.customKeyboardPinned()
+            // 自定义键盘是 Passport 专属：只对 Passport 作为常驻主键盘出现（走
+            // customKeyboardPinned() 的 doSwitchLayout 路由 + startInput 可见性），
+            // **永不作为可循环面板**——既不在 Passport 下循环（循环到主键盘=原地踏步），
+            // 也不在非 Passport 预设下出现（用户要求其它预设一律隐藏自定义键盘）。
+            // 故此处恒 false，可用性由 customKeyboardPinned() 独家决定。
+            PanelModule.CUSTOM -> false
         }
     }
 
@@ -1128,6 +1144,42 @@ class InputView(
             visibility = View.VISIBLE
             kawaiiBar.resetToIdleState()
         }
+    }
+
+    /**
+     * 藏掉软键盘面（键盘窗口 + 组字区），只留顶栏（KawaiiBar）。
+     *
+     * 与状态栏「隐藏键盘」按钮、面板循环关闭态同路（setKeyboardWindowVisible(false) 会把
+     * 当前键盘窗口换成空的 HiddenKeyboardWindow，键盘面高度归零）；不复自行 GONE 整个
+     * InputView——那样会连带藏掉顶栏，与「只留顶栏」诉求相悖。
+     * 组字区（preedit）一并藏掉，避免空条在顶栏上方占位。
+     */
+    internal fun hideKeyboardSurfaceKeepBar() {
+        windowManager.setKeyboardWindowVisible(false)
+        preedit.ui.root.visibility = View.GONE
+        if (visibility != View.VISIBLE) visibility = View.VISIBLE
+        service.requestInsetsUpdate()
+    }
+
+    /**
+     * 物理键盘模式下、按当前预设决定键盘面状态，且**始终保留 InputView（顶栏可见）**：
+     * - Passport（customKeyboardPinned）：揭示 InputView + 点亮自定义键盘行；
+     * - 其它预设：藏掉软键盘面、只留顶栏（[hideKeyboardSurfaceKeepBar]）。
+     *
+     * 由 [InputDeviceManager] 在物理/虚拟模式切换、以及 [onKeyProfileChanged] 在运行时切预设时调用，
+     * 取代原先「物理模式直接 GONE 整个 InputView」的写法，使非 Passport 预设在物理键盘下
+     * 仍保留顶栏（候选/锁存指示/状态区）。
+     */
+    internal fun applyPhysicalKeyboardPresetState() {
+        if (HardwareKeyProfiles.customKeyboardPinned()) {
+            // Passport：确保自定义键盘行显示（与 startInput / onKeyProfileChanged 同效，幂等）。
+            // 自定义布局首帧已在 onCreateView 按预设建好，此处只揭示 + 点亮窗口即可。
+            if (visibility != View.VISIBLE) visibility = View.VISIBLE
+            windowManager.setKeyboardWindowVisible(true)
+        } else {
+            hideKeyboardSurfaceKeepBar()
+        }
+        service.requestInsetsUpdate()
     }
 
     private fun applyPanelModule(module: PanelModule?) {

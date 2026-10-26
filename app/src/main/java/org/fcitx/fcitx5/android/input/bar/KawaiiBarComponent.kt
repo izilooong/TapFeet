@@ -134,6 +134,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val autoShowKeyboard by prefs.keyboard.autoShowKeyboardWeChat
     /** 「隐藏状态栏」：空闲时把整条 40dp 横条收起，只收这一行，键盘本体不动。 */
     private val hideStatusBar by prefs.candidateBar.hideStatusBar
+    /** 顶栏「虚拟键盘」切换按钮（键盘图标）常驻显示开关，默认关。 */
+    private val showVirtualKeyboardButton by prefs.candidateBar.showVirtualKeyboardButton
 
     private var clipboardTimeoutJob: Job? = null
     private var expandButtonEnabledByState = false
@@ -212,6 +214,21 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     @Keep
     private val onHideStatusBarChangeListener =
         ManagedPreference.OnChangeListener<Boolean> { _, _ -> refreshBarVisibility() }
+
+    /** 「显示虚拟键盘按钮」开关：切换后立即刷新顶栏键盘切换按钮的可见性。 */
+    @Keep
+    private val onShowVirtualKeyboardButtonChangeListener =
+        ManagedPreference.OnChangeListener<Boolean> { _, _ -> applyKeyboardToggleButtonVisibility() }
+
+    /**
+     * 按 [showVirtualKeyboardButton] 决定顶栏「虚拟键盘」切换按钮（idleUi / candidateUi 两处）
+     * 是否常驻显示。默认关 → GONE（物理键盘为主、不需要它的用户顶栏更干净）；打开 → VISIBLE。
+     */
+    private fun applyKeyboardToggleButtonVisibility() {
+        val visibility = if (showVirtualKeyboardButton) View.VISIBLE else View.GONE
+        idleUi.keyboardToggleButton.visibility = visibility
+        candidateUi.keyboardToggleButton.visibility = visibility
+    }
 
     private fun launchClipboardTimeoutJob() {
         clipboardTimeoutJob?.cancel()
@@ -767,6 +784,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         clipboardSuggestion.registerOnChangeListener(onClipboardSuggestionUpdateListener)
         clipboardItemTimeout.registerOnChangeListener(onClipboardTimeoutUpdateListener)
         prefs.candidateBar.hideStatusBar.registerOnChangeListener(onHideStatusBarChangeListener)
+        prefs.candidateBar.showVirtualKeyboardButton
+            .registerOnChangeListener(onShowVirtualKeyboardButtonChangeListener)
+        // 初始按设置决定顶栏键盘切换按钮是否显示（默认关 → 隐藏）。
+        applyKeyboardToggleButtonVisibility()
         // 输入服务销毁时确保录音与识别器资源释放
         service.lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onDestroy(owner: LifecycleOwner) {
