@@ -12,6 +12,7 @@ import androidx.preference.Preference
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.CustomKeyConfig
+import org.fcitx.fcitx5.android.data.prefs.CustomKeyboardDefaults
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.main.modified.MySwitchPreference
@@ -61,12 +62,38 @@ class CustomKeyboardSettingsFragment : PaddingPreferenceFragment() {
                 keyPrefs.forEach { it.isEnabled = enabled || HardwareKeyProfiles.customKeyboardPinned() }
                 true
             }
+            // 一键恢复出厂键位：二次确认后写回 CustomKeyboardDefaults.keys，并刷新下方条目 summary
+            val resetPref = Preference(context).apply {
+                key = "custom_keyboard_reset"
+                title = getString(R.string.custom_keyboard_reset)
+                isIconSpaceReserved = false
+                setOnPreferenceClickListener {
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(R.string.custom_keyboard_reset)
+                        .setMessage(R.string.custom_keyboard_reset_confirm)
+                        .setPositiveButton(android.R.string.ok) { _, _ ->
+                            customKeyboard.keys.setValue(CustomKeyboardDefaults.keys)
+                            refreshSummaries()
+                        }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show()
+                    true
+                }
+            }
+            addPreference(resetPref)
         }
     }
 
     private fun summarize(config: CustomKeyConfig): String =
         config.chars.joinToString("  ") { if (it.isBlank()) "␣" else it }
             .ifEmpty { getString(R.string.custom_keyboard_empty) }
+
+    private fun refreshSummaries() {
+        val configs = customKeyboard.keys.getValue()
+        keyPrefs.forEachIndexed { index, pref ->
+            configs.getOrNull(index)?.let { pref.summary = summarize(it) }
+        }
+    }
 
     private fun showEditKeyDialog(index: Int, config: CustomKeyConfig) {
         val input = EditText(requireContext()).apply {

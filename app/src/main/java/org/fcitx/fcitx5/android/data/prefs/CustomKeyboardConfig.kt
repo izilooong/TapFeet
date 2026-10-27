@@ -15,18 +15,26 @@ import kotlinx.serialization.json.Json
 data class CustomKeyConfig(val chars: List<String> = emptyList())
 
 object CustomKeyboardDefaults {
-    /** 出厂默认：10 组常用符号（成对符号分左右，按首选→次选排列），用户可自由改 */
+    /**
+     * 出厂默认：10 键，每键「一层四符」结构（参考普通键盘布局）：
+     *  - 第一字符（键帽大字 / 单击默认）：最常用符号，顺序参照普通键盘标点区（`. , ? : ; ' " - / _`）；
+     *  - 第二字符（右上小字 / 长按候选）：该键位数字 `1-9-0`（按位置）；
+     *  - 第三字符（长按候选）：普通键盘数字键上方的符号 `! @ # $ % ^ & * ( )`（按位置）；
+     *  - 第四字符（长按候选）：未覆盖在前三层的常用半角符号，按符号族成对排列
+     *    `+ =` / `[ ]` / `{ }` / `< >` / `\ |`（按位置）。
+     * 长按弹出 [主符号, 数字, 数字上方符号, 第四符号] 四选一；用户可自由改任意键。
+     */
     val keys: List<CustomKeyConfig> = listOf(
-        CustomKeyConfig(listOf("(", "[", "{", "<", "（", "【", "｛", "＜")), // 左括号（含左尖括号）
-        CustomKeyConfig(listOf(")", "]", "}", ">", "）", "】", "｝", "＞")), // 右括号（含右尖括号）
-        CustomKeyConfig(listOf("\"", "'", "“", "‘")),                     // 左引号（半角双/单 → 全角双/单）
-        CustomKeyConfig(listOf("\"", "'", "”", "’")),                     // 右引号（半角双/单 → 全角右双/单）
-        CustomKeyConfig(listOf(".", "．", "。")),                          // 句号 / 点
-        CustomKeyConfig(listOf(",", "，", "、")),                          // 逗号 / 顿号
-        CustomKeyConfig(listOf("?", "!", "？", "！")),                     // 问号 / 感叹号（先半角后全角）
-        CustomKeyConfig(listOf(";", ":", "；", "：")),                     // 分号 / 冒号
-        CustomKeyConfig(listOf("…", "—", "～", "·")),                      // 特殊符号（省略号、破折号、波浪号、间隔号）
-        CustomKeyConfig(listOf("%", "&", "$", "@", "#", "*", "/", "\\")), // 网络/编程常用符号（全部半角）
+        CustomKeyConfig(listOf(".", "1", "!", "+")),  // 句点 / 1 / ! / +
+        CustomKeyConfig(listOf(",", "2", "@", "=")),  // 逗号 / 2 / @ / =
+        CustomKeyConfig(listOf("?", "3", "#", "[")),  // 问号 / 3 / # / [
+        CustomKeyConfig(listOf(":", "4", "$", "]")),  // 冒号 / 4 / $ / ]
+        CustomKeyConfig(listOf(";", "5", "%", "{")),  // 分号 / 5 / % / {
+        CustomKeyConfig(listOf("'", "6", "^", "}")),  // 单引号 / 6 / ^ / }
+        CustomKeyConfig(listOf("\"", "7", "&", "<")),  // 双引号 / 7 / & / <
+        CustomKeyConfig(listOf("-", "8", "*", ">")),  // 连字符 / 8 / * / >
+        CustomKeyConfig(listOf("/", "9", "(", "\\")),  // 斜杠 / 9 / ( / \
+        CustomKeyConfig(listOf("_", "0", ")", "|")),   // 下划线 / 0 / ) / |
     )
 }
 

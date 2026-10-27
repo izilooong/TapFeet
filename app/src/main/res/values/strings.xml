@@ -239,6 +239,8 @@
     <string name="custom_keyboard_key_title">Key %1$d</string>
     <string name="custom_keyboard_edit_hint">One character per line.\nFirst line: tap. Others: long press.</string>
     <string name="custom_keyboard_empty">(empty)</string>
+    <string name="custom_keyboard_reset">Restore default keys</string>
+    <string name="custom_keyboard_reset_confirm">Reset all 10 keys to factory defaults? Your customizations will be overwritten.</string>
     <string name="clipboard_suggestion_timeout">Clipboard suggestion timeout</string>
     <string name="version">Version</string>
     <string name="build_time">Build time</string>

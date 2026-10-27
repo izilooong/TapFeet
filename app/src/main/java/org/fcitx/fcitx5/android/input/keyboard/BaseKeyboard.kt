@@ -145,7 +145,10 @@ abstract class BaseKeyboard(
     }
 
     private fun createKeyView(def: KeyDef): KeyView {
+        // ⚠️ 顺序致命：CustomTriple / AltText / ImageText 都继承 Text，必须排在 `is Text` 之前。
+        // 否则 `is Text` 会抢先匹配掉子类，CustomTripleKeyView 永不实例化（角标永不显示）。
         return when (def.appearance) {
+            is KeyDef.Appearance.CustomTriple -> CustomTripleKeyView(context, theme, def.appearance)
             is KeyDef.Appearance.AltText -> AltTextKeyView(context, theme, def.appearance)
             is KeyDef.Appearance.ImageText -> ImageTextKeyView(context, theme, def.appearance)
             is KeyDef.Appearance.Text -> TextKeyView(context, theme, def.appearance)

@@ -88,6 +88,23 @@ open class KeyDef(
             margin: Boolean = true,
             viewId: Int = -1
         ) : Text(displayText, textSize, textStyle, percentWidth, variant, border, margin, viewId)
+
+        /**
+         * 自定义键专用：主字符居中加粗，第二字符落右下角，第三字符落左下角（镜像）。
+         * 空字符串的角由 [CustomTripleKeyView] 自动隐藏。
+         */
+        class CustomTriple(
+            displayText: String,
+            val altTopLeftText: String,
+            val altTopRightText: String,
+            textSize: Float,
+            textStyle: Int = Typeface.NORMAL,
+            percentWidth: Float = 0.1f,
+            variant: Variant = Variant.Normal,
+            border: Border = Border.Default,
+            margin: Boolean = true,
+            viewId: Int = -1,
+        ) : Text(displayText, textSize, textStyle, percentWidth, variant, border, margin, viewId)
     }
 
     sealed class Behavior {

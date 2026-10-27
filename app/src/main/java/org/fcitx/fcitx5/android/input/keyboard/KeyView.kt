@@ -375,6 +375,83 @@ class AltTextKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.AltText)
     }
 }
 
+/**
+ * 自定义键：主字符居中加粗，第二字符落右下角、第三字符落左下角小字。
+ *
+ * 角标约束借鉴符号/字母键盘 [AltTextKeyView]，但改为贴**底部**两角（右下 / 左下）。
+ * 字号/颜色与 AltText 一致。
+ *
+ * ⚠️ [CustomTriple] 继承 [KeyDef.Appearance.Text]，因此必须在 [BaseKeyboard.createKeyView]
+ * 的 `is Text` 分支**之前**匹配，否则会被 Text 分支抢先吃掉、本类永不实例化（角标永不显示）。
+ */
+@SuppressLint("ViewConstructor")
+class CustomTripleKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.CustomTriple) :
+    TextKeyView(ctx, theme, def) {
+
+    private val topLeftText: String = def.altTopLeftText
+    private val topRightText: String = def.altTopRightText
+
+    private val altLeft = view(::AutoScaleTextView) {
+        isClickable = false
+        isFocusable = false
+        setTextSize(TypedValue.COMPLEX_UNIT_DIP, 10.666667f)
+        setTypeface(typeface, Typeface.BOLD)
+        text = topLeftText
+        textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
+        // 角标用次要色（深色只给主符号）
+        setTextColor(theme.altKeyTextColor)
+    }
+
+    private val altRight = view(::AutoScaleTextView) {
+        isClickable = false
+        isFocusable = false
+        setTextSize(TypedValue.COMPLEX_UNIT_DIP, 10.666667f)
+        setTypeface(typeface, Typeface.BOLD)
+        text = topRightText
+        textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
+        // 角标用次要色（深色只给主符号）
+        setTextColor(theme.altKeyTextColor)
+    }
+
+    init {
+        // 主符号加粗 + 深色（与符号窗口的符号格一致：keyTextColor）
+        mainText.setTypeface(mainText.typeface, Typeface.BOLD)
+        mainText.setTextColor(theme.keyTextColor)
+        appearanceView.apply {
+            add(altLeft, lParams(wrapContent, wrapContent))
+            add(altRight, lParams(wrapContent, wrapContent))
+        }
+        applyLayout()
+    }
+
+    private fun applyLayout() {
+        // 主字符竖向偏上（verticalBias < 0.5 上移，水平沿用 TextKeyView 的 centerInParent）
+        mainText.updateLayoutParams<ConstraintLayout.LayoutParams> {
+            topMargin = 0
+            bottomToTop = unset
+            topToTop = parentId
+            bottomToBottom = parentId
+            verticalBias = 0.4f
+        }
+        // 第二字符：右下角
+        altRight.visibility = if (topRightText.isNotBlank()) View.VISIBLE else View.GONE
+        altRight.updateLayoutParams<ConstraintLayout.LayoutParams> {
+            topToTop = unset; topMargin = 0
+            bottomToBottom = parentId; bottomMargin = vMargin
+            leftToLeft = unset
+            rightToRight = parentId; rightMargin = hMargin + dp(4)
+        }
+        // 第三字符：左下角（镜像）
+        altLeft.visibility = if (topLeftText.isNotBlank()) View.VISIBLE else View.GONE
+        altLeft.updateLayoutParams<ConstraintLayout.LayoutParams> {
+            topToTop = unset; topMargin = 0
+            bottomToBottom = parentId; bottomMargin = vMargin
+            rightToRight = unset
+            leftToLeft = parentId; leftMargin = hMargin + dp(4)
+        }
+    }
+}
+
 @SuppressLint("ViewConstructor")
 class ImageKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.Image) :
     KeyView(ctx, theme, def) {

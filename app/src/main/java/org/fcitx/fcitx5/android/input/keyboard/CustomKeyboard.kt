@@ -193,11 +193,10 @@ class CustomKeyboard(
 }
 
 /**
- * 单个自定义键：键帽与主键盘数字键一致——大字显示主字符（[CustomKeyConfig.chars] 首项，
- * 即单击默认字符），右上角小字显示次字符（第二项）；单击输入主字符，长按弹出**除主字符外的
- * 其余字符**（次字符及其后的字符），即长按选择列表不重复出现主字符。
- *
- * 仅有一项时退化为普通 [Appearance.Text]（无次字符小字）；仅一项时长按无候选可弹，仅保留按压预览。
+ * 单个自定义键：主字符居中加粗大字（[CustomKeyConfig.chars] 首项，即单击默认字符）；
+ * 第二字符落右下角、第三字符落左下角小字（均 [Appearance.CustomTriple] 渲染，缺项则该角隐藏）；
+ * 单击输入主字符，长按弹出**除主字符外的其余字符**（第二及其后的字符），
+ * 即长按选择列表不重复出现主字符。
  */
 class CustomKey(
     config: CustomKeyConfig,
@@ -206,22 +205,16 @@ class CustomKey(
     appearance = run {
         val chars = config.chars.filter { it.isNotBlank() }
         val main = chars.firstOrNull() ?: ""
-        val alt = chars.getOrNull(1) ?: ""
-        if (alt.isNotBlank())
-            Appearance.AltText(
-                displayText = main,
-                altText = alt,
-                textSize = 16f,
-                percentWidth = percentWidth,
-                variant = Appearance.Variant.Alternative
-            )
-        else
-            Appearance.Text(
-                displayText = main,
-                textSize = 16f,
-                percentWidth = percentWidth,
-                variant = Appearance.Variant.Alternative
-            )
+        val second = chars.getOrNull(1) ?: ""
+        val third = chars.getOrNull(2) ?: ""
+        Appearance.CustomTriple(
+            displayText = main,
+            altTopRightText = second,
+            altTopLeftText = third,
+            textSize = 16f,
+            percentWidth = percentWidth,
+            variant = Appearance.Variant.Alternative
+        )
     },
     behaviors = config.chars.filter { it.isNotBlank() }.firstOrNull()
         ?.let { setOf(Behavior.Press(CustomKeyboard.actionFor(it))) } ?: emptySet(),

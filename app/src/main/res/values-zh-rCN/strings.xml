@@ -235,6 +235,8 @@
     <string name="custom_keyboard_key_title">按键 %1$d</string>
     <string name="custom_keyboard_edit_hint">每行一个字符。\n第一行单击，其余长按。</string>
     <string name="custom_keyboard_empty">（空）</string>
+    <string name="custom_keyboard_reset">恢复默认键位</string>
+    <string name="custom_keyboard_reset_confirm">将所有 10 个键恢复为出厂默认？已自定义的内容将被覆盖。</string>
     <string name="clipboard_suggestion_timeout">剪贴板提示超时</string>
     <string name="version">版本</string>
     <string name="build_time">构建时间</string>
