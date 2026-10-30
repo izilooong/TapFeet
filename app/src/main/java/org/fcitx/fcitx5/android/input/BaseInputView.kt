@@ -14,6 +14,8 @@ import androidx.core.text.buildSpannedString
 import androidx.core.text.color
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
@@ -48,8 +50,27 @@ abstract class BaseInputView(
 
     private fun setupFcitxEventHandler() {
         eventHandlerJob = service.lifecycleScope.launch {
-            fcitx.runImmediately { eventFlow }.collect {
-                handleFcitxEvent(it)
+            val flow = fcitx.runImmediately { eventFlow }
+            // Self-healing collect loop. Any exception thrown by a downstream receiver in the
+            // fcitx-event chain (e.g. the candidate bar's RecyclerView render racing under
+            // high-frequency typing) used to cancel this coroutine permanently: the view went
+            // deaf forever and the candidate bar froze on its last rendered page while preedit
+            // kept flowing through InputConnection and the always-on service collector — i.e.
+            // typing/selecting kept working but the bar never refreshed until the IME restarted.
+            // The only existing re-arm path (reconcileInputViewEvents) fires on attach, which
+            // never happens during steady typing, so the death was unrecoverable in-place.
+            // Catch + restart so a single bad event can never wedge the UI; the stack trace
+            // below names the real culprit (tag CandSync) for root-cause follow-up.
+            while (isActive) {
+                try {
+                    flow.collect { handleFcitxEvent(it) }
+                } catch (e: CancellationException) {
+                    // Normal teardown (handleEvents = false / scope cancellation): let it
+                    // propagate so the job terminates and the while loop exits cleanly.
+                    throw e
+                } catch (e: Exception) {
+                    Timber.e(e, "CandSync: eventHandler caught exception; collector restarted")
+                }
             }
         }
     }

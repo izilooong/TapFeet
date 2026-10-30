@@ -17,9 +17,25 @@ import org.mechdancer.dependency.Dependent
 import org.mechdancer.dependency.DynamicScope
 import org.mechdancer.dependency.ScopeEvent
 import org.mechdancer.dependency.UniqueComponent
+import timber.log.Timber
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class InputBroadcaster : UniqueComponent<InputBroadcaster>(), Dependent, InputBroadcastReceiver {
+
+    /**
+     * Fault-isolated fan-out. Each receiver is attempted independently so a single receiver throwing
+     * can never abort the [ConcurrentLinkedQueue.forEach] and starve the other receivers (e.g. the
+     * candidate bar) of the same event — that starvation used to manifest as a frozen candidate bar
+     * under high-frequency typing while typing/selecting kept working. A failure is logged (tag
+     * CandSync) for root-cause follow-up but never propagates out of the broadcast.
+     */
+    private inline fun dispatch(crossinline block: InputBroadcastReceiver.() -> Unit) {
+        receivers.forEach { receiver ->
+            runCatching { receiver.block() }
+                .onFailure { e -> Timber.e(e, "CandSync: receiver dispatch failed: ${receiver::class.java.simpleName}") }
+        }
+    }
+
 
     private val receivers = ConcurrentLinkedQueue<InputBroadcastReceiver>()
 
@@ -40,63 +56,63 @@ class InputBroadcaster : UniqueComponent<InputBroadcaster>(), Dependent, InputBr
     }
 
     override fun onClientPreeditUpdate(data: FormattedText) {
-        receivers.forEach { it.onClientPreeditUpdate(data) }
+        dispatch { onClientPreeditUpdate(data) }
     }
 
     override fun onInputPanelUpdate(data: InputPanelEvent.Data) {
-        receivers.forEach { it.onInputPanelUpdate(data) }
+        dispatch { onInputPanelUpdate(data) }
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {
-        receivers.forEach { it.onStartInput(info, capFlags) }
+        dispatch { onStartInput(info, capFlags) }
     }
 
     override fun onImeUpdate(ime: InputMethodEntry) {
-        receivers.forEach { it.onImeUpdate(ime) }
+        dispatch { onImeUpdate(ime) }
     }
 
     override fun onCandidateUpdate(data: CandidateListEvent.Data) {
-        receivers.forEach { it.onCandidateUpdate(data) }
+        dispatch { onCandidateUpdate(data) }
     }
 
     override fun onPagedCandidateUpdate(data: PagedCandidateEvent.Data) {
-        receivers.forEach { it.onPagedCandidateUpdate(data) }
+        dispatch { onPagedCandidateUpdate(data) }
     }
 
     override fun onStatusAreaUpdate(actions: Array<Action>) {
-        receivers.forEach { it.onStatusAreaUpdate(actions) }
+        dispatch { onStatusAreaUpdate(actions) }
     }
 
     override fun onSelectionUpdate(start: Int, end: Int) {
-        receivers.forEach { it.onSelectionUpdate(start, end) }
+        dispatch { onSelectionUpdate(start, end) }
     }
 
     override fun onWindowAttached(window: InputWindow) {
-        receivers.forEach { it.onWindowAttached(window) }
+        dispatch { onWindowAttached(window) }
     }
 
     override fun onWindowDetached(window: InputWindow) {
-        receivers.forEach { it.onWindowDetached(window) }
+        dispatch { onWindowDetached(window) }
     }
 
     override fun onScopeSetupFinished(scope: DynamicScope) {
-        receivers.forEach { it.onScopeSetupFinished(scope) }
+        dispatch { onScopeSetupFinished(scope) }
     }
 
     override fun onPunctuationUpdate(mapping: Map<String, String>) {
-        receivers.forEach { it.onPunctuationUpdate(mapping) }
+        dispatch { onPunctuationUpdate(mapping) }
     }
 
     override fun onPreeditEmptyStateUpdate(empty: Boolean) {
-        receivers.forEach { it.onPreeditEmptyStateUpdate(empty) }
+        dispatch { onPreeditEmptyStateUpdate(empty) }
     }
 
     override fun onReturnKeyDrawableUpdate(resourceId: Int) {
-        receivers.forEach { it.onReturnKeyDrawableUpdate(resourceId) }
+        dispatch { onReturnKeyDrawableUpdate(resourceId) }
     }
 
     override fun onCommitText(text: String) {
-        receivers.forEach { it.onCommitText(text) }
+        dispatch { onCommitText(text) }
     }
 
 }
