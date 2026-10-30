@@ -50,6 +50,9 @@ abstract class BaseInputView(
 
     private fun setupFcitxEventHandler() {
         eventHandlerJob = service.lifecycleScope.launch {
+            // Correlate collector (re)starts in logcat: a frozen bar with no matching
+            // "collector started" line means the job died without anyone re-arming it.
+            Timber.d("CandSync: collector started for %s", this@BaseInputView::class.java.simpleName)
             val flow = fcitx.runImmediately { eventFlow }
             // Self-healing collect loop. Any exception thrown by a downstream receiver in the
             // fcitx-event chain (e.g. the candidate bar's RecyclerView render racing under

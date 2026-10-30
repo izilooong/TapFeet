@@ -448,6 +448,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 // PagedCandidateEvent, so without a refresh here the fly-text gate would never
                 // recompute and stay disarmed forever.
                 refreshFlyTextState()
+                // This collector is the always-alive half of the IME; use it to watch the
+                // horizontal bar's liveness and self-heal a frozen one (see the method).
+                watchCandidateBarLiveness()
             }
             is FcitxEvent.PagedCandidateEvent -> {
                 lastPagedCandidateData = event.data
@@ -785,6 +788,71 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      * engine emits again.
      */
     var lastPagedCandidateData = FcitxEvent.PagedCandidateEvent.Data.Empty
+
+    /**
+     * Signature of the *previous* CandidateListEvent, consumed by [watchCandidateBarLiveness].
+     * Comparing against the previous event (not the current one) makes the check immune to the
+     * dispatch-order race between this always-on collector and the InputView collector: both run
+     * on the main dispatcher, but which one processes a freshly emitted event first is not fixed.
+     */
+    private var prevCandidateSignature: String? = null
+
+    /** Consecutive candidate events the horizontal bar failed to catch up on. */
+    private var candidateBarStaleCount = 0
+
+    /**
+     * Data-driven liveness watchdog for the horizontal candidate bar.
+     *
+     * The known freeze (intermittent, heavy continuous typing): typing and selecting keep
+     * working while the bar stops refreshing on its last rendered page, until the IME is
+     * switched away and back. All existing re-arm triggers (view attach, window shown, input
+     * session start) are events that never fire *during* steady typing, so whatever killed the
+     * InputView event channel stays dead until the user intervenes. This collector, however,
+     * keeps seeing every CandidateListEvent — so it is the natural place to detect the freeze:
+     * if the bar's liveness signature ([InputView.candidateBarDataSignature], updated only by
+     * [HorizontalCandidateComponent.onCandidateUpdate]) lags more than one event behind for
+     * [CANDIDATE_BAR_STALE_LIMIT] consecutive events, the channel is dead. Heal by re-pushing
+     * the device mode ([InputDeviceManager.reapplyMode]): a dead collector is re-created (and
+     * its onStartHandleFcitxEvent replays [lastCandidateListData], snapping the bar back to the
+     * live candidates), a live one just gets a forced idempotent replay.
+     *
+     * If the freeze survives the heal, the fault is below the event channel (render layer) —
+     * the CandSync probes in logcat (bar onCandidateUpdate / renderPage / layoutCompleted)
+     * distinguish that case, so the next freeze names its own dead layer.
+     */
+    private fun watchCandidateBarLiveness() {
+        val iv = inputView ?: return
+        // IME window is down: nothing visible to heal, and the bar legitimately processes
+        // nothing while detached. Reset so a fresh session doesn't inherit stale counters.
+        if (!iv.isAttachedToWindow) {
+            prevCandidateSignature = null
+            candidateBarStaleCount = 0
+            return
+        }
+        // In InputDevice physical mode the floating CandidatesView owns candidates and
+        // InputView.handleEvents is intentionally false — a "stale" bar there is by design.
+        if (!inputDeviceMgr.isVirtualKeyboard) return
+        val current = lastCandidateListData.let {
+            "${it.total}:${it.candidates.firstOrNull()?.text ?: "-"}"
+        }
+        val actual = iv.candidateBarDataSignature()
+        val prev = prevCandidateSignature
+        prevCandidateSignature = current
+        if (prev == null) return // first event of a session: nothing to compare against yet
+        if (actual == current || actual == prev) {
+            // The bar processed the latest (or second-latest) event — it is alive. Tolerating
+            // `prev` absorbs one event of pipeline lag under burst typing.
+            candidateBarStaleCount = 0
+            return
+        }
+        if (++candidateBarStaleCount < CANDIDATE_BAR_STALE_LIMIT) return
+        candidateBarStaleCount = 0
+        Timber.e(
+            "CandSync: candidate bar frozen (expected=%s, bar=%s) — re-arming fcitx event channel",
+            prev, actual
+        )
+        inputDeviceMgr.reapplyMode()
+    }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         /**
@@ -3002,5 +3070,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // Extra guard window (ms, on top of the user's configured base) while a typing streak is
         // active — covers the natural pause at a word/letter boundary after a burst.
         private const val TYPING_PAUSE_BONUS_MS = 300L
+
+        // Consecutive candidate events the horizontal bar may lag behind before the watchdog
+        // (watchCandidateBarLiveness) re-arms the InputView event channel. ~5 keystrokes at
+        // typing speed, i.e. sub-second detection; high enough to never trip on pipeline lag.
+        private const val CANDIDATE_BAR_STALE_LIMIT = 5
     }
 }

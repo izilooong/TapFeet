@@ -557,6 +557,9 @@ class InputView(
      */
     internal fun flyCandidateRects(): List<Pair<Int, Rect>> = horizontalCandidate.flyCandidateRects()
 
+    /** Liveness read-out for the service-side candidate-bar watchdog (frozen-bar detection). */
+    internal fun candidateBarDataSignature(): String? = horizontalCandidate.candidateDataSignature()
+
     /**
      * Keyboard fly-text selection: select the candidate with the given engine selection index,
      * reusing the full tap path ([selectCandidateAtVisiblePosition]) so the fly animation, paging

@@ -160,6 +160,18 @@ class HorizontalCandidateComponent :
     private var queryGeneration = 0
 
     /**
+     * Liveness signature of the last [onCandidateUpdate] this component actually processed:
+     * `"total:firstCandidateText"`. Read by the service-side watchdog
+     * (`FcitxInputMethodService.watchCandidateBarLiveness`) to detect a bar that stopped
+     * receiving events — frozen on its last rendered page while preedit/commit keep working
+     * through the always-on service collector. Set ONLY here (fresh query data), never by
+     * paging/prefetch, so it tracks event-channel liveness, not local page turns.
+     */
+    private var dataSignature: String? = null
+
+    fun candidateDataSignature(): String? = dataSignature
+
+    /**
      * Slice size for backend fetches. Matches the bulk batch granularity used by the C++
      * frontend (`updateCandidatesBulk` caps the initial batch at 16), so a full slice back
      * implies "probably more data behind" when the backend total is unknown.
@@ -541,6 +553,11 @@ class HorizontalCandidateComponent :
                     override fun onLayoutCompleted(state: RecyclerView.State) {
                         super.onLayoutCompleted(state)
                         val cnt = this.childCount
+                        // Render-layer heartbeat: with "bar onCandidateUpdate" and "renderPage"
+                        // both firing but this line absent, the traversal itself is dead
+                        // (requestLayout swallowed / window stopped drawing) — that is a
+                        // different failure class than the event channel dying.
+                        Timber.d("CandSync: layoutCompleted n=%d", cnt)
                         // Aggregate every laid-out candidate's width once — consumed by both the
                         // 5→3→1 overflow fallback below and the AutoFillWidth fill-on-demand pass.
                         var totalWidth = 0
@@ -667,6 +684,10 @@ class HorizontalCandidateComponent :
             "CandSync: bar onCandidateUpdate n=%d total=%d first=%s",
             candidates.size, total, candidates.firstOrNull()?.text ?: "-"
         )
+        // Liveness signature BEFORE any state mutation: even if the render below throws or
+        // wedges, the signature still proves THIS event reached the component — separating
+        // channel death (signature stale) from render death (signature fresh, pixels old).
+        dataSignature = "$total:${candidates.firstOrNull()?.text ?: "-"}"
         pageCandidates = candidates
         sourceTotal = total
         candidatePagingMode = 0
