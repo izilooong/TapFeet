@@ -37,6 +37,7 @@ import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.InputFeedbacks.InputFeedbackMode
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareChord
+import org.fcitx.fcitx5.android.data.prefs.NavbarSpace
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 import org.fcitx.fcitx5.android.data.prefs.HardwareSpecialKeys
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
@@ -270,6 +271,14 @@ class InputView(
             }
         }
 
+    /**
+     * 系统导航栏留白偏好变化 → 立即重算底部预留（无需旋转/重开键盘）。仅当主题导航栏背景为
+     * Full 时 [getNavBarBottomInset] 才返回非零，所以非 Full 主题下切换本开关本就无可见效果。
+     */
+    @Keep
+    private val onNavBarSpaceChanged =
+        ManagedPreference.OnChangeListener<NavbarSpace> { _, _ -> requestApplyInsets() }
+
     val keyboardView: View
 
     init {
@@ -391,6 +400,8 @@ class InputView(
         // 键盘预设切换 → Passport 固定行立即生效（监听器声明在 init 之前的
         // [onKeyProfileChanged]，注释见彼处）。
         hardwareKeyboardPrefs.keyProfile.registerOnChangeListener(onKeyProfileChanged)
+        // 导航栏留白开关即时生效（见 [onNavBarSpaceChanged]）。
+        hardwareKeyboardPrefs.navBarSpace.registerOnChangeListener(onNavBarSpaceChanged)
     }
 
     private fun updateKeyboardSize() {
@@ -432,8 +443,17 @@ class InputView(
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        val navBarInset = getNavBarBottomInset(insets)
+        // 系统导航栏留白：按用户偏好在 IME 窗口底部预留导航栏空间。
+        // Auto（默认）= 仅当确有导航栏（底部高度 > 0）时预留，等价于改动前无条件预留，不回归；
+        // Always = 始终按实际导航栏高度预留；Never = 不预留（键盘延伸到底部，可能与导航栏重叠）。
+        val reserve = when (hardwareKeyboardPrefs.navBarSpace.getValue()) {
+            NavbarSpace.Never -> 0
+            NavbarSpace.Auto -> if (navBarInset > 0) navBarInset else 0
+            NavbarSpace.Always -> navBarInset
+        }
         bottomPaddingSpace.updateLayoutParams<LayoutParams> {
-            bottomMargin = getNavBarBottomInset(insets)
+            bottomMargin = reserve
         }
         return insets
     }

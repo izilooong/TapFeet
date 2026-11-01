@@ -752,6 +752,15 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             step = 50
         )
 
+        // 系统导航栏留白：在 IME 窗口底部为系统导航栏预留空间。
+        // 默认 Auto = 仅当设备确有导航栏（导航栏底部高度 > 0）时预留，等价于此前无条件预留的行为，不回归；
+        // Always = 始终按实际导航栏高度预留；Never = 不预留（键盘延伸到底部，可能与导航栏重叠）。
+        val navBarSpace = enumList(
+            R.string.hw_nav_bar_space,
+            "hw_nav_bar_space",
+            NavbarSpace.Auto
+        )
+
         private val seededKeys = listOf(
             keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,
             pageNextKey, pagePrevKey, symbolPickerKey, toggleImeKey, pickerKey, altLatchKey
@@ -945,4 +954,10 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
         fun getInstance() = instance!!
     }
+}
+
+enum class NavbarSpace(override val stringRes: Int) : ManagedPreferenceEnum {
+    Auto(R.string.hw_nav_bar_space_auto),
+    Always(R.string.hw_nav_bar_space_always),
+    Never(R.string.hw_nav_bar_space_never)
 }
