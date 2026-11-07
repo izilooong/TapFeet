@@ -3,84 +3,87 @@
 
 # TapFeet IME · 大脚输入法
 
-
-> 本项目基于 [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) 二次开发，**专为 Android 物理全键盘手机打造的中文输入法**。   
-> 原项目将 [Fcitx5](https://github.com/fcitx/fcitx5) 输入法框架及各类引擎移植到 Android 平台，本仓库在此基础上针对实体键盘输入场景做了深度优化。
-> 
-> 诞生于 Q25（BlackBerry Classic Q20 复刻机）的适配需求，现已扩展支持 **Unihertz Titan 2**、**BlackBerry KEY 系列** 等主流物理键盘 Android 设备。 
+> 基于 [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) 二次开发，专为**带实体全键盘的 Android 手机**打造的中文输入法：选字、翻页、符号、编辑都能在键盘上完成，不用碰屏幕。
+> 原项目将 [Fcitx5](https://github.com/fcitx/fcitx5) 框架与各输入引擎移植到 Android，本仓库在此基础上针对物理键盘做深度适配。
+> 从 Q25（BlackBerry Classic 复刻机）起步，现有 BlackBerry / Titan2 / Titan2 Elite / Titan2 Elite（改键）/ Passport 五套键盘预设。
+> 完整操作见 [用户操作手册](docs/USER_MANUAL.md)。
 
 ---
 
 ## 📲 下载与安装
 
->  [下载](https://github.com/izilooong/TapFeet/releases/tag/v1.0.2-05)
+> [下载最新版](https://github.com/izilooong/TapFeet/releases/latest) · 应用内支持在线升级，首次启用按 App 内「设置向导」引导。
 
 ---
 
 ## 📱 适配设备
 
-| 设备系列 | 代表型号 | 适配状态 |
+| 键盘预设 | 代表机型 | 适配状态 |
 | --- | --- | --- |
-| **Q25** | Q25 (BlackBerry Classic 复刻) | ✅ 深度适配 |
-| **Unihertz Titan 系列** | Titan 2 / Titan 2 Elite | ✅ 已适配 |
-| **BlackBerry KEY 系列** | KEYone / KEY2 / KEYle | ✅ 已适配 |
+| **BlackBerry** | Q25（BlackBerry Classic 复刻） | ✅ 深度适配 |
+| **Titan2** | Unihertz Titan2 | ✅ 已适配 |
+| **Titan2 Elite** | Unihertz Titan2 Elite | ✅ 已适配 |
+| **Titan2 Elite（改键）** | Titan2 Elite 改键后 | ✅ 已适配 |
+| **Passport** | BlackBerry Passport（P26） | ✅ 已适配 |
 
-> 理论上支持所有搭载实体 QWERTY 键盘的 Android 设备。以上为已实测型号，其他设备欢迎 [提交反馈](https://github.com/izilooong/TapFeet/issues)。
+> 理论上支持所有实体 QWERTY 键盘的 Android 设备，上表为已有预设、经实测的机型。其他设备欢迎 [提交反馈](https://github.com/izilooong/TapFeet/issues)。
 
 ---
 
 ## ⌨️ 物理键盘专项适配
 
-以下特性在所有支持的物理键盘设备上均可使用，部分特性源于 Q25 的深度定制需求。
+以下特性在受支持的物理键盘设备上可用。首次使用请先在「设置 → 物理键盘 → 键盘布局预设」选好机型。
 
 ### 巨硬模式（物理键盘选字）
 
-物理键盘底排功能键直接映射候选词位置，无需触摸屏幕即可完成选词——这就是「巨硬模式」，可在「选项 → 物理键盘」中开关。开启后启用一系列物理键盘优先的行为策略，关闭后恢复默认逻辑。
+底排功能键直接对应候选词位置，无需触屏。排列模式在「设置 → 候选栏 → 排列」切换：**巨硬模式**按 4-2-1-3-5 居中展开，**普通模式**按 1-2-3-4-5 线性排布；底排物理键快速选字由「设置 → 物理键盘」里的开关控制。
 
-- **Q25 / BlackBerry KEY**：5 大金刚键（⬆️ 0️⃣ 🈳 sym ⬆️）对应候选词 1~5
-- **Unihertz Titan 2**：顶部导航键 + 空格键快捷选词
-- **Unihertz Titan 2 Elite**：底排可用键按巨硬居中（4-2-1-3-5）映射 —— 空格=候选1、返回=候选2、fn=候选3、左Shift=候选4、右Shift=候选5，翻页用方向键左右。（底排的 home / 后台任务 是系统键，在系统层就被消费，任何输入法都收不到，故不参与映射）
+| 候选位 | ④ | ② | ① | ③ | ⑤ |
+| --- | --- | --- | --- | --- | --- |
+| BlackBerry / Q25 | 左 Shift | `0` | 空格 | SYM（右 Alt） | 右 Shift |
+| Titan2 | 左 Shift | Control | 空格 | Tab | 右 Alt |
+| Titan2 Elite | 左 Shift | 返回 | 空格 | Fn | 右 Shift |
+| Titan2 Elite（改键） | `0` | 返回 | 空格 | Ctrl | Fn |
+
+> Titan2 Elite 底排两端的 Home / 多任务是系统键，IME 收不到，需先在系统「按键设置」里改为 `0` / `Ctrl` 才能用「改键」预设。候选多于 5 个时用候选栏的 `<` / `>` 按钮或各预设翻页键翻页，详见手册。
 
 ### Alt + 数字组合键选词
 
-还原 BlackBerry 经典操作逻辑 —— 按住 Alt 或双击锁定 Alt，物理数字键（1~5）直接选词，空格键快速上屏。
+按住 Alt 或双击锁定 Alt 后，数字键 1~5 直接选第 N 个候选，空格上屏首选字。
 
 <img width="680" height="150" alt="image" src="https://github.com/user-attachments/assets/a27f825e-9000-4deb-adbc-e7a055097ab6" />
 
-
 ### 物理键盘布局切换
 
-使用物理键盘前，需在设置中手动启用：
-
-1. 进入 **选项 → 物理键盘**
+1. 进入 **设置 → 物理键盘**
 2. 选择 **键盘布局预设**，切换为对应的实体键盘布局
 
 <img width="480" height="480" alt="image" src="https://github.com/user-attachments/assets/59bfdde9-cb5a-4b23-b4e4-023fc34349c3" />
 
+切换预设会按机型整批重播物理键位与推荐快捷键，自定义过的键位会被覆盖。
 
 ### 快捷输入法切换
 
 | 快捷键 | 功能 |
 | --- | --- |
-| **Alt + 空格** | 循环切换输入法 |
-| **Shift + 空格** | 弹出输入法选择面板 |
-| **Shift**（拼音模式下） | 切换中/英文输入 |
+| **Alt + 空格** | 在已启用的输入法间循环切换 |
+| **Shift + 空格** | 弹出系统输入法选择器 |
+| **Shift**（拼音下） | 切换中 / 英文 |
+| **点击顶栏输入法图标** | 切到下一个输入法 |
 
-> 状态栏会实时显示当前输入法，切换时一目了然。
+> 顶栏实时显示当前输入法；`Alt + 空格` 可在「设置 → 物理键盘」里改或解绑。
 
 ### Alt 锁定
 
-双击左 Alt 键锁定 Alt 状态，锁定后后续按键自动附加 Alt 修饰符，模拟 BlackBerry Classic 的 Alt 锁定体验。再次按 Alt / Space / Enter 即可解锁。
+双击锁定键（默认左 Alt）锁定 Alt 状态，之后每次按键自动带 Alt；按 Alt / 空格 / 回车解锁。锁定键可在「设置 → 物理键盘 → Alt 行为」里改，也可关闭该功能；开启后还能用 `Alt + Del` 删除整行。
 
-- **Alt 双击锁定开关**：可在「选项 → 物理键盘」中独立开启或关闭此功能
-- **Alt 锁定触发键可配置**：支持自定义触发 Alt 锁定的物理按键
-- 锁定状态会在状态栏实时显示
+### 键盘飞字与快捷键自定义
 
-### 按键测试页面
+自带触摸面的键盘（如 Titan2 Elite）可在「设置 → 物理键盘 → 飞字」开启手势：上滑选字、左右滑翻页、右上角起手左滑退格、无候选时四向滑移动光标、锁定 Alt 后滑动扩选；各手势有独立开关，另可调灵敏度与误触防护。
 
-内置按键测试工具，进入「选项 → 物理键盘 → 按键测试」可检测物理按键的扫描码、修饰键状态，辅助排查按键映射问题。
+「设置 → 快捷键」可自定义编辑与开关动作（复制 / 剪切 / 粘贴 / 撤销、光标与扩选、开关特效 / 音效 / 状态栏等）。点任意一行弹出捕获窗口改键，`Fn + 字母` 这类组合需用窗口内按钮拼出；切换键盘预设时推荐键位会整批重播。
 
-> **项目保持与原项目主线同步更新**，如有特定设备按键映射或 UI 布局的进一步调整需求，欢迎提交 [Issue](https://github.com/izilooong/TapFeet/issues) 或 Pull Request。
+> 项目保持与原项目主线同步更新；设备按键映射或 UI 布局的调整需求，欢迎提交 [Issue](https://github.com/izilooong/TapFeet/issues) 或 Pull Request。
 
 ---
 
@@ -88,10 +91,10 @@
 
 | 设置项 | 说明 |
 | --- | --- |
-| **候选栏序号** | 可选择隐藏候选词前序号，获得更简洁的视觉 |
-| **候选字字体大小** | 自由调节候选字的显示大小，适配不同视力需求 |
-| **选字动画** | 选词时的视觉反馈动画，可在选项中关闭 |
-| **候选栏排列顺序** | 支持切换候选词的排列方向，左→右 / 右→左 自由选择 |
+| **候选栏排列模式** | 巨硬（4-2-1-3-5 居中展开）/ 普通（1-2-3-4-5 线性） |
+| **候选栏序号** | 隐藏候选词前的序号 |
+| **候选字字体大小** | 调节候选字显示大小 |
+| **输入特效** | 选字上屏的粒子动画与连击计数，可关闭 |
 
 ---
 
@@ -99,38 +102,32 @@
 
 ### 支持的语言及输入法
 
-- 英语（含拼写检查）
-- 中文：拼音、双拼、五笔、仓颉、自定义码表（基于 fcitx5-chinese-addons）
-  - 注音（通过 Chewing 插件）
-  - 粤拼（通过 Jyutping 插件，基于 libime-jyutping）
-- 越南语（通过 UniKey 插件，支持 Telex、VNI、VIQR）
-- 日语（通过 Anthy 插件）
-- 韩语（通过 Hangul 插件）
-- 僧伽罗语（通过 Sayura 插件）
-- 泰语（通过 Thai 插件）
-- 通用输入法（通过 RIME 插件，支持导入自定义方案）
+- 中文：拼音、双拼、五笔、仓颉、自定义码表（fcitx5-chinese-addons）；注音（Chewing）、粤拼（Jyutping）插件
+- 英语（含拼写检查）、日语（Anthy）、韩语（Hangul）、越南语（UniKey）、泰语、僧伽罗语（Sayura）
+- 通用输入引擎 RIME，可导入自定义方案；默认自带朙月拼音、地球拼音、注音、仓颉五代、速成五代、笔画 6 套方案
+
+> 通过插件扩展输入引擎，启用即用；另内置剪贴板过滤等工具插件。
 
 ### 已实现功能
 
-- 虚拟键盘（布局暂不支持自定义）
-- 可展开的候选词视图
-- 剪贴板管理（仅支持纯文本）
-- 主题系统（自定义配色、背景图片、Android 12+ 动态取色）
-- 按键弹出预览
-- 长按弹出符号快捷输入
-- 符号与 Emoji 选择器
-- 插件系统（支持从其他 APK 加载输入法插件）
-- 物理键盘连接时显示悬浮候选面板
+- 虚拟键盘、可展开候选词视图、剪贴板管理（纯文本）
+- 主题系统（自定义配色、背景图、Android 12+ 动态取色）、按键弹出预览
+- 长按字母 / 数字键输入键帽符号（黑莓风格）
+- 符号 / 表情 / 颜文字窗口，按 QWERTY 键位选入，无需触屏
+- 自定义词组从文本批量导入（`nh,1=你好`）、用户词典与拼音词库管理
+- 本地语音输入（sherpa-onnx + SenseVoice，模型按需下载、离线识别）
+- 按键音效方案（钢琴清音 / 电报嘀嗒 / 木鱼笃笃 / 算盘噼啪等，另有静音）
+- 插件系统（从其他 APK 加载输入法插件）、在线升级
 
-
-
+---
 
 ## 🔧 构建与运行
 
 ### 环境依赖
 
-- Android SDK Platform & Build-Tools 35
-- Android NDK (Side by side) 25 & CMake 3.22.1（可通过 Android Studio SDK Manager 或 sdkmanager 安装）
+- Android SDK Platform 36、Build-Tools 36.1.0（compileSdk / targetSdk 36，minSdk 23）
+- Android NDK 28.0.13004108 (side by side)、CMake 3.31.6
+- Gradle 9.4.1、Android Gradle Plugin 9.2.0、Kotlin 2.3.21
 - [KDE/extra-cmake-modules](https://github.com/KDE/extra-cmake-modules)
 - GNU Gettext >= 0.20（需要 `msgfmt` 命令）
 
@@ -171,7 +168,13 @@ pacman -S mingw-w64-ucrt-x86_64-extra-cmake-modules mingw-w64-ucrt-x86_64-gettex
 # 然后将 C:\msys64\ucrt64\bin 添加到 PATH
 ```
 
-Android SDK 平台、Build-Tools、NDK 和 CMake 请通过 Android Studio 的 SDK Manager 安装（版本号请参考 Versions.kt）。
+Android SDK 平台、Build-Tools、NDK 和 CMake 请通过 Android Studio 的 SDK Manager 安装（版本见 `build-logic/convention/src/main/kotlin/Versions.kt`）。
+
+构建单 ABI 调试包：
+
+```shell
+./gradlew :app:assembleDebug -PbuildABI=arm64-v8a
+```
 
 ---
 
@@ -187,14 +190,9 @@ Android SDK 平台、Build-Tools、NDK 和 CMake 请通过 Android Studio 的 SD
 
 ### Q25 长按 Alt 触发系统级 Alt 锁定
 
-在 **Q25**（BlackBerry 复刻机）上，**长按物理 Alt 键**会触发设备固件 / 系统层的 Alt"粘滞锁定"（sticky lock）。锁定后，后续按键会被持续附加 Alt 修饰符，导致按字母键输入的是符号而非字母。
+Q25 上**长按物理 Alt** 会触发系统 / 固件层的 Alt 粘滞锁定，之后按字母键出的是符号。它发生在 IME 事件上游，TapFeet 无法检测或清除，也与自身的「双击左 Alt 锁定」（见上文 *Alt 锁定*）互不影响。
 
-该锁定发生在 **Android 系统 / 键盘固件层**，位于输入法（IME）的事件上游，因此：
-
-- TapFeet **无法检测**，也无法在应用层直接清除该锁定状态；
-- 它与 TapFeet 自身的「双击左 Alt 锁定 Alt」功能（见上方 *Alt + 数字组合键选词*）是**两套互不相关的机制**，互不影响。
-
-**解除方式**：在 Q25 上再次按下 **空格键（Space）** 即可释放系统的 Alt 锁定。
+**解除**：再按一下空格键。
 
 ---
 
@@ -212,24 +210,24 @@ Android SDK 平台、Build-Tools、NDK 和 CMake 请通过 Android Studio 的 SD
 
 ## 📄 许可证
 
-本项目继承原项目的 LGPL-2.1 许可证，详见根目录下的 LICENSE 文件。
+本项目继承原项目的 LGPL-2.1-or-later 许可证，详见根目录 LICENSE 文件。
 
-根据 LGPL-2.1 的要求：
-
-- 若对本项目核心库代码进行了修改，修改部分必须以相同的 LGPL-2.1 许可证公开。
-- 若仅将本项目作为动态链接库使用（未修改库本身），您的专有代码可保持闭源，但需在文档中声明使用了 LGPL 库，并附上许可证副本。
+- 修改核心库代码：修改部分须以相同许可证公开。
+- 仅作动态链接使用（未修改库本身）：专有代码可保持闭源，但需声明使用了 LGPL 库并附许可证副本。
 
 ---
 
 ## 📄 隐私策略
 
-大脚输入法不要求联网权限，也不收集任何个人信息。
+输入与语音识别默认在设备本地完成，不收集个人信息。
+
+应用声明了网络权限，仅用于在线升级检查、语音模型下载、云拼音等可选功能；关闭后日常输入无需联网。
 
 ---
 
 ## 🙏 致谢
 
-本项目的所有基础能力均源自 Fcitx5 官方团队的卓越工作。感谢他们为开源输入法社区所做的贡献。
+基础能力源自 Fcitx5 官方团队与 fcitx5-android 项目，感谢开源输入法社区的贡献。
 
 ---
 
