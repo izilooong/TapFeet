@@ -360,32 +360,9 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         val soundSchemePref = ListPreference(context).apply {
             key = hw.soundScheme.key
             title = getString(R.string.sound_scheme)
-            entries = arrayOf(
-                getString(R.string.sound_scheme_classic),
-                getString(R.string.sound_scheme_crisp),
-                getString(R.string.sound_scheme_muffled),
-                getString(R.string.sound_scheme_soft),
-                getString(R.string.sound_scheme_piano),
-                getString(R.string.sound_scheme_telegraph),
-                getString(R.string.sound_scheme_woodfish),
-                getString(R.string.sound_scheme_abacus),
-                getString(R.string.sound_scheme_mechanical),
-                getString(R.string.sound_scheme_ratchet),
-                getString(R.string.sound_scheme_silent)
-            )
-            entryValues = arrayOf(
-                SoundScheme.Classic.name,
-                SoundScheme.Crisp.name,
-                SoundScheme.Muffled.name,
-                SoundScheme.Soft.name,
-                SoundScheme.Piano.name,
-                SoundScheme.Telegraph.name,
-                SoundScheme.Woodfish.name,
-                SoundScheme.Abacus.name,
-                SoundScheme.Mechanical.name,
-                SoundScheme.Ratchet.name,
-                SoundScheme.Silent.name
-            )
+            // 清单由枚举自身派生：加一套音效方案不用再来这里手抄两遍（漏一个就静默少一项）。
+            entries = SoundScheme.entries.map { getString(it.stringRes) }.toTypedArray()
+            entryValues = SoundScheme.entries.map { it.name }.toTypedArray()
             // MUST be the enum's NAME, not the enum instance: ListPreference.onSetInitialValue
             // casts the default straight to String ((String) mDefaultValue), while
             // ManagedPreference.PStringLike<T>.defaultValue is typed as T itself (enumList yields
