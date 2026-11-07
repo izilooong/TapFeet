@@ -1107,8 +1107,7 @@ class InputView(
         if (!isSymToggleKey) return false
 
         // Candidate total can be stale from previous sessions. Use visible UI state instead.
-        val noActiveInput = preeditEmptyState.isEmpty &&
-                (!kawaiiBar.isCandidateUiShowing() || horizontalCandidate.visibleCandidateCount() <= 0)
+        val noActiveInput = hasNoActiveInput()
         if (!noActiveInput) return false
 
         // tap-hold：本该在这里切窗口，但若这个键同时是伪修饰键（Elite 预设的 Fn：symbolPickerKey
@@ -1408,11 +1407,14 @@ class InputView(
      * 守卫与按下路径保持一致：虚拟模式沿用 `noActiveInput`（打字中不抢候选栏 / 不打断组字），
      * 物理模式由调用方按浮动候选窗状态把关（与 `handleHardwareSymKey` 的调用点同款）。
      */
+    /** preedit 为空且候选栏没有可见候选：允许这颗键去切窗口，不抢正在进行的输入。 */
+    private fun hasNoActiveInput(): Boolean = preeditEmptyState.isEmpty &&
+            (!kawaiiBar.isCandidateUiShowing() || horizontalCandidate.visibleCandidateCount() <= 0)
+
     fun onHardwareSymbolTapReleased(): Boolean {
         if (!physicalKeyboardMode) {
             // Candidate total can be stale from previous sessions. Use visible UI state instead.
-            val noActiveInput = preeditEmptyState.isEmpty &&
-                    (!kawaiiBar.isCandidateUiShowing() || horizontalCandidate.visibleCandidateCount() <= 0)
+            val noActiveInput = hasNoActiveInput()
             if (!noActiveInput) return false
         }
         toggleSymbolForKeyPress()
