@@ -5,54 +5,36 @@
 package org.fcitx.fcitx5.android.data.prefs
 
 import androidx.annotation.StringRes
-import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.input.shortcut.ShortcutAction
 import org.fcitx.fcitx5.android.input.shortcut.ShortcutChord
 
 /**
- * Predefined sets ("profiles") of hardware keyboard key bindings.
+ * 键盘预设的门面：静态事实全部在 [HardwareKeyProfile]，本对象只负责「按预设写偏好」的副作用与
+ * 供 UI 取用的派生 adapter。
  *
- * Each profile maps a [AppPrefs.HardwareKeyboard] key-binding preference key to its fcitx5
- * portableString value (e.g. "Alt+space", "dollar", "Shift_L") or to a [HardwareSpecialKeys]
- * pseudo-key name (e.g. "Sym", "NavBack") for physical function keys that have no fcitx5 KeySym.
- * Selecting a profile in the settings screen overwrites every individual key binding with the
- * profile's values.
+ * 每个预设把 11 个 [AppPrefs.HardwareKeyboard] 键位偏好写成 fcitx5 portableString
+ * （如 "Alt+space" / "Shift_L"）或 [HardwareSpecialKeys] 伪键名（如 "Sym" / "NavBack"）。
+ * 选中预设会覆盖全部单个键位；之后用户仍可逐项编辑，所以预设只是初始批量值。
  *
- * [BLACKBERRY] is the original/default set of bindings. [TT2], [TITAN2_ELITE] and
- * [TITAN2_ELITE_MOD] are alternative layouts. [TITAN2_ELITE_MOD] is [TITAN2_ELITE] with the
- * candidate-selection and paging keys remapped (see the operation manual).
- * The individual keys remain editable afterwards, so a profile is only an initial batch set.
+ * 保留吃 String 的 public API，是为了让 `hw_key_profile` 的持久化值与 UI 下拉的 entryValues
+ * 保持原样；String → 预设的解析只在 [HardwareKeyProfile.from] 一处发生。
  */
 object HardwareKeyProfiles {
 
-    const val BLACKBERRY = "blackberry"
-    const val TT2 = "tt2"
-    const val TITAN2_ELITE = "titan2_elite"
-    const val TITAN2_ELITE_MOD = "titan2_elite_mod"
-    const val PASSPORT = "passport"
-
     /** All available profile ids, in display order. */
-    fun ids(): List<String> = listOf(BLACKBERRY, TT2, TITAN2_ELITE, TITAN2_ELITE_MOD, PASSPORT)
+    fun ids(): List<String> = HardwareKeyProfile.entries.map { it.id }
 
     /**
      * 预设显示名。下拉框的 entries 与「恢复推荐键位」的摘要都从这里取，
      * 不各写一份 id → 名字的映射（同一个映射抄两份必然漂移）。
      */
     @StringRes
-    fun labelResFor(name: String): Int = when (name) {
-        TT2 -> R.string.hw_profile_tt2
-        TITAN2_ELITE -> R.string.hw_profile_titan2_elite
-        TITAN2_ELITE_MOD -> R.string.hw_profile_titan2_elite_mod
-        PASSPORT -> R.string.hw_profile_passport
-        else -> R.string.hw_profile_blackberry
-    }
+    fun labelResFor(name: String): Int = HardwareKeyProfile.from(name).labelRes
 
     /**
-     * Single source of truth for the 11 hardware-keyboard key-binding preferences, in canonical
-     * order. The value lists ([blackberryValues] / [tt2Values]) are defined in the same order, so
-     * every profile implementation (`get` / `applyProfile` / `candidateKeys`) is built by
-     * `keyBindings(hw) zip values`, eliminating the duplicate `hw.xxx.key` listings that
-     * previously appeared in `blackberry` / `tt2` / `applyProfile` and could drift apart.
+     * 11 个键位偏好的规范顺序。[HardwareKeyProfile.bindings] 按同一顺序给出值，
+     * `applyProfile` / `candidateKeys` 都用 `keyBindings(hw) zip profile.bindings` 取用，
+     * 不在别处再抄一份 `hw.xxx.key` 清单。
      */
     private fun keyBindings(hw: AppPrefs.HardwareKeyboard): List<ManagedPreference.PString> = listOf(
         hw.candidate1Key,
@@ -68,116 +50,7 @@ object HardwareKeyProfiles {
         hw.altLatchKey,
     )
 
-    /**
-     * 黑莓（Q25）默认键位。
-     *
-     * ⚠️ SYM 按钮与右 Alt（`KEYCODE_ALT_RIGHT`）是**两个独立的物理键**，识别上不混用（见
-     * [HardwareSpecialKeys] 的 `Sym` 条目：那里已不含 `KEYCODE_ALT_RIGHT`）。这里把符号窗口键绑成
-     * `"Alt_R"`（fcitx5 的 Alt_R keysym）=「右 Alt 开符号窗口」，走 keysym 路径匹配，与 `Sym`
-     * 伪键（只匹配 `KEYCODE_SYM` / `KEYCODE_PICTSYMBOLS`）互不干扰。若想在真机用独立的 SYM 按钮
-     * 开符号窗口，把该值改成 `"Sym"` 即可。
-     */
-    private val blackberryValues = listOf(
-        "space", "0", "Alt_R", "Shift_L", "Shift_R",
-        "grave", "Alt+grave", "Alt_R", "Alt+space", "Shift+space", "Alt_L",
-    )
-
-    private val tt2Values = listOf(
-        "space", "Control_L", "Tab", "Shift_L", "Alt_R",
-        "", "", "", "Alt+space", "Shift+space", "Alt_R",
-    )
-
-    /**
-     * Titan2 Elite. Its bottom row (`TitanKey.kl` ROW4) is
-     * `左Shift / 返回 / home / 空格 / 后台任务 / fn / 右Shift`, but **home and 后台任务 cannot be
-     * bound at all**: they report `KEYCODE_HOME` / `KEYCODE_APP_SWITCH`, which the window policy
-     * consumes before any window — including the IME window — so no input method ever receives them
-     * (measured: pressing either produces zero events on the IME side, while their keyCodes are
-     * already present in the shortcut tables).
-     *
-     * What remains is exactly five bottom-row keys, symmetric around 空格, so the full 巨硬
-     * (4-2-1-3-5) row still works: `左Shift=4th, 返回=2nd, 空格=1st (centre), fn=3rd, 右Shift=5th`.
-     *
-     * Paging therefore moves off the Shifts (they are candidate keys now) onto DPAD left/right —
-     * pending a measurement of whether DPAD events reach the input method on this keyboard.
-     * `altLatchKey` is a bare `Alt_L` because this keyboard has no right Alt (only `KEY_LEFTALT`).
-     */
-    private val titan2EliteValues = listOf(
-        "space",        // candidate1Key     空格 —— 巨硬首选字（居中）
-        "NavBack",      // candidate2Key     返回
-        "NavFn",        // candidate3Key     fn
-        "Shift_L",      // candidate4Key     左Shift
-        "Shift_R",      // candidate5Key     右Shift
-        "Sym",        // pageNextKey       
-        "Alt+Sym",         // pagePrevKey       
-        "NavFn",          // symbolPickerKey   SYM 键
-        "Alt+space",    // toggleImeKey
-        "Shift+space",  // pickerKey
-        "Alt_L",        // altLatchKey       本机只有左 Alt
-    )
-
-    /**
-     * Titan2 Elite（改键）. 与 [titan2EliteValues] 同硬件、同符号窗口/Fn/Alt 这套，只是把
-     * 「选字」和「翻页」的键位重排（对应操作手册里的「Titan2 Elite（改键后）」布局）：
-     *
-     *  - 巨硬选字五键改为 `0 | 返回 | 空格 | Ctrl | Fn`（原 `左Shift | 返回 | 空格 | Fn | 右Shift`）。
-     *    其中 `0` 与 `Ctrl` 来自用户在系统设置里把 ⭕️Home、`⬛️`多任务 两个被窗口策略吃掉的键
-     *    分别重映射成 `0` / `Ctrl` —— 这两个键 IME 收不到，不重映射就空着。
-     *  - 翻页从 `Sym` / `Alt+Sym` 改到 `右Shift`(下一页) / `左Shift`(上一页)，把原本占着选字位的
-     *    左右 Shift 让出来给选字。
-     *
-     * `Ctrl` 用 `Control_L`：系统重映射一般发 `KEYCODE_CTRL_LEFT`（→ XK_Control_L）。若你的重映射器
-     * 发的是 `KEYCODE_CTRL_RIGHT`，把这一行改成 `"Control_R"` 即可。
-     */
-    private val titan2EliteModValues = listOf(
-        "space",        // candidate1Key     空格 —— 巨硬首选字（居中）
-        "NavBack",      // candidate2Key     返回
-        "Control_L",    // candidate3Key     Ctrl（系统重映射 ⬛️ 多任务键为 Ctrl 后）
-        "0",            // candidate4Key     0（系统重映射 ⭕️ Home 键为 0 后）
-        "NavFn",        // candidate5Key     Fn
-        "Shift_R",      // pageNextKey       右 Shift（下一页）
-        "Shift_L",      // pagePrevKey       左 Shift（上一页）
-        "NavFn",        // symbolPickerKey   Fn 键（轻按开符号窗口）
-        "Alt+space",    // toggleImeKey
-        "Shift+space",  // pickerKey
-        "Alt_L",        // altLatchKey       本机只有左 Alt
-    )
-
-    /**
-     * Passport（护照）：26 字母 + 空格 + 退格 + 回车，共 29 键，**没有任何修饰键**
-     * （无 Shift / Alt / Sym / Fn，键帽上连子刻印都没有）。触摸面不产坐标流，固件把滑动
-     * 翻译成 DPAD 四向按键（实测 `KEYCODE_DPAD_*`，scan 103/105/106/108，dev=5），
-     * 而 DPAD 恰好是 fcitx5 原生 keysym（`Up/Down/Left/Right`，见 GenKeyMapping），所以触摸面
-     * 直接走既有的 keysym 匹配路径当快捷键用，零新代码。
-     *
-     * 键位分配（触摸面 = 翻页器）：
-     *  - 空格 = 首选字（candidate1，全机型统一）；
-     *  - 右滑 = 下一页、左滑 = 上一页（箭头惯例：右 = 前进方向）；
-     *  - candidate2-5 留空：触摸面四向不产坐标、且上下滑留给未来的光标/选字手势；
-     *  - 符号窗 / 切换输入法 / 快捷窗口 / Alt Latch 全部留空：本机没有任何空闲修饰键，
-     *    回车是编辑器唯一的「发送」不能抢，退格是删除不能动 —— 符号窗走 KawaiiBar 按钮点选。
-     */
-    private val passportValues = listOf(
-        "space",        // candidate1Key     空格 —— 首选字
-        "",             // candidate2Key     留空（上下滑不占，留给未来手势）
-        "",             // candidate3Key     同上
-        "",             // candidate4Key     无键可绑
-        "",             // candidate5Key     无键可绑
-        "Left",        // pageNextKey       触摸面右滑 —— 下一页
-        "Right",         // pagePrevKey       触摸面左滑 —— 上一页
-        "",             // symbolPickerKey   无空闲键（符号窗走 KawaiiBar 按钮）
-        "",             // toggleImeKey      无 Alt/Shift 可组合
-        "",             // pickerKey         同上
-        "",             // altLatchKey       本机没有 Alt，latch 无从谈起
-    )
-
-    private fun valuesFor(name: String): List<String> = when (name) {
-        TT2 -> tt2Values
-        TITAN2_ELITE -> titan2EliteValues
-        TITAN2_ELITE_MOD -> titan2EliteModValues
-        PASSPORT -> passportValues
-        else -> blackberryValues
-    }
+    // 11 个键位值由 HardwareKeyProfile 的 bindings 持有；门面不再存第二份。
 
     /**
      * 「快捷键」动作键的字母。
@@ -231,19 +104,18 @@ object HardwareKeyProfiles {
      *
      * 默认值全是「按住修饰键 + 字母」这种组合，避开所有裸键：裸键（字母）本来就要打字。
      */
-    fun shortcutValuesFor(name: String): Map<ShortcutAction, String> {
-        if (name == BLACKBERRY) {
-            return ShortcutAction.entries.associateWith {
-                HardwareChord.compose(HardwareChord.SHIFT_R, leaderFor(it))
-            }
+    fun shortcutValuesFor(name: String): Map<ShortcutAction, String> =
+        valuesForScheme(HardwareKeyProfile.from(name).shortcutScheme)
+
+    /** 对 [ShortcutScheme] 穷尽分派：新增方案漏给分支会直接编译不过，不再有隐含兜底。 */
+    private fun valuesForScheme(scheme: ShortcutScheme): Map<ShortcutAction, String> = when (scheme) {
+        ShortcutScheme.BLACKBERRY -> ShortcutAction.entries.associateWith {
+            HardwareChord.compose(HardwareChord.SHIFT_R, leaderFor(it))
         }
         // Passport：本机没有 Shift/Alt/Fn/Sym 任何修饰键，26 字母全部要留给打字，
-        // 触摸面四向键已绑给候选 2/3 + 翻页 —— 动作快捷键无键可播，整套留空。
-        // 用户想绑动作键需先手动让出某个触摸面键（冲突检测会提示）。
-        if (name == PASSPORT) {
-            return ShortcutAction.entries.associateWith { "" }
-        }
-        return ShortcutAction.entries.associateWith {
+        // 触摸面四向键已绑给翻页 —— 动作快捷键无键可播，整套留空。
+        ShortcutScheme.PASSPORT -> ShortcutAction.entries.associateWith { "" }
+        ShortcutScheme.TITAN -> ShortcutAction.entries.associateWith {
             HardwareChord.compose(
                 when (it.chord) {
                     ShortcutChord.FN -> HardwareChord.FN
@@ -261,24 +133,21 @@ object HardwareKeyProfiles {
      * 该预设下快捷窗口面板循环剔除自定义态（已常驻，循环到它没有意义 —— 见
      * [org.fcitx.fcitx5.android.input.InputView.panelModuleEnabled]）；其它预设仍按总开关参与循环。
      *
-     * ⚠️ **只看 `keyProfile == PASSPORT`，不再依赖自定义键盘总开关（`customKeyboard.enabled`）。**
+     * ⚠️ **只由预设的 `customKeyboardPinned` 决定，不再依赖自定义键盘总开关（`customKeyboard.enabled`）。**
      * 该开关默认 `false`、且可被用户手滑关掉；一旦它为 false，passport 这台没有任何符号键
      * 的设备会直接废掉（键盘面一片空白）。所以 passport 钉死自定义键盘是**无条件**的，
      * 总开关对 passport 不再构成逃生口（想退回主键盘请直接切换预设）。
      * [applyProfile] 仍会把开关一并播成开，仅为让设置页开关显示「开」、不负载行为。
      */
-    fun customKeyboardPinned(): Boolean =
-        AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue() == PASSPORT
+    fun customKeyboardPinned(): Boolean = HardwareKeyProfile
+        .from(AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue())
+        .customKeyboardPinned
 
     /** 把该预设的推荐动作键写进 `AppPrefs.Shortcuts`。 */
     fun applyShortcutPreset(name: String, prefs: AppPrefs) {
         val shortcuts = prefs.shortcuts
         shortcutValuesFor(name).forEach { (action, value) -> shortcuts.key(action).setValue(value) }
     }
-
-    /** Resolve the key-binding map for the given profile id (defaults to [BLACKBERRY]). */
-    fun get(name: String, hw: AppPrefs.HardwareKeyboard): Map<String, String> =
-        keyBindings(hw).zip(valuesFor(name)).associate { (pref, value) -> pref.key to value }
 
     /**
      * Overwrite every individual key-binding preference with the values of the given profile,
@@ -293,13 +162,14 @@ object HardwareKeyProfiles {
      * 没动作键」的半套配置。用户自定的动作键会被这次切换覆盖 —— 与物理键位同一个取舍。
      */
     fun applyProfile(name: String, prefs: AppPrefs) {
+        val profile = HardwareKeyProfile.from(name)
         val hw = prefs.hardwareKeyboard
-        keyBindings(hw).zip(valuesFor(name)).forEach { (pref, value) -> pref.setValue(value) }
+        keyBindings(hw).zip(profile.bindings).forEach { (pref, value) -> pref.setValue(value) }
         applyShortcutPreset(name, prefs)
         // Passport 的自定义键盘是主键盘本体（固定显示）—— 切到该预设时把总开关一并播成开，
         // 否则 [customKeyboardPinned] 条件不成立、键盘面一片空白。切走预设不反向关闭：
         // 用户可能本来就手动开着自定义键盘，替他关掉是越权。
-        if (name == PASSPORT) prefs.customKeyboard.enabled.setValue(true)
+        if (profile.customKeyboardPinned) prefs.customKeyboard.enabled.setValue(true)
     }
 
     /**
@@ -317,8 +187,8 @@ object HardwareKeyProfiles {
 
     /**
      * Returns only the candidate2-5 (preference, value) pairs for the given profile. Values are
-     * looked up by the same [valuesFor] list that [applyProfile] uses, so this method never
-     * redefines a key string and there is exactly one place to update per profile.
+     * looked up by the same [HardwareKeyProfile.bindings] list that [applyProfile] uses, so this
+     * method never redefines a key string and there is exactly one place to update per profile.
      *
      * Used by the "候选显示模式 = 巨硬" re-entry path to re-seed the four physical selection keys
      * after a round trip through "普通" (which clears them) — without touching
@@ -327,7 +197,7 @@ object HardwareKeyProfiles {
      */
     fun candidateKeys(name: String, hw: AppPrefs.HardwareKeyboard): List<Pair<ManagedPreference.PString, String>> {
         val bindings = keyBindings(hw)
-        val values = valuesFor(name)
+        val values = HardwareKeyProfile.from(name).bindings
         return candidate2to5(hw).mapNotNull { pref ->
             bindings.indexOf(pref).takeIf { it >= 0 }?.let { pref to values[it] }
         }
