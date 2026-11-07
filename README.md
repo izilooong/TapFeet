@@ -51,7 +51,7 @@
 
 按住 Alt 或双击锁定 Alt 后，数字键 1~5 直接选第 N 个候选，空格上屏首选字。
 
-<img width="320" height="320" alt="image" src="https://github.com/user-attachments/assets/f090575d-3b74-4220-ba4b-e9cc09bebf3b" />
+
 
 
 ### 物理键盘布局切换
@@ -59,7 +59,7 @@
 1. 进入 **设置 → 物理键盘**
 2. 选择 **键盘布局预设**，切换为对应的实体键盘布局
 
-
+<img width="320" height="320" alt="image" src="https://github.com/user-attachments/assets/f090575d-3b74-4220-ba4b-e9cc09bebf3b" />
 
 切换预设会按机型整批重播物理键位与推荐快捷键，自定义过的键位会被覆盖。
 
