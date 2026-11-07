@@ -118,7 +118,8 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
             candidatesViewMode,
             InputModeTrigger.StartInputView,
             isVirtualKeyboard,
-        ) { service.superEvaluateInputViewShown() }
+            systemWantsVirtual = { service.superEvaluateInputViewShown() },
+        )
         return isVirtualKeyboard
     }
 
@@ -150,7 +151,8 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
             candidatesViewMode,
             InputModeTrigger.KeyDown,
             isVirtualKeyboard,
-        ) { service.superEvaluateInputViewShown() }
+            systemWantsVirtual = { service.superEvaluateInputViewShown() },
+        )
     }
 
     fun evaluateOnViewClicked(service: FcitxInputMethodService) {
@@ -159,7 +161,8 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
             candidatesViewMode,
             InputModeTrigger.ViewClicked,
             isVirtualKeyboard,
-        ) { service.superEvaluateInputViewShown() }
+            systemWantsVirtual = { service.superEvaluateInputViewShown() },
+        )
     }
 
     fun evaluateOnUpdateEditorToolType(toolType: Int, service: FcitxInputMethodService) {
@@ -168,9 +171,10 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
             candidatesViewMode,
             InputModeTrigger.ToolTypeUpdate,
             isVirtualKeyboard,
+            systemWantsVirtual = { service.superEvaluateInputViewShown() },
             isTouchTool = toolType == MotionEvent.TOOL_TYPE_FINGER ||
                 toolType == MotionEvent.TOOL_TYPE_STYLUS,
-        ) { service.superEvaluateInputViewShown() }
+        )
     }
 
     /**
