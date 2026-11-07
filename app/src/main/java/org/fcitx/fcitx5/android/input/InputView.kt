@@ -249,6 +249,9 @@ class InputView(
     // String and the method would not resolve — see the same fix in HorizontalCandidateComponent.
     private val candidateArrangementModePref = AppPrefs.getInstance().candidateBar.arrangementMode
 
+    // 系统导航栏留白归候选栏设置页管；切换时立即重算底部预留（见 onNavBarSpaceChanged）。
+    private val navBarSpacePref = AppPrefs.getInstance().candidateBar.navBarSpace
+
     /**
      * 键盘预设切换 → Passport 固定行立即生效（物理键盘模式半边）。KeyboardWindow 的
      * keyProfileListener 只管布局改道；这里补另一半：物理模式下 InputView 若处于 GONE
@@ -401,7 +404,7 @@ class InputView(
         // [onKeyProfileChanged]，注释见彼处）。
         hardwareKeyboardPrefs.keyProfile.registerOnChangeListener(onKeyProfileChanged)
         // 导航栏留白开关即时生效（见 [onNavBarSpaceChanged]）。
-        hardwareKeyboardPrefs.navBarSpace.registerOnChangeListener(onNavBarSpaceChanged)
+        navBarSpacePref.registerOnChangeListener(onNavBarSpaceChanged)
     }
 
     private fun updateKeyboardSize() {
@@ -444,10 +447,8 @@ class InputView(
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
         val navBarInset = getNavBarBottomInset(insets)
-        // 系统导航栏留白：按用户偏好在 IME 窗口底部预留导航栏空间。
-        // Auto（默认）= 仅当确有导航栏（底部高度 > 0）时预留，等价于改动前无条件预留，不回归；
-        // Always = 始终按实际导航栏高度预留；Never = 不预留（键盘延伸到底部，可能与导航栏重叠）。
-        val reserve = when (hardwareKeyboardPrefs.navBarSpace.getValue()) {
+        // 系统导航栏留白：按用户偏好在 IME 窗口底部预留导航栏空间。默认不预留。
+        val reserve = when (navBarSpacePref.getValue()) {
             NavbarSpace.Never -> 0
             NavbarSpace.Auto -> if (navBarInset > 0) navBarInset else 0
             NavbarSpace.Always -> navBarInset

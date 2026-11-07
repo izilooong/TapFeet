@@ -105,10 +105,10 @@
     <string name="hw_profile_titan2_elite">Titan2 Elite</string>
     <string name="hw_profile_titan2_elite_mod">Titan2 Elite（改键）</string>
     <string name="hw_profile_passport">Passport</string>
-    <string name="hw_nav_bar_space">导航栏留白</string>
-    <string name="hw_nav_bar_space_auto">自动（有导航栏时预留）</string>
-    <string name="hw_nav_bar_space_always">总是预留</string>
-    <string name="hw_nav_bar_space_never">从不预留</string>
+    <string name="nav_bar_space">导航栏留白</string>
+    <string name="nav_bar_space_auto">自动（有导航栏时预留）</string>
+    <string name="nav_bar_space_always">总是预留</string>
+    <string name="nav_bar_space_never">从不预留</string>
     <string name="main_header_subtitle">%1$s · %2$s</string>
     <string name="switch_keyboard_preset">切换键盘预设</string>
     <!-- 伪按键显示名（见 HardwareSpecialKeys）：没有 fcitx5 KeySym 的物理功能键 -->

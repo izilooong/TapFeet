@@ -452,6 +452,13 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             "sp"
         )
 
+        // 系统导航栏留白：在 IME 窗口底部为系统导航栏预留空间。默认不预留。
+        val navBarSpace = enumList(
+            R.string.nav_bar_space,
+            "nav_bar_space",
+            NavbarSpace.Never
+        )
+
         // 「隐藏状态栏」：空闲时把顶部那条 40dp 横条整行收起。放在候选栏页——候选栏就是这个
         // 横条（打字态），两者是同一行的高度两种用法；收起只收这一行，键盘自身高度与底边位置
         // 不动，出候选时该行照常弹回显示候选栏。实现见 KawaiiBarComponent.refreshBarVisibility()。
@@ -752,15 +759,6 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             step = 50
         )
 
-        // 系统导航栏留白：在 IME 窗口底部为系统导航栏预留空间。
-        // 默认 Auto = 仅当设备确有导航栏（导航栏底部高度 > 0）时预留，等价于此前无条件预留的行为，不回归；
-        // Always = 始终按实际导航栏高度预留；Never = 不预留（键盘延伸到底部，可能与导航栏重叠）。
-        val navBarSpace = enumList(
-            R.string.hw_nav_bar_space,
-            "hw_nav_bar_space",
-            NavbarSpace.Auto
-        )
-
         private val seededKeys = listOf(
             keyProfile, candidate1Key, candidate2Key, candidate3Key, candidate4Key, candidate5Key,
             pageNextKey, pagePrevKey, symbolPickerKey, toggleImeKey, pickerKey, altLatchKey
@@ -957,7 +955,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 }
 
 enum class NavbarSpace(override val stringRes: Int) : ManagedPreferenceEnum {
-    Auto(R.string.hw_nav_bar_space_auto),
-    Always(R.string.hw_nav_bar_space_always),
-    Never(R.string.hw_nav_bar_space_never)
+    Auto(R.string.nav_bar_space_auto),
+    Always(R.string.nav_bar_space_always),
+    Never(R.string.nav_bar_space_never)
 }

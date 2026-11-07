@@ -16,7 +16,6 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.InputFeedbacks.SoundScheme
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
-import org.fcitx.fcitx5.android.data.prefs.NavbarSpace
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.ui.common.createSettingsTabBar
 import org.fcitx.fcitx5.android.ui.main.settings.DialogSeekBarPreference
@@ -480,24 +479,6 @@ class HardwareKeyboardSettingsFragment : PaddingPreferenceFragment() {
         }
         profileScreen.addPreference(symbolPickerPref)
         keyPrefs.add(symbolPickerPref)
-
-        // 系统导航栏留白：在 IME 窗口底部为系统导航栏预留空间。
-        // 仅当主题导航栏背景为 Full 时才会产生实际高度，其它主题下恒为 0，因此默认 Auto 等价于
-        // 改动前无条件预留、不回归；Always 始终按实际导航栏高度预留；Never 不预留（键盘延伸到底部）。
-        val navBarSpacePref = ListPreference(context).apply {
-            key = hw.navBarSpace.key
-            title = getString(R.string.hw_nav_bar_space)
-            entries = NavbarSpace.entries.map { getString(it.stringRes) }.toTypedArray()
-            entryValues = NavbarSpace.entries.map { it.name }.toTypedArray()
-            // 必须用枚举常量名（ManagedPreferenceEnum 序列化方式），与 enumList 的 codec 一致；
-            // 同 soundSchemePref 的写法，避免 ListPreference 在首次 attach 时把枚举实例当 String 强转报错。
-            setDefaultValue(hw.navBarSpace.defaultValue.name)
-            value = hw.navBarSpace.getValue().name
-            summary = "%s"
-            isIconSpaceReserved = false
-            isSingleLineTitle = false
-        }
-        profileScreen.addPreference(navBarSpacePref)
 
         // Apply the persisted quick-pick state's visibility to candidate2-5 BEFORE returning, so
         // the screen never briefly shows rows that the current state says should be hidden.
