@@ -799,8 +799,9 @@ class InputView(
      *
      * 取跨编辑器兼容面最广的路径：全选/复制/剪切/粘贴走编辑器上下文菜单
      * （[InputConnection.performContextMenuAction]，TextView 支持，WebView/Compose 参差）；
-     * 光标移动走 DPAD keyevent；**选区四向**：左右手工 setSelection（微信的输入框这类自定义
-     * 编辑器不响应 Shift+DPAD 合成按键），上下先 keyevent（视觉行，最准）探测失败再退回手工
+     * 光标左右移动复用 [FcitxInputMethodService.handleArrowKey] 的精确 setSelection
+     * （与飞字手势、引擎回吐的虚拟方向键同一条路；裸 DPAD keyevent 在微信这类自定义编辑器上不响应）；
+     * **选区四向**：左右手工 setSelection，上下先 keyevent（视觉行，最准）探测失败再退回手工
      * 硬换行扩选，见 [extendSelection] / [extendSelectionVertical]；撤销发 Ctrl+Z
      * （android.R.id 没有 undo 常量，keyevent 是唯一通用入口）。
      */
@@ -808,6 +809,7 @@ class InputView(
         val ic = service.currentInputConnection ?: return
         val sendKey = { code: Int, meta: Int ->
             ic.sendKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, code, 0, meta))
+            ic.sendKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_UP, code, 0, meta))
         }
         when (action) {
             ShortcutAction.SelectAll -> ic.performContextMenuAction(android.R.id.selectAll)
@@ -818,8 +820,11 @@ class InputView(
             ShortcutAction.ClearAll ->
                 if (ic.performContextMenuAction(android.R.id.selectAll)) ic.commitText("", 1)
             ShortcutAction.Undo -> sendKey(KeyEvent.KEYCODE_Z, KeyEvent.META_CTRL_ON)
-            ShortcutAction.CursorLeft -> sendKey(KeyEvent.KEYCODE_DPAD_LEFT, 0)
-            ShortcutAction.CursorRight -> sendKey(KeyEvent.KEYCODE_DPAD_RIGHT, 0)
+            // Bare DPAD ACTION_DOWN is not enough for custom editors (and has no matching UP).
+            // Reuse the service's authoritative caret path — the same one fly-text swipes and
+            // engine-echoed virtual arrow keys use (precise setSelection, TYPE_NULL/URI fallback).
+            ShortcutAction.CursorLeft -> service.handleArrowKey(KeyEvent.KEYCODE_DPAD_LEFT)
+            ShortcutAction.CursorRight -> service.handleArrowKey(KeyEvent.KEYCODE_DPAD_RIGHT)
             ShortcutAction.CursorUp -> sendKey(KeyEvent.KEYCODE_DPAD_UP, 0)
             ShortcutAction.CursorDown -> sendKey(KeyEvent.KEYCODE_DPAD_DOWN, 0)
             ShortcutAction.SelectLeft -> extendSelection(ic, -1)

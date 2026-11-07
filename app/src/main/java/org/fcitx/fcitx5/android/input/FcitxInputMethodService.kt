@@ -588,7 +588,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         return true
     }
 
-    private fun handleArrowKey(keyCode: Int) {
+    /**
+     * Horizontal caret move, shared by the engine's virtual arrow keys, fly-text swipes and the
+     * `CursorLeft` / `CursorRight` shortcut actions. Uses a precise [InputConnection.setSelection]
+     * instead of a bare DPAD key event: custom editors (WeChat's input field among them) ignore
+     * DPAD key events, and a lone ACTION_DOWN without its UP is not a complete key press.
+     */
+    internal fun handleArrowKey(keyCode: Int) {
         val type = currentInputEditorInfo.inputType and InputType.TYPE_MASK_CLASS
         val variation = currentInputEditorInfo.inputType and InputType.TYPE_MASK_VARIATION
         if (type == InputType.TYPE_NULL ||

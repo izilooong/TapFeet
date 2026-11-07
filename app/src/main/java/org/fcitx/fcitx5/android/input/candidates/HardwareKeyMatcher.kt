@@ -56,7 +56,8 @@ internal object HardwareKeyMatcher {
             // 和弦：修饰键按住 **且** 内层键命中。顺序要紧：内层键（如 "e"）本身不带 modifier，
             // 会被 matches 的「纯键」分支当成普通按键命中，所以必须先过修饰键这一关。
             is HardwareShortcutResolver.ParsedKey.Chord ->
-                modifierHeld(parsed.modifier, kp) && matchesParsedKey(kp, parsed.inner)
+                !isModifierOwnPress(parsed.modifier, kp) &&
+                    modifierHeld(parsed.modifier, kp) && matchesParsedKey(kp, parsed.inner)
         }
 
     fun matches(kp: KeyPress, key: Key): Boolean {
@@ -88,7 +89,8 @@ internal object HardwareKeyMatcher {
             is HardwareShortcutResolver.ParsedKey.Special -> parsed.entry.matches(kp.keyCode)
             is HardwareShortcutResolver.ParsedKey.Ref -> symMatches(kp, parsed.key.sym)
             is HardwareShortcutResolver.ParsedKey.Chord ->
-                modifierHeld(parsed.modifier, kp) && matchesKeySymOnly(kp, parsed.inner)
+                !isModifierOwnPress(parsed.modifier, kp) &&
+                    modifierHeld(parsed.modifier, kp) && matchesKeySymOnly(kp, parsed.inner)
         }
 
     /**
@@ -108,6 +110,34 @@ internal object HardwareKeyMatcher {
         HardwareChord.ALT_R -> kp.metaState and KeyEvent.META_ALT_RIGHT_ON != 0
         HardwareChord.SHIFT_L -> kp.metaState and KeyEvent.META_SHIFT_LEFT_ON != 0
         HardwareChord.SHIFT_R -> kp.metaState and KeyEvent.META_SHIFT_RIGHT_ON != 0
+        else -> false
+    }
+
+    /**
+     * Whether [kp] IS the chord modifier's own key-down, as opposed to a second key pressed
+     * while the modifier is held.
+     *
+     * A chord is "hold the modifier, then press another key" — the modifier's own press must
+     * never satisfy one. This matters because [HardwareShortcutResolver.resolveAction] runs at
+     * the very front of [org.fcitx.fcitx5.android.input.FcitxInputMethodService.onKeyDown],
+     * BEFORE any candidate selection. The BlackBerry profile binds all action shortcuts to
+     * `Shift_R+letter` while the bare `Shift_R` is candidate5Key (巨硬 right-most pick), so on
+     * ROMs whose KeyCharacterMap yields a non-zero unicodeChar for a modifier key AND whose
+     * metaState carries META_SHIFT_RIGHT_ON, the bare right-Shift press used to match a chord
+     * through [symMatches]' unicode fallback: the action consumed the press and the candidate
+     * was never selected. Android 16's KeyCharacterMap returns 0 for modifier keys, which is
+     * why the same build worked there.
+     *
+     * Keyed off keyCode (stable Android constants), never off meta side bits — that keeps the
+     * fix independent of the OS/keylayout. Pseudo modifiers (Fn / Sym) deliberately return
+     * false: their keyCodes vary by device (NavFn reports 403 on Titan) and they are already
+     * governed by tap-hold, so excluding them here would change other profiles for no gain.
+     */
+    private fun isModifierOwnPress(name: String, kp: KeyPress): Boolean = when (name) {
+        HardwareChord.ALT_L -> kp.keyCode == KeyEvent.KEYCODE_ALT_LEFT
+        HardwareChord.ALT_R -> kp.keyCode == KeyEvent.KEYCODE_ALT_RIGHT
+        HardwareChord.SHIFT_L -> kp.keyCode == KeyEvent.KEYCODE_SHIFT_LEFT
+        HardwareChord.SHIFT_R -> kp.keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT
         else -> false
     }
 

@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.input.candidates
 import android.view.KeyEvent
 import org.fcitx.fcitx5.android.core.Key
 import org.fcitx.fcitx5.android.core.KeyState
+import org.fcitx.fcitx5.android.data.prefs.HardwareChord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -179,5 +180,71 @@ class HardwareKeyMatcherTest {
         val shiftR = key(symShiftR)
         assertTrue(HardwareKeyMatcher.matches(press(KeyEvent.KEYCODE_SHIFT_RIGHT), shiftR))
         assertFalse(HardwareKeyMatcher.matches(press(KeyEvent.KEYCODE_SHIFT_LEFT), shiftR))
+    }
+
+    // ---------------------------------------------------------------- regression: Android 14 / BlackBerry / 巨硬 right-Shift
+
+    /**
+     * Android 14 regression: some KeyCharacterMaps report a non-zero unicodeChar for a modifier
+     * key, and the framework attaches META_SHIFT_RIGHT_ON to the right-Shift down itself.
+     * The BlackBerry profile binds every action to `Shift_R+letter` while the bare Shift_R is
+     * candidate5Key. resolveAction() runs before candidate dispatch, so the chord used to steal
+     * the bare press through symMatches' unicode fallback and the word was never selected.
+     * Android 16 returns unicodeChar = 0 for modifier keys, hence it never reproduced there.
+     */
+    @Test
+    fun chordModifierOwnPressNeverStealsTheBareCandidateKey() {
+        val shiftRT = HardwareShortcutResolver.ParsedKey.Chord(
+            HardwareChord.SHIFT_R,
+            HardwareShortcutResolver.ParsedKey.Ref(key('t'.code))
+        )
+        val bareRightShift = press(
+            KeyEvent.KEYCODE_SHIFT_RIGHT,
+            unicode = 't'.code,
+            meta = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_RIGHT_ON,
+        )
+        // The own press must NOT be a chord...
+        assertFalse(HardwareKeyMatcher.matchesParsedKey(bareRightShift, shiftRT))
+        assertFalse(HardwareKeyMatcher.matchesKeySymOnly(bareRightShift, shiftRT))
+        // ...and must still hit the bare Shift_R binding (candidate5Key), so selection survives.
+        assertTrue(HardwareKeyMatcher.matches(bareRightShift, key(symShiftR)))
+
+        // Holding right Shift and pressing T is a real chord: unchanged on every OS version.
+        val chordPress = press(
+            KeyEvent.KEYCODE_T,
+            unicode = 't'.code,
+            meta = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_RIGHT_ON,
+        )
+        assertTrue(HardwareKeyMatcher.matchesParsedKey(chordPress, shiftRT))
+    }
+
+    @Test
+    fun modifierOwnPressGuardCoversAllFourSidePreciseModifiers() {
+        val inner = HardwareShortcutResolver.ParsedKey.Ref(key('e'.code))
+        val cases = listOf(
+            HardwareChord.SHIFT_R to KeyEvent.KEYCODE_SHIFT_RIGHT,
+            HardwareChord.SHIFT_L to KeyEvent.KEYCODE_SHIFT_LEFT,
+            HardwareChord.ALT_R to KeyEvent.KEYCODE_ALT_RIGHT,
+            HardwareChord.ALT_L to KeyEvent.KEYCODE_ALT_LEFT,
+        )
+        val allSideBits = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON or
+            KeyEvent.META_SHIFT_RIGHT_ON or KeyEvent.META_ALT_ON or
+            KeyEvent.META_ALT_LEFT_ON or KeyEvent.META_ALT_RIGHT_ON
+        cases.forEach { (modifier, keyCode) ->
+            val ownPress = press(keyCode, unicode = 'e'.code, meta = allSideBits)
+            assertFalse(
+                "own press of $modifier must not be a chord",
+                HardwareKeyMatcher.matchesParsedKey(
+                    ownPress, HardwareShortcutResolver.ParsedKey.Chord(modifier, inner)
+                )
+            )
+        }
+        // Pseudo modifiers (Titan Fn / Sym) keep their old behaviour — guard is a no-op.
+        assertTrue(
+            HardwareKeyMatcher.matchesParsedKey(
+                press(keyE, fn = true),
+                HardwareShortcutResolver.ParsedKey.Chord(HardwareChord.FN, inner)
+            )
+        )
     }
 }
