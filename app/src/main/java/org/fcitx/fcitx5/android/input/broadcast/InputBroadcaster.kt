@@ -39,17 +39,32 @@ class InputBroadcaster : UniqueComponent<InputBroadcaster>(), Dependent, InputBr
 
     private val receivers = ConcurrentLinkedQueue<InputBroadcastReceiver>()
 
+    /**
+     * Receiver 生命周期的唯一 seam。注册与注销都收在这里，broadcaster 因此持有集合语义，
+     * 而不只是把 15 个回调逐个转发；测试也通过它布置场景，不必再反射进私有队列
+     * （the interface is the test surface）。
+     */
+    fun addReceiver(receiver: InputBroadcastReceiver) {
+        receivers.add(receiver)
+    }
+
+    fun removeReceiver(receiver: InputBroadcastReceiver) {
+        receivers.remove(receiver)
+    }
+
     override fun handle(scopeEvent: ScopeEvent) {
         when (scopeEvent) {
             is ScopeEvent.DependencyArrivedEvent -> {
-                if (scopeEvent.dependency is InputBroadcastReceiver && scopeEvent.dependency !is InputBroadcaster) {
-                    receivers.add(scopeEvent.dependency as InputBroadcastReceiver)
+                val dependency = scopeEvent.dependency
+                if (dependency is InputBroadcastReceiver && dependency !is InputBroadcaster) {
+                    addReceiver(dependency)
                 }
             }
 
             is ScopeEvent.DependencyLeftEvent -> {
-                if (scopeEvent.dependency is InputBroadcastReceiver && scopeEvent.dependency !is InputBroadcaster) {
-                    receivers.remove(scopeEvent.dependency as InputBroadcastReceiver)
+                val dependency = scopeEvent.dependency
+                if (dependency is InputBroadcastReceiver && dependency !is InputBroadcaster) {
+                    removeReceiver(dependency)
                 }
             }
         }
