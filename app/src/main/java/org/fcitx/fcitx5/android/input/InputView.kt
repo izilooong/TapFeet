@@ -1133,12 +1133,10 @@ class InputView(
         return when (module) {
             PanelModule.SYMBOL -> prefs.panelCycle.symbolPanelEnabled.getValue()
             PanelModule.EMOJI -> prefs.panelCycle.emojiPanelEnabled.getValue()
-            // 自定义键盘是 Passport 专属：只对 Passport 作为常驻主键盘出现（走
-            // customKeyboardPinned() 的 doSwitchLayout 路由 + startInput 可见性），
-            // **永不作为可循环面板**——既不在 Passport 下循环（循环到主键盘=原地踏步），
-            // 也不在非 Passport 预设下出现（用户要求其它预设一律隐藏自定义键盘）。
-            // 故此处恒 false，可用性由 customKeyboardPinned() 独家决定。
-            PanelModule.CUSTOM -> false
+            // 非 Passport 预设：由自定义键盘总开关决定是否参与循环。
+            // Passport 下自定义键盘是常驻主键盘本体，循环到它 = 原地踏步，剔除。
+            PanelModule.CUSTOM -> prefs.customKeyboard.enabled.getValue() &&
+                !HardwareKeyProfiles.customKeyboardPinned()
         }
     }
 
@@ -1212,8 +1210,8 @@ class InputView(
     }
 
     private fun applyPanelModule(module: PanelModule?) {
-        // Passport 固定行：自定义键盘常驻在状态栏下方（主键盘位），面板循环已剔除 CUSTOM 态
-        // （panelModuleEnabled），这里按理收不到它。关闭态仍然回到常驻行而不是隐藏键盘：
+        // Passport 固定行：自定义键盘常驻在状态栏下方（主键盘位），该预设下面板循环已剔除
+        // CUSTOM 态（panelModuleEnabled），这里按理收不到它。关闭态仍回到常驻行而不是隐藏键盘：
         // setKeyboardWindowVisible(false) 会连常驻行一起收掉，等于把固定显示拆了。
         if (module == null && HardwareKeyProfiles.customKeyboardPinned()) {
             if (!windowManager.isAttached(keyboardWindow)) {

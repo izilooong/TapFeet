@@ -258,8 +258,8 @@ object HardwareKeyProfiles {
      * 自定义键盘是否「固定显示」：Passport 预设专属。该机的 29 键物理键盘没有任何符号/数字，
      * 自定义一行键盘就是它的符号排 —— 主键盘布局直接钉死到自定义键盘（见
      * [org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow.doSwitchLayout] 的路由），
-     * 快捷窗口面板循环同时剔除自定义态（已常驻，循环到它没有意义 —— 见
-     * [org.fcitx.fcitx5.android.input.InputView.panelModuleEnabled]）。
+     * 该预设下快捷窗口面板循环剔除自定义态（已常驻，循环到它没有意义 —— 见
+     * [org.fcitx.fcitx5.android.input.InputView.panelModuleEnabled]）；其它预设仍按总开关参与循环。
      *
      * ⚠️ **只看 `keyProfile == PASSPORT`，不再依赖自定义键盘总开关（`customKeyboard.enabled`）。**
      * 该开关默认 `false`、且可被用户手滑关掉；一旦它为 false，passport 这台没有任何符号键
