@@ -1,8 +1,8 @@
 {
-    "versionCode": 1001702,
-    "versionName": "v1.0.17",
-    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.17/tapfeet.ime-v1.0.17.apk",
-    "releaseNotes": "- 修复候选栏偶发卡死\n- 新增「导航栏留白」开关(选项-候选栏, 默认不预留)",
+    "versionCode": 1001802,
+    "versionName": "v1.0.18",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.18/tapfeet.ime-v1.0.18.apk",
+    "releaseNotes": "- 修复快捷窗口不显示自定义键盘\n- 修复 Q25 右 Shift 无法选字(Android 14)\n- 优化键盘预设、键盘模式与设置页",
     "minVersionCode": 0,
-    "publishDate": "2026-11-07"
+    "publishDate": "2026-11-15"
 }
