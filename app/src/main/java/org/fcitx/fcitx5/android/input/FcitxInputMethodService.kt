@@ -835,9 +835,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             candidateBarStaleCount = 0
             return
         }
-        // In InputDevice physical mode the floating CandidatesView owns candidates and
-        // InputView.handleEvents is intentionally false — a "stale" bar there is by design.
-        if (!inputDeviceMgr.isVirtualKeyboard) return
+        // No keyboard-mode gate here: the horizontal bar is the only candidate surface and
+        // InputView now collects events in both modes (see InputDeviceManager.setupInputViewEvents).
+        // Gating on isVirtualKeyboard used to make this watchdog stand down exactly in physical
+        // mode — the mode where the freeze was reported.
         val current = lastCandidateListData.let {
             "${it.total}:${it.candidates.firstOrNull()?.text ?: "-"}"
         }

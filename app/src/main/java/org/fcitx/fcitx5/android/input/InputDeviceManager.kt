@@ -21,7 +21,13 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
 
     private fun setupInputViewEvents(isVirtual: Boolean) {
         val iv = inputView ?: return
-        iv.handleEvents = isVirtual
+        // The horizontal candidate bar is the ONE candidate surface in this fork, and it lives
+        // inside InputView. Its event collector must stay alive in BOTH keyboard modes:
+        // switching it off in physical mode used to freeze the bar on its last page (the
+        // floating CandidatesView that took over is a rarely-used alternate surface, and with
+        // the default `show_candidates_window=Disabled` the engine emits no PagedCandidateEvent
+        // for it to render anyway). Only the keyboard FACE is mode-dependent, handled below.
+        iv.handleEvents = true
         if (isVirtual) {
             iv.visibility = View.VISIBLE
         } else {

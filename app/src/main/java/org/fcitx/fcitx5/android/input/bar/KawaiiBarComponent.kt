@@ -706,12 +706,11 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     /**
      * Force the bar back to its Idle state (hides the candidate surface, shows the toolbar).
      *
-     * Used when [org.fcitx.fcitx5.android.input.InputView] is briefly revealed in physical-keyboard
-     * mode — e.g. to host the symbol picker — while its candidate-event collector is disabled
-     * (`handleEvents == false`). Without this the KawaiiBar would keep showing the last (now stale,
-     * frozen) candidate list for as long as the InputView stays visible. Pushing to Idle hides that
-     * surface; the live candidate list stays in the floating window, and re-entering virtual mode
-     * pushes the bar back to Candidate via the normal event flow.
+     * Used when [org.fcitx.fcitx5.android.input.InputView] was hidden and is briefly revealed
+     * in physical-keyboard mode — e.g. to host the symbol picker. Such a reveal can skip the
+     * normal event flow, so the bar could otherwise keep showing its pre-hide candidate list.
+     * Pushing to Idle hides that stale surface; the live candidate list is repushed by the next
+     * candidate event (InputView now collects events in both keyboard modes).
      */
     fun resetToIdleState() {
         barStateMachine.push(PreeditUpdated, PreeditEmpty to true)
