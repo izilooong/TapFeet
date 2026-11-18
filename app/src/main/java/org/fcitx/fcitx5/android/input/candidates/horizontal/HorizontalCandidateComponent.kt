@@ -248,7 +248,7 @@ class HorizontalCandidateComponent :
      * Fetch the next slice of candidates from the backend's bulk list via
      * [org.fcitx.fcitx5.android.core.FcitxAPI.getCandidates] and APPEND it to [pageCandidates].
      * Unlike the old paged-mode path (`setCandidatePagingMode(1)` + `offsetCandidatePage`), this:
-     *  - never discards local leftovers (the {5,3,1} snap can leave 1-2 trailing candidates;
+     *  - never discards local leftovers (the {5,3,2,1} snap can leave trailing candidates;
      *    appending keeps them so the next page shows a full count instead of a lonely tail);
      *  - keeps selection indices GLOBAL: [FcitxAPI.select] in bulk mode resolves through
      *    `candidateFromAll(idx)`, which matches our absolute indices into the appended array.
@@ -379,22 +379,18 @@ class HorizontalCandidateComponent :
         val remaining = pageCandidates.size - start
         if (remaining <= 0) return 0
         val raw = min(maxSpanCountPref.getValue().coerceAtLeast(1), remaining)
-        // Snap to {5, 3, 1} so the local page never shows 2 or 4 candidates. 4 and 2 break the
-        // visual rhythm of the 巨硬/普通 layout (居中展开的间距假设) and also force the Flexbox
-        // 5-slice layoutMinWidth to compress candidates into non-round widths; 5/3/1 are the only
-        // tiers that look correct and trigger the width-based overflow fallback cleanly (5→3,
-        // 3→1) in onLayoutCompleted.
+        // Snap to {5, 3, 2, 1}: the local page only ever shows one of these four tiers. 4 is
+        // skipped (it breaks the centered layout's rhythm), but 2 is a real tier — a two-word
+        // query now shows both words instead of parking the second on a phantom page. The tiers
+        // also drive the width-based overflow fallback in onLayoutCompleted (5→3→2→1).
         //
-        // Note: snap is computed from `raw` (= min(maxSpan, remaining)), NOT from `remaining` —
-        // a 2-candidate query must show 1, not 3; a 4-candidate query must show 3, not 5. If we
-        // returned 3 when only 2 candidates exist, renderCurrentPage's slice would be capped at
-        // pageCandidates.size and the user would still see 2 (the bug this snap was added to fix).
+        // Snap uses `raw` (= min(maxSpan, remaining)), not `remaining`: a 4-word query shows 3,
+        // never 5, because renderCurrentPage caps the slice at pageCandidates.size anyway.
         //
-        // Pagination still walks every candidate: 4 candidates → page 1 shows 3, page 2 shows 1;
-        // 7 candidates with maxSpan=5 → 5+1+1 (3 pages). All candidates remain reachable, just
-        // possibly with one extra tap.
+        // Pagination still walks every candidate: 4 words → 3+1; 7 words with maxSpan=5 → 5+2.
         return when {
-            raw <= 2 -> 1
+            raw <= 1 -> 1
+            raw <= 2 -> 2
             raw <= 4 -> 3
             else -> 5
         }
@@ -403,9 +399,10 @@ class HorizontalCandidateComponent :
     /**
      * Apply a new [localPageSize] and keep [layoutMinWidth] in lockstep with it, so the Flexbox
      * layout manager distributes the bar width evenly across the visible candidates at every tier
-     * (5/3/1). Without this, shrinking the page size to 3 would still leave each candidate at the
-     * 5-slice minimum, so the overflow check in [layoutManager]'s `onLayoutCompleted` would never
-     * see a clean 3-across layout and would collapse straight to 1.
+     * (5/3/2/1). Without this, shrinking the page size to a smaller tier would still leave each
+     * candidate at the 5-slice minimum, so the overflow check in [layoutManager]'s
+     * `onLayoutCompleted` would never see a clean layout at that tier and would collapse straight
+     * to 1.
      */
     private fun applyLocalPageSize(size: Int) {
         localPageSize = size
@@ -470,7 +467,7 @@ class HorizontalCandidateComponent :
         )
         adapter.updateCandidates(slice, sourceTotal, localPageStart)
         // Page turn? Only when the user asked for one AND the page actually moved: fresh queries,
-        // width changes and the 5→3→1 overflow fallback all re-render through here and must not
+        // width changes and the 5→3→2→1 overflow fallback all re-render through here and must not
         // animate — they would read as a phantom flip.
         val turnDir = pendingPageTurn
         val turned = lastRenderedPageStart >= 0 && localPageStart != lastRenderedPageStart
@@ -521,7 +518,7 @@ class HorizontalCandidateComponent :
                     // flexShrink must be 0 so wide candidates keep their natural text width and
                     // actually overflow the bar — otherwise the Flexbox layout manager silently
                     // shrinks each item down to minWidth and clips the text, which prevents the
-                    // 5→3→1 overflow fallback in onLayoutCompleted from ever triggering.
+                    // 5→3→2→1 overflow fallback in onLayoutCompleted from ever triggering.
                     flexShrink = 0f
                 }
                 holder.itemView.setOnClickListener {
@@ -559,12 +556,12 @@ class HorizontalCandidateComponent :
                         // different failure class than the event channel dying.
                         Timber.d("CandSync: layoutCompleted n=%d", cnt)
                         // Aggregate every laid-out candidate's width once — consumed by both the
-                        // 5→3→1 overflow fallback below and the AutoFillWidth fill-on-demand pass.
+                        // 5→3→2→1 overflow fallback below and the AutoFillWidth fill-on-demand pass.
                         var totalWidth = 0
                         for (i in 0 until cnt) totalWidth += getChildAt(i)!!.width
-                        // Responsive 5→3→1 fallback: if the laid-out children overflow the
+                        // Responsive 5→3→2→1 fallback: if the laid-out children overflow the
                         // candidate bar's width, the candidate words are too wide to fit at the
-                        // current tier — snap down to the next smaller one (5→3 or 3→1) and
+                        // current tier — snap down to the next smaller one (5→3, 3→2 or 2→1) and
                         // re-render. Without this gate, layoutMinWidth would force every
                         // candidate to claim its 5-slice minimum and wide candidates would be
                         // silently clipped at the right edge instead of the bar showing fewer,
@@ -573,11 +570,12 @@ class HorizontalCandidateComponent :
                             if (totalWidth > view.width) {
                                 val nextSize = when {
                                     localPageSize > 3 -> 3
+                                    localPageSize > 2 -> 2
                                     else -> 1
                                 }
                                 if (nextSize < localPageSize) {
-                                    // 先藏住这一帧过宽的候选，避免「先画出 5/4 个、再回退成 3 个」
-                                    // 的闪一下；下一帧渲染到正确档位（3/1）后由下方稳定分支恢复可见。
+                                    // 先藏住这一帧过宽的候选，避免「先画出 5/4 个、再回退成 3/2 个」
+                                    // 的闪一下；下一帧渲染到正确档位（3/2/1）后由下方稳定分支恢复可见。
                                     Timber.d(
                                         "CandSync: overflow fallback pageSize %d->%d",
                                         localPageSize, nextSize
@@ -620,9 +618,9 @@ class HorizontalCandidateComponent :
                 }
                 .apply {
                     justifyContent = JustifyContent.CENTER
-                    // Force a single row: without NOWRAP (the default is WRAP), 5 wide candidates
-                    // would silently wrap to 3+2 or 2+3, producing a visible "2" / "3" stack
-                    // instead of triggering the 5→3→1 overflow fallback in onLayoutCompleted.
+                    // Force a single row: without NOWRAP (the default is WRAP), wide candidates
+                    // would silently wrap into two stacked rows instead of triggering the
+                    // 5→3→2→1 overflow fallback in onLayoutCompleted.
                     flexWrap = FlexWrap.NOWRAP
                 }
     }
@@ -640,7 +638,7 @@ class HorizontalCandidateComponent :
         object : RecyclerView(context) {
                     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                         super.onSizeChanged(w, h, oldw, oldh)
-                        // Resize the page first so layoutMinWidth reflects the actual tier (5/3/1)
+                        // Resize the page first so layoutMinWidth reflects the actual tier (5/3/2/1)
                         // we are about to render, not the pref's max span count.
                         if (w != oldw && oldw > 0) {
                             pendingLocalPageSize = -1
