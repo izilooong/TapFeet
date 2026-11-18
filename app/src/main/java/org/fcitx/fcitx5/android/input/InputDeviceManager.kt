@@ -11,6 +11,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
+import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.utils.isTypeNull
 import timber.log.Timber
 
@@ -120,12 +121,11 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
     fun evaluateOnStartInputView(info: EditorInfo, service: FcitxInputMethodService): Boolean {
         startedInputView = true
         isNullInputType = info.isTypeNull()
-        isVirtualKeyboard = InputModePolicy.resolve(
-            candidatesViewMode,
-            InputModeTrigger.StartInputView,
-            isVirtualKeyboard,
-            systemWantsVirtual = { service.superEvaluateInputViewShown() },
-        )
+        isVirtualKeyboard = when (candidatesViewMode) {
+            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown()
+            FloatingCandidatesMode.InputDevice -> isVirtualKeyboard
+            FloatingCandidatesMode.Disabled -> true
+        }
         return isVirtualKeyboard
     }
 
@@ -153,34 +153,34 @@ class InputDeviceManager(private val onChange: (Boolean) -> Unit) {
     }
 
     private fun evaluateOnKeyDownInner(service: FcitxInputMethodService) {
-        isVirtualKeyboard = InputModePolicy.resolve(
-            candidatesViewMode,
-            InputModeTrigger.KeyDown,
-            isVirtualKeyboard,
-            systemWantsVirtual = { service.superEvaluateInputViewShown() },
-        )
+        isVirtualKeyboard = when (candidatesViewMode) {
+            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown()
+            FloatingCandidatesMode.InputDevice -> false
+            FloatingCandidatesMode.Disabled -> true
+        }
     }
 
     fun evaluateOnViewClicked(service: FcitxInputMethodService) {
         if (!startedInputView) return
-        isVirtualKeyboard = InputModePolicy.resolve(
-            candidatesViewMode,
-            InputModeTrigger.ViewClicked,
-            isVirtualKeyboard,
-            systemWantsVirtual = { service.superEvaluateInputViewShown() },
-        )
+        isVirtualKeyboard = when (candidatesViewMode) {
+            // Some floating editor windows can report false here transiently,
+            // which would hide an already-shown virtual keyboard immediately.
+            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown() || isVirtualKeyboard
+            else -> true
+        }
     }
 
     fun evaluateOnUpdateEditorToolType(toolType: Int, service: FcitxInputMethodService) {
         if (!startedInputView) return
-        isVirtualKeyboard = InputModePolicy.resolve(
-            candidatesViewMode,
-            InputModeTrigger.ToolTypeUpdate,
-            isVirtualKeyboard,
-            systemWantsVirtual = { service.superEvaluateInputViewShown() },
-            isTouchTool = toolType == MotionEvent.TOOL_TYPE_FINGER ||
-                toolType == MotionEvent.TOOL_TYPE_STYLUS,
-        )
+        isVirtualKeyboard = when (candidatesViewMode) {
+            // Keep virtual keyboard visible if it is already visible,
+            // even if tool-type updates briefly report not shown.
+            FloatingCandidatesMode.SystemDefault -> service.superEvaluateInputViewShown() || isVirtualKeyboard
+            FloatingCandidatesMode.InputDevice ->
+                // switch to virtual keyboard on touch screen events, otherwise preserve current mode
+                if (toolType == MotionEvent.TOOL_TYPE_FINGER || toolType == MotionEvent.TOOL_TYPE_STYLUS) true else isVirtualKeyboard
+            FloatingCandidatesMode.Disabled -> true
+        }
     }
 
     /**

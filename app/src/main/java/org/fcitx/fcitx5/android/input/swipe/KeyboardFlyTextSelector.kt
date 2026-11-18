@@ -149,28 +149,8 @@ class KeyboardFlyTextSelector(
      */
     private val EXPIRE_MS = 900L
 
-    /** 最外层 adapter：只做 Framework 事件 → 数值快照的转换，状态机一概不碰 MotionEvent。 */
-    fun onTouchEvent(event: MotionEvent) = onGestureSample(
-        actionMasked = event.actionMasked,
-        rawX = event.rawX,
-        rawY = event.rawY,
-        eventTime = event.eventTime,
-        pointerCount = event.pointerCount,
-    )
-
-    /**
-     * 状态机的唯一入口，只吃数值快照。以前九个可变状态全锁在 MotionEvent 后面，
-     * JVM 上连「缺 UP 自愈」「双指守卫」都没法断言；现在整条顺序成了 test surface。
-     * actionMasked 的值与 MotionEvent.ACTION_* 一致（编译期常量，无需构造 Android 对象）。
-     */
-    fun onGestureSample(
-        actionMasked: Int,
-        rawX: Float,
-        rawY: Float,
-        eventTime: Long,
-        pointerCount: Int,
-    ) {
-        val t = eventTime
+    fun onTouchEvent(event: MotionEvent) {
+        val t = event.eventTime
         // A long silence between events means the previous gesture was abandoned (no UP seen).
         // Cursor drags latch too (dragging holds state between MOVEs), so they expire the same way:
         // a finger resting still past the quiet window ends the drag, and the next move needs a
@@ -183,8 +163,8 @@ class KeyboardFlyTextSelector(
         // the single-pointer stream teleports between the contacts (caught by the jump filter in
         // ACTION_MOVE). Multi-pointer events are ignored entirely — not even a reset, since a
         // second finger landing mid-swipe is also common while scrolling with intent.
-        if (pointerCount > 1) return
-        when (actionMasked) {
+        if (event.pointerCount > 1) return
+        when (event.actionMasked) {
             MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> return
             MotionEvent.ACTION_DOWN -> {
                 // Typing guard: keys are still being hit, so this contact is a graze between
@@ -195,11 +175,11 @@ class KeyboardFlyTextSelector(
                     return
                 }
                 reset()
-                downX = rawX
-                downY = rawY
+                downX = event.rawX
+                downY = event.rawY
                 downTime = t
-                lastMoveX = rawX
-                lastMoveY = rawY
+                lastMoveX = event.rawX
+                lastMoveY = event.rawY
                 // Corner-delete is reserved for contacts that START in the surface's top-right
                 // corner: a left swipe from there is Backspace, and nothing else fires from a corner
                 // contact (so a stray brush near the backspace key can't page or pick a candidate).
@@ -207,11 +187,11 @@ class KeyboardFlyTextSelector(
                 // below are belt-and-braces. Disabled when the feature is off or the surface geometry
                 // is unknown, in which case a left swipe from the corner just pages like anywhere else.
                 cornerDeleteArmed = cornerDeleteEnabled() &&
-                    cornerRegionProvider()?.contains(rawX.toInt(), rawY.toInt()) == true
+                    cornerRegionProvider()?.contains(event.rawX.toInt(), event.rawY.toInt()) == true
                 if (cornerDeleteEnabled()) {
                     val region = cornerRegionProvider()
                     Timber.i(
-                        "FlyText: DOWN rawX=${rawX} rawY=${rawY} " +
+                        "FlyText: DOWN rawX=${event.rawX} rawY=${event.rawY} " +
                             "cornerDelete=${cornerDeleteArmed} region=${region}"
                     )
                 }
@@ -236,11 +216,11 @@ class KeyboardFlyTextSelector(
                 val cursorArmed = cursorModeProvider()
                 if (cursorArmed || cursorDragging) {
                     val jumpD = density * flyTextSensitivityScale(sensitivityProvider())
-                    val step = hypot(rawX - lastMoveX, rawY - lastMoveY)
+                    val step = hypot(event.rawX - lastMoveX, event.rawY - lastMoveY)
                     when {
                         step > SWIPE_TELEPORT_SLOP_DP * jumpD -> {
                             Timber.i(
-                                "FlyText: jump filter reset (rawX=${rawX} rawY=${rawY} " +
+                                "FlyText: jump filter reset (rawX=${event.rawX} rawY=${event.rawY} " +
                                     "fromX=${lastMoveX} fromY=${lastMoveY})"
                             )
                             reset()
@@ -248,22 +228,22 @@ class KeyboardFlyTextSelector(
                         }
                         step >= SWIPE_REANCHOR_SLOP_DP * jumpD -> {
                             Timber.i(
-                                "FlyText: re-anchor (step=${step}px rawX=${rawX} " +
+                                "FlyText: re-anchor (step=${step}px rawX=${event.rawX} " +
                                     "fromX=${lastMoveX})"
                             )
-                            downX = rawX
-                            downY = rawY
+                            downX = event.rawX
+                            downY = event.rawY
                             pendingDir = null
                             cornerDeleteArmed = false
                             // Also re-origin a live drag so a second contact landing mid-drag
                             // cannot yank the caret a full step.
-                            cursorOriginX = rawX
-                            cursorOriginY = rawY
+                            cursorOriginX = event.rawX
+                            cursorOriginY = event.rawY
                         }
                     }
                 }
-                lastMoveX = rawX
-                lastMoveY = rawY
+                lastMoveX = event.rawX
+                lastMoveY = event.rawY
                 // Continuous cursor drag: handled BEFORE the one-shot classification machinery —
                 // no direction lock, no reversal guard, no classified latch. The caret follows the
                 // finger per step, re-originating at every fire, until the finger lifts.
@@ -276,8 +256,8 @@ class KeyboardFlyTextSelector(
                         return
                     }
                     val dragD = density * flyTextSensitivityScale(sensitivityProvider())
-                    val dragDx = rawX - cursorOriginX
-                    val dragDy = rawY - cursorOriginY
+                    val dragDx = event.rawX - cursorOriginX
+                    val dragDy = event.rawY - cursorOriginY
                     val stepPx = SWIPE_CURSOR_STEP_SLOP_DP * dragD
                     if (kotlin.math.abs(dragDx) >= stepPx || kotlin.math.abs(dragDy) >= stepPx) {
                         // Dominant axis wins the step; ties lean horizontal (matches the entry
@@ -287,18 +267,18 @@ class KeyboardFlyTextSelector(
                         } else {
                             if (dragDy < 0f) SwipeDirection.UP else SwipeDirection.DOWN
                         }
-                        Timber.d("FlyText: cursor step dir=$dir (rawX=${rawX} rawY=${rawY})")
+                        Timber.d("FlyText: cursor step dir=$dir (rawX=${event.rawX} rawY=${event.rawY})")
                         onCursor(dir, true)
-                        cursorOriginX = rawX
-                        cursorOriginY = rawY
+                        cursorOriginX = event.rawX
+                        cursorOriginY = event.rawY
                     }
                     return
                 }
                 // Sensitivity scales every slop uniformly: all thresholds are linear in density,
                 // so scaling density scales base/up/page together (single mapping in SwipeGeometry).
                 val d = density * flyTextSensitivityScale(sensitivityProvider())
-                val dx = rawX - downX
-                val dy = rawY - downY
+                val dx = event.rawX - downX
+                val dy = event.rawY - downY
                 // Reversal guard: the finger returned to the start (travel back under the base slop)
                 // — this was a brush, not a swipe. Drop the locked direction so it cannot fire later.
                 if (hypot(dx, dy) < SWIPE_BASE_SLOP_DP * d) {
@@ -316,7 +296,7 @@ class KeyboardFlyTextSelector(
                 // fly-text sensitivity, so the delete threshold tracks the same mis-touch tuning.
                 if (cornerDeleteArmed) {
                     if (swipeDirection(dx, dy, d) == SwipeDirection.LEFT) {
-                        Timber.i("FlyText: corner-delete (rawX=${rawX})")
+                        Timber.i("FlyText: corner-delete (rawX=${event.rawX})")
                         onDelete()
                         classified = true
                     }
@@ -342,14 +322,14 @@ class KeyboardFlyTextSelector(
                         SwipeDirection.LEFT, SwipeDirection.RIGHT -> kotlin.math.abs(dx)
                     }
                     if (travel >= cursorSlopPx) {
-                        Timber.i("FlyText: cursor drag start dir=$dir (rawX=${rawX} rawY=${rawY})")
+                        Timber.i("FlyText: cursor drag start dir=$dir (rawX=${event.rawX} rawY=${event.rawY})")
                         onCursor(dir, false)
                         // Enter drag: per-step advances from this point (handled at the top of the
                         // MOVE branch). classified stays false — the one-shot machine is bypassed
                         // for the rest of the gesture; reset() on UP/CANCEL clears the drag state.
                         cursorDragging = true
-                        cursorOriginX = rawX
-                        cursorOriginY = rawY
+                        cursorOriginX = event.rawX
+                        cursorOriginY = event.rawY
                     }
                     return
                 }
@@ -361,8 +341,8 @@ class KeyboardFlyTextSelector(
                 when (dir) {
                     SwipeDirection.UP -> {
                         val rects = candidateRectsProvider()
-                        val idx = candidateIndexAtX(rawX, rects)
-                        Timber.i("FlyText: up-swipe over ${rects.size} rects → idx=$idx (rawY=${rawY})")
+                        val idx = candidateIndexAtX(event.rawX, rects)
+                        Timber.i("FlyText: up-swipe over ${rects.size} rects → idx=$idx (rawY=${event.rawY})")
                         if (idx >= 0) {
                             onSelect(idx)
                         }
@@ -373,11 +353,11 @@ class KeyboardFlyTextSelector(
                     // Left swipe (dx < 0) = next page, right = previous (the swap pref is applied by
                     // the service).
                     SwipeDirection.LEFT -> {
-                        Timber.i("FlyText: page dir=1 (rawX=${rawX})")
+                        Timber.i("FlyText: page dir=1 (rawX=${event.rawX})")
                         onPage(1)
                     }
                     SwipeDirection.RIGHT -> {
-                        Timber.i("FlyText: page dir=-1 (rawX=${rawX})")
+                        Timber.i("FlyText: page dir=-1 (rawX=${event.rawX})")
                         onPage(-1)
                     }
                 }

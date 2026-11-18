@@ -32,13 +32,12 @@ class CustomKeyboardSettingsFragment : PaddingPreferenceFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = preferenceManager.context
         preferenceScreen = preferenceManager.createPreferenceScreen(context).apply {
-            // 总开关：key 与默认值都直接取 AppPrefs 的定义，不再手抄一份（曾出现 UI 默认 true、
-            // 定义默认 false 的漂移）。切换即时生效（状态栏⑩/符号键盘⑩/Sym 循环响应）。
+            // 总开关：与 AppPrefs.CustomKeyboard.enabled 同 key，切换即时生效（状态栏⑩/符号键盘⑩/Sym 循环响应）
             val enableSwitch = MySwitchPreference(context).apply {
-                key = customKeyboard.enabled.key
+                key = "custom_keyboard_enabled"
                 title = getString(R.string.custom_keyboard_enabled)
                 summary = getString(R.string.custom_keyboard_enabled_summary)
-                setDefaultValue(customKeyboard.enabled.defaultValue)
+                setDefaultValue(true)
                 isIconSpaceReserved = false
                 isSingleLineTitle = false
             }

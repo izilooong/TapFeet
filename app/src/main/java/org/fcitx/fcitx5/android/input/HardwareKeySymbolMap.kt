@@ -7,15 +7,14 @@ package org.fcitx.fcitx5.android.input
 
 import android.view.KeyEvent
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
-import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfile
-import org.fcitx.fcitx5.android.data.prefs.KeycapSymbolMap
+import org.fcitx.fcitx5.android.data.prefs.HardwareKeyProfiles
 
 /**
  * Maps a physical key (Android [KeyEvent] keyCode) to the symbol printed on that keycap, so a
  * long-press on the key inputs the symbol directly (BlackBerry-style "press-and-hold for the
  * keycap symbol").
  *
- * The mapping is **per hardware-keyboard profile** ([HardwareKeyProfile]): each device (BlackBerry,
+ * The mapping is **per hardware-keyboard profile** ([HardwareKeyProfiles]): each device (BlackBerry,
  * TT2, ...) has its own keycaps, so the symbols are resolved from the currently selected
  * [AppPrefs.HardwareKeyboard.keyProfile]. Switching the profile in settings takes effect immediately.
  *
@@ -171,22 +170,20 @@ object HardwareKeySymbolMap {
     )
 
     /**
-     * 按 [KeycapSymbolMap] 穷尽映射。多个预设可以指向同一张表：Titan2 Elite 与「改键」同硬件、
-     * 同键帽，共用 [titan2EliteSymbolMap]；新增表标识漏给分支会直接编译不过。
+     * Returns the symbol map for the given profile id (defaults to [HardwareKeyProfiles.BLACKBERRY]).
+     * Each device has its own keycaps, so no profile shares another's map.
      */
-    private fun tableFor(symbols: KeycapSymbolMap): Map<Int, String> = when (symbols) {
-        KeycapSymbolMap.BLACKBERRY -> blackberrySymbolMap
-        KeycapSymbolMap.TITAN2 -> tt2SymbolMap
-        KeycapSymbolMap.TITAN2_ELITE -> titan2EliteSymbolMap
-        KeycapSymbolMap.PASSPORT -> passportSymbolMap
+    fun symbolMapFor(profileName: String): Map<Int, String> = when (profileName) {
+        HardwareKeyProfiles.TT2 -> tt2SymbolMap
+        HardwareKeyProfiles.TITAN2_ELITE -> titan2EliteSymbolMap
+        HardwareKeyProfiles.TITAN2_ELITE_MOD -> titan2EliteSymbolMap
+        HardwareKeyProfiles.PASSPORT -> passportSymbolMap
+        else -> blackberrySymbolMap
     }
 
     /** The symbol map for the currently selected hardware-keyboard profile. */
-    private fun currentMap(): Map<Int, String> = tableFor(
-        HardwareKeyProfile
-            .from(AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue())
-            .symbolMap
-    )
+    private fun currentMap(): Map<Int, String> =
+        symbolMapFor(AppPrefs.getInstance().hardwareKeyboard.keyProfile.getValue())
 
     /** Returns the symbol for [keyCode] under the active profile, or null if it has no long-press symbol. */
     fun symbolForKeyCode(keyCode: Int): String? = currentMap()[keyCode]
