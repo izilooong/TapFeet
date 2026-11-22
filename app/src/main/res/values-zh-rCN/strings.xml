@@ -576,6 +576,9 @@
     <string name="open_settings">去设置</string>
     <string name="about_app">关于大脚输入法</string>
     <string name="changelog">变更记录</string>
+    <string name="user_manual">使用手册</string>
+    <string name="manual_expand">展开章节</string>
+    <string name="manual_collapse">收起章节</string>
     <string name="update_source_url">更新源地址（高级）</string>
     <string name="update_source_url_default">默认（Gitee 镜像）</string>
     <string name="update_source_url_saved">更新源已保存</string>

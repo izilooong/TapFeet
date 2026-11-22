@@ -212,6 +212,11 @@ class MainFragment : PaddingPreferenceFragment() {
                     R.drawable.ic_baseline_list_alt_24,
                     SettingsRoute.Changelog
                 )
+                addDestinationPreference(
+                    R.string.user_manual,
+                    R.drawable.ic_baseline_library_books_24,
+                    SettingsRoute.UserManual
+                )
             }
         }
     }

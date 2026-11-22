@@ -101,6 +101,14 @@ val syncChangelog by tasks.registering(Copy::class) {
 }
 tasks.named("preBuild").configure { dependsOn(syncChangelog) }
 
+// 使用手册同样以 docs/USER_MANUAL.md 为单一编辑源，同步为 res/raw/user_manual.md
+val syncUserManual by tasks.registering(Copy::class) {
+    from(rootProject.file("docs/USER_MANUAL.md"))
+    into(layout.projectDirectory.dir("src/main/res/raw"))
+    rename { "user_manual.md" }
+}
+tasks.named("preBuild").configure { dependsOn(syncUserManual) }
+
 fcitxComponent {
     includeLibs = listOf(
         "fcitx5",

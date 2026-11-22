@@ -24,6 +24,7 @@ import org.fcitx.fcitx5.android.ui.main.DeveloperFragment
 import org.fcitx.fcitx5.android.ui.main.LicensesFragment
 import org.fcitx.fcitx5.android.ui.main.MainFragment
 import org.fcitx.fcitx5.android.ui.main.PluginFragment
+import org.fcitx.fcitx5.android.ui.main.UserManualFragment
 import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonConfigFragment
 import org.fcitx.fcitx5.android.ui.main.settings.addon.AddonListFragment
 import org.fcitx.fcitx5.android.ui.main.settings.behavior.AdvancedSettingsFragment
@@ -131,6 +132,9 @@ sealed class SettingsRoute : Parcelable {
 
     @Serializable
     data object Changelog : SettingsRoute()
+
+    @Serializable
+    data object UserManual : SettingsRoute()
 
     @Serializable
     data object AppDisplayName : SettingsRoute()
@@ -306,6 +310,9 @@ sealed class SettingsRoute : Parcelable {
             }
             fragment<ChangelogFragment, Changelog> {
                 label = ctx.getString(R.string.changelog)
+            }
+            fragment<UserManualFragment, UserManual> {
+                label = ctx.getString(R.string.user_manual)
             }
             fragment<AppDisplayNameSettingsFragment, AppDisplayName> {
                 label = ctx.getString(R.string.app_display_name)

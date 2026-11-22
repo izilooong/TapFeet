@@ -1,8 +1,8 @@
 {
-    "versionCode": 1001802,
-    "versionName": "v1.0.18",
-    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.18/tapfeet.ime-v1.0.18.apk",
-    "releaseNotes": "- 修复快捷窗口不显示自定义键盘\n- 修复 Q25 右 Shift 无法选字(Android 14)\n- 优化键盘预设、键盘模式与设置页",
+    "versionCode": 1001902,
+    "versionName": "v1.0.19",
+    "downloadUrl": "https://gitee.com/zziloong/TapFeet/releases/download/v1.0.19/tapfeet.ime-v1.0.19.apk",
+    "releaseNotes": "- 修复物理键盘候选栏卡死\n- 候选词每页 5/3/2/1 自适应\n- 修复符号窗口发送后虚拟键盘收起\n- 增加使用手册",
     "minVersionCode": 0,
-    "publishDate": "2026-11-15"
+    "publishDate": "2026-11-22"
 }

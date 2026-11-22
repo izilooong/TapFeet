@@ -583,6 +583,9 @@
     <string name="open_settings">Open Settings</string>
     <string name="about_app">About TapFeet</string>
     <string name="changelog">Changelog</string>
+    <string name="user_manual">User Manual</string>
+    <string name="manual_expand">Expand section</string>
+    <string name="manual_collapse">Collapse section</string>
     <string name="update_source_url">Update source URL (advanced)</string>
     <string name="update_source_url_default">Default (Gitee mirror)</string>
     <string name="update_source_url_saved">Update source saved</string>
