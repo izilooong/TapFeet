@@ -1209,7 +1209,7 @@ class InputView(
         service.requestInsetsUpdate()
     }
 
-    private fun applyPanelModule(module: PanelModule?) {
+    private fun applyPanelModule(module: PanelModule?, keepKeyboardVisible: Boolean = false) {
         // Passport 固定行：自定义键盘常驻在状态栏下方（主键盘位），该预设下面板循环已剔除
         // CUSTOM 态（panelModuleEnabled），这里按理收不到它。关闭态仍回到常驻行而不是隐藏键盘：
         // setKeyboardWindowVisible(false) 会连常驻行一起收掉，等于把固定显示拆了。
@@ -1231,10 +1231,10 @@ class InputView(
                     windowManager.attachWindow(KeyboardWindow)
                 }
                 keyboardWindow.switchLayout(TextKeyboard.Name)
-                // 关闭：隐藏虚拟键盘（与状态栏「隐藏键盘」按钮同路，setKeyboardWindowVisible(false)），
-                // 让面板循环回到无软键盘态；物理键盘继续工作，IME 顶栏仍可见。
+                // 关闭态：默认收起虚拟键盘（与状态栏「隐藏键盘」按钮同路），让面板循环回到
+                // 无软键盘态；虚拟回车传 keepKeyboardVisible=true 时只切回主键盘、键盘窗口保持可见。
                 // 不复自行 GONE InputView——会连带藏掉顶栏，且 physicalKeyboardMode 在 Disabled 默认下恒 false 误判。
-                windowManager.setKeyboardWindowVisible(false)
+                windowManager.setKeyboardWindowVisible(keepKeyboardVisible)
             }
             PanelModule.SYMBOL -> {
                 revealPanelInputViewIfHidden()
@@ -1293,19 +1293,19 @@ class InputView(
     }
 
     /**
-     * 编辑器动作（回车发送/搜索/前往…）触发前的面板复位：面板打开时走 [hideCurrentWindow]
-     * 的同一关闭态（symMode 归位、主键盘布局、键盘窗口按物理键盘态收/留），没开面板时 no-op。
+     * 编辑器动作（回车发送/搜索/前往…）触发前的面板复位：面板打开时 symMode 归位、切回主键盘
+     * 布局、面板按钮复位，没开面板时 no-op。发送后编辑器立刻重启输入会话，若 symMode 仍挂着
+     * SYMBOL，重启链会把面板拉回来或顶掉窗口留下卡死状态，必须抢在动作触发前复位。
      *
-     * 供 [FcitxInputMethodService.interceptHardwareEnter]（物理回车 → 编辑器动作）在
-     * performEditorAction **之前**调用：发送后编辑器立刻重启输入会话，若 symMode 仍挂着
-     * SYMBOL，重启链会把面板拉回来或顶掉窗口留下卡死状态。必须抢在动作触发前复位。
-     *
-     * 物理键盘态下窗口本就隐藏（setKeyboardWindowVisible(false)），这里主要清 symMode
-     * 并保证键盘窗口挂回主布局——关闭态对两种键盘模式都是安全落点。
+     * @param keepKeyboardVisible 面板复位后是否保持虚拟键盘窗口可见。虚拟回车
+     *   [FcitxInputMethodService.handleReturnKey] 传 true（只关面板回主键盘，键盘留着）；物理回车
+     *   [FcitxInputMethodService.interceptHardwareEnter] 传 false（关闭态，收起键盘）。
      */
-    internal fun closeOpenPanelAfterEditorAction() {
+    internal fun closeOpenPanelAfterEditorAction(keepKeyboardVisible: Boolean = false) {
         if (currentPanelModule() == null) return
-        hideCurrentWindow()
+        applyPanelModule(null, keepKeyboardVisible = keepKeyboardVisible)
+        service.requestInsetsUpdate()
+        kawaiiBar.updatePanelCycleButton(null)
     }
 
     /**

@@ -824,8 +824,14 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         // requestShowSelf 把输入会话带起来后立刻收起虚拟键盘面板；两道冷却防止把用户刚关掉的
         // 键盘又顶回来（onStartInput 会因编辑器重启反复触发，"打开就关不了"就是它）。
         // Passport 固定行例外：常驻行（自定义键盘）挂在状态栏下，不跟着收。
+        // 虚拟键盘正可见时（用户在虚拟键盘上打字、按回车发送后微信重启会话）不收键盘：
+        // 本项的本意是让物理键盘用户进微信时别弹软键盘，只有软键盘本就隐藏（物理键盘态）才
+        // 需要强制保持隐藏。若此刻键盘可见，这里的 setKeyboardWindowVisible(false) 会把用户
+        // 正在用的虚拟键盘收掉——sent 后每次重启会话都会中招。
+        // 用 isKeyboardWindowVisible 而非 isVirtualKeyboard：后者在本机型 Disabled 模式下恒 true。
         if (autoShowKeyboard && !capFlags.has(CapabilityFlag.Password) &&
-            info.packageName == WECHAT_PACKAGE
+            info.packageName == WECHAT_PACKAGE &&
+            !windowManager.isKeyboardWindowVisible()
         ) {
             val now = SystemClock.uptimeMillis()
             if (now - lastUserHideAt > USER_HIDE_COOLDOWN_MS &&

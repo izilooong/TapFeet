@@ -520,9 +520,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (action == null) {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         } else {
-            // 与物理回车（interceptHardwareEnter）同一份面板复位语义：编辑器动作=提交，
-            // 面板状态不能带进动作后的输入会话重启。面板未打开时 no-op。
-            inputView?.closeOpenPanelAfterEditorAction()
+            // 虚拟侧面板复位：编辑器动作=提交，面板状态不能带进动作后的输入会话重启；
+            // 但虚拟键盘（含符号/表情面板）发送后要保持键盘可见，只有物理回车才收键盘。
+            // 面板未打开时 no-op。
+            inputView?.closeOpenPanelAfterEditorAction(keepKeyboardVisible = true)
             currentInputConnection?.performEditorAction(action)
         }
     }
@@ -582,7 +583,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // 重启链要么把面板原样拉回来、要么把窗口被动顶掉而状态卡死（"收起了窗口但没回到正常
         // 输入状态"）。在动作触发前先走面板循环的「关闭」态复位（symMode / 布局 / 键盘窗口），
         // 无面板打开时是 no-op，普通打字的回车不受影响。
-        inputView?.closeOpenPanelAfterEditorAction()
+        inputView?.closeOpenPanelAfterEditorAction(keepKeyboardVisible = false)
         ic.performEditorAction(action)
         hardwareEnterAsAction = true
         return true
