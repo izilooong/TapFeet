@@ -1068,8 +1068,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         win.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
-    private var cachedNavBarBg: View? = null
-
     /**
      * "Keyboard fly-text": in physical-keyboard mode, a swipe up the keyboard surface picks the
      * candidate whose on-screen column the finger is over, and a left/right swipe pages candidates.
@@ -1211,36 +1209,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         get() = flyTextOn || TouchProbeLog.recording
 
     override fun onComputeInsets(outInsets: Insets) {
-        // When a window is revealed inside this InputView in physical-keyboard mode (the symbol
-        // picker, or the number/letter keyboard switched to from within it), the InputView is a
-        // normal view inside the IME window — unlike the floating CandidatesView which uses its
-        // own PopupWindow — so it must be touchable across its whole surface. Otherwise the items
-        // above the navbar strip are untouchable. Reuse the virtual-keyboard touchable region.
-        val revealedSurface = !inputDeviceMgr.isVirtualKeyboard &&
-                inputView?.isInputViewRevealed() == true
-        if (inputDeviceMgr.isVirtualKeyboard || revealedSurface) {
-            // Keyboard is pinned to the bottom; its top is just window height minus its
-            // height. The previous getLocationInWindow call was redundant (its result was
-            // overwritten) and an extra IPC we can skip on this hot insets path.
-            val top = inputView?.keyboardView?.let { kv ->
-                decorView.height - kv.height.coerceAtLeast(0)
-            } ?: 0
-            outInsets.apply {
-                contentTopInsets = top
-                visibleTopInsets = top
-                touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
-            }
-        } else {
-            val navBar = cachedNavBarBg
-                ?: decorView.findViewById<View>(android.R.id.navigationBarBackground)
-                    .also { cachedNavBarBg = it }
-            val n = navBar?.height ?: 0
-            val h = decorView.height - n
-            outInsets.apply {
-                contentTopInsets = h
-                visibleTopInsets = h
-                touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
-            }
+        // The IME window is MATCH_PARENT, so the inset is everything below keyboardView's top.
+        // Candidates live in keyboardView (not a separate PopupWindow), so its top is the right
+        // inset in every mode — including physical-keyboard mode with only the 40dp kawaii bar.
+        //
+        // The old physical-keyboard branch subtracted only navigationBarBackground's height.
+        // On Android 17 (API 37) edge-to-edge makes that height zero, so it reported a
+        // zero-height IME and apps stopped resizing for the bar.
+        val top = inputView?.keyboardView?.let { kv ->
+            decorView.height - kv.height.coerceAtLeast(0)
+        } ?: 0
+        outInsets.apply {
+            contentTopInsets = top
+            visibleTopInsets = top
+            touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
         }
     }
 

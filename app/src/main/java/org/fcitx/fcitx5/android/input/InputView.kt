@@ -325,6 +325,9 @@ class InputView(
                     height = keyboardWindowHeightPx()
                 }
             }
+            // The keyboard surface height feeds keyboardView.height, which drives IME insets.
+            // Force a recompute so framework recomputes the ime inset frame on every show/hide.
+            service.requestInsetsUpdate()
         }
         windowManager.addEssentialWindow(symbolPicker)
         // 让 KeyboardWindow 持有符号选择器引用，以便在重新进入输入状态时恢复符号态
