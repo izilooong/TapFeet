@@ -829,19 +829,14 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
      */
     private fun watchCandidateBarLiveness() {
         val iv = inputView ?: return
-        // IME window is down: nothing visible to heal, and the bar legitimately processes
-        // nothing while detached. Reset so a fresh session doesn't inherit stale counters.
-        if (!iv.isAttachedToWindow) {
-            prevCandidateSignature = null
-            candidateBarStaleCount = 0
-            return
-        }
-        // No keyboard-mode gate here: the horizontal bar is the only candidate surface and
-        // InputView now collects events in both modes (see InputDeviceManager.setupInputViewEvents).
-        // Gating on isVirtualKeyboard used to make this watchdog stand down exactly in physical
-        // mode — the mode where the freeze was reported.
+        // Do NOT skip while detached. Physical-keyboard sessions can leave InputView detached
+        // while its candidate bar is still the visible surface; the old guard returned here and
+        // reset the counters, so the watchdog watched nothing exactly in the mode where the
+        // freeze was reported. Signature comparison is a reliable liveness signal on its own,
+        // and the heal (forceRefresh + reapplyMode) is idempotent — a spurious call only costs
+        // one extra render.
         val current = lastCandidateListData.let {
-            "${it.total}:${it.candidates.firstOrNull()?.text ?: "-"}"
+            "${it.total}:${it.candidates.joinToString(",") { c -> c.text }}"
         }
         val actual = iv.candidateBarDataSignature()
         val prev = prevCandidateSignature
@@ -856,9 +851,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (++candidateBarStaleCount < CANDIDATE_BAR_STALE_LIMIT) return
         candidateBarStaleCount = 0
         Timber.e(
-            "CandSync: candidate bar frozen (expected=%s, bar=%s) — re-arming fcitx event channel",
+            "CandSync: candidate bar frozen (expected=%s, bar=%s) — forcing re-render + re-arm",
             prev, actual
         )
+        // Two-pronged heal: drive the render layer directly (the committed signature only
+        // advances after a successful adapter update, so a stale value means the screen really
+        // stopped updating), then re-arm the event channel in case the collector also died.
+        iv.forceRefreshCandidateBar()
         inputDeviceMgr.reapplyMode()
     }
 

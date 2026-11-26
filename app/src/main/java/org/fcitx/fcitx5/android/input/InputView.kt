@@ -584,6 +584,9 @@ class InputView(
     /** Liveness read-out for the service-side candidate-bar watchdog (frozen-bar detection). */
     internal fun candidateBarDataSignature(): String? = horizontalCandidate.candidateDataSignature()
 
+    /** Watchdog self-heal: force the horizontal candidate bar to re-render. */
+    internal fun forceRefreshCandidateBar() = horizontalCandidate.forceRefresh()
+
     /**
      * Keyboard fly-text selection: select the candidate with the given engine selection index,
      * reusing the full tap path ([selectCandidateAtVisiblePosition]) so the fly animation, paging

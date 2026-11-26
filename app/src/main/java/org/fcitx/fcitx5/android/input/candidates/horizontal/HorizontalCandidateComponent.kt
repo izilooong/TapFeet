@@ -160,16 +160,29 @@ class HorizontalCandidateComponent :
     private var queryGeneration = 0
 
     /**
-     * Liveness signature of the last [onCandidateUpdate] this component actually processed:
-     * `"total:firstCandidateText"`. Read by the service-side watchdog
-     * (`FcitxInputMethodService.watchCandidateBarLiveness`) to detect a bar that stopped
-     * receiving events — frozen on its last rendered page while preedit/commit keep working
-     * through the always-on service collector. Set ONLY here (fresh query data), never by
-     * paging/prefetch, so it tracks event-channel liveness, not local page turns.
+     * Signature of the candidate list currently being applied. Staged by [onCandidateUpdate],
+     * committed to [dataSignature] only after [renderCurrentPage] actually hands the slice to
+     * the adapter. Keeping these separate is what lets the watchdog distinguish "event arrived
+     * but render failed" (pending advances, committed stays stale) from a healthy refresh.
      */
+    private var pendingDataSignature: String? = null
+
+    /** Signature of the last list whose render actually completed (watchdog reads this). */
     private var dataSignature: String? = null
 
     fun candidateDataSignature(): String? = dataSignature
+
+    /**
+     * Watchdog self-heal entry: force the bar to re-render its current candidate pool and become
+     * visible again. Used by [FcitxInputMethodService.watchCandidateBarLiveness] when the
+     * committed signature stays stale for several events — the normal event path is apparently
+     * not reaching the screen, so bypass it and drive the render directly. Idempotent and safe
+     * to call while a fresh query is in flight: renderCurrentPage reads the latest pageCandidates.
+     */
+    fun forceRefresh() {
+        if (view.visibility != View.VISIBLE) view.visibility = View.VISIBLE
+        renderCurrentPage()
+    }
 
     /**
      * Slice size for backend fetches. Matches the bulk batch granularity used by the C++
@@ -466,6 +479,11 @@ class HorizontalCandidateComponent :
             localPageStart, pageSize, slice.size, pageCandidates.size
         )
         adapter.updateCandidates(slice, sourceTotal, localPageStart)
+        // Commit the liveness signature only AFTER the adapter accepted the new data. If any
+        // step above/below throws (and InputBroadcaster swallows it), the committed signature
+        // stays on the last successfully rendered list, so the service watchdog sees the stale
+        // value and re-arms instead of being fooled by an event that never reached the screen.
+        dataSignature = pendingDataSignature
         // Page turn? Only when the user asked for one AND the page actually moved: fresh queries,
         // width changes and the 5→3→2→1 overflow fallback all re-render through here and must not
         // animate — they would read as a phantom flip.
@@ -682,10 +700,15 @@ class HorizontalCandidateComponent :
             "CandSync: bar onCandidateUpdate n=%d total=%d first=%s",
             candidates.size, total, candidates.firstOrNull()?.text ?: "-"
         )
-        // Liveness signature BEFORE any state mutation: even if the render below throws or
-        // wedges, the signature still proves THIS event reached the component — separating
-        // channel death (signature stale) from render death (signature fresh, pixels old).
-        dataSignature = "$total:${candidates.firstOrNull()?.text ?: "-"}"
+        // Liveness signature = the last list that was RENDERED, not the last one received.
+        // It is committed only after adapter.updateCandidates succeeds (see renderCurrentPage).
+        // Committing here (before rendering) made the watchdog blind to render-layer freezes:
+        // if the render threw and was swallowed by InputBroadcaster's runCatching, the signature
+        // already looked fresh while the pixels stayed on the old candidates — the watchdog
+        // compared "event arrived" as if it meant "screen updated" and never healed.
+        // Full list (not just the first word): consecutive queries can share a first candidate
+        // while every other word changes, which used to read as "healthy" to the watchdog.
+        pendingDataSignature = "$total:${candidates.joinToString(",") { it.text }}"
         pageCandidates = candidates
         sourceTotal = total
         candidatePagingMode = 0
