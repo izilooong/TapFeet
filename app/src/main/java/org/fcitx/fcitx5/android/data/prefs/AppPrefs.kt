@@ -40,6 +40,9 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val pid = int("pid", 0)
         val editorInfoInspector = bool("editor_info_inspector", false)
         val needNotifications = bool("need_notifications", true)
+        // Android 17 only reports a usable IME inset when the system's "Use on-screen keyboard"
+        // option is on. Prompt once when a physical-keyboard device has it off.
+        val hardKeyboardOnscreenPrompted = bool("hard_keyboard_onscreen_prompted", false)
         // Online update cache: whether a newer version is available, plus its metadata.
         // (No `long` delegate exists in ManagedPreferenceInternal, so timestamps are stored as strings.)
         val cachedUpdateAvailable = bool("cached_update_available", false)

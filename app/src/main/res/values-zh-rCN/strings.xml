@@ -574,6 +574,9 @@
     <string name="grant_install_permission">请允许本应用安装更新包以完成更新</string>
     <string name="install_permission_denied">未授予安装权限。请为「大脚输入法」开启“安装未知应用”，然后重新点击下载更新。</string>
     <string name="open_settings">去设置</string>
+    <string name="hard_keyboard_onscreen_title">开启屏幕键盘</string>
+    <string name="hard_keyboard_onscreen_message">Android 17 下，系统「使用屏幕键盘」关闭时候选栏不会顶起输入框。</string>
+    <string name="dont_show_again">不再提示</string>
     <string name="about_app">关于大脚输入法</string>
     <string name="changelog">变更记录</string>
     <string name="user_manual">使用手册</string>

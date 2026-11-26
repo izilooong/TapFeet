@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.ui.main
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.drawable.Drawable
 import android.graphics.Canvas
 import android.graphics.ColorFilter
@@ -15,6 +16,7 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -134,6 +136,7 @@ class MainActivity : AppCompatActivity() {
         }
         processIntent(intent)
         checkNotificationPermission()
+        checkHardKeyboardOnscreenSetting()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -374,6 +377,52 @@ class MainActivity : AppCompatActivity() {
                     requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
                 }
                 .show()
+        }
+    }
+
+    private var hardKeyboardOnscreenPrompted by AppPrefs.getInstance().internal.hardKeyboardOnscreenPrompted
+
+    /**
+     * Android 17 (API 37) zeroes the IME inset frame when the system's "Use on-screen keyboard"
+     * option is off — apps then never resize for the candidate bar. The IME cannot override that
+     * from inside its own window, so guide the user to flip the system switch once.
+     */
+    private fun checkHardKeyboardOnscreenSetting() {
+        if (Build.VERSION.SDK_INT < 37) return
+        if (hardKeyboardOnscreenPrompted) return
+        // 无物理键盘的设备不受这个开关影响，别骚扰。
+        if (resources.configuration.keyboard == Configuration.KEYBOARD_NOKEYS) return
+        // 读取 secure setting 不需要运行时权限；开关名即系统「使用屏幕键盘」。
+        val onScreen = runCatching {
+            Settings.Secure.getInt(contentResolver, "show_ime_with_hard_keyboard", 0) != 0
+        }.getOrDefault(true)
+        // 开关正常时保持未提示态：用户哪天关掉仍会提示一次。
+        if (onScreen) return
+        AlertDialog.Builder(this)
+            .setIconAttribute(android.R.attr.alertDialogIcon)
+            .setTitle(R.string.hard_keyboard_onscreen_title)
+            .setMessage(R.string.hard_keyboard_onscreen_message)
+            .setNegativeButton(R.string.dont_show_again) { _, _ ->
+                hardKeyboardOnscreenPrompted = true
+            }
+            .setPositiveButton(R.string.open_settings) { _, _ ->
+                hardKeyboardOnscreenPrompted = true
+                openHardKeyboardSettings()
+            }
+            .show()
+    }
+
+    /** 跳系统物理键盘设置页；定制 ROM 缺该 activity 时依次回退。 */
+    private fun openHardKeyboardSettings() {
+        val actions = arrayOf(
+            "android.settings.HARD_KEYBOARD_SETTINGS",
+            Settings.ACTION_INPUT_METHOD_SETTINGS,
+            Settings.ACTION_SETTINGS
+        )
+        for (action in actions) {
+            val intent = Intent(action)
+            if (intent.resolveActivity(packageManager) == null) continue
+            if (runCatching { startActivity(intent) }.isSuccess) return
         }
     }
 
